@@ -48,15 +48,10 @@ def create_user(
         email=email,
         password_hash=password_hash,
         region=region,
-
         account_type=account_type,
-
         store_name=store_name,
-
         business_type=business_type,
-
         role=role,
-
         is_verified=is_verified
     )
 

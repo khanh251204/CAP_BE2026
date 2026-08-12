@@ -1,4 +1,13 @@
 import re
+from app.services.otp_service import (
+    create_otp_code,
+    OTP_EXPIRE_MINUTES,
+    OTP_RESEND_COOLDOWN_SECONDS
+)
+
+from app.services.email_service import (
+    send_otp_email
+)
 
 from fastapi import (
     HTTPException,
@@ -86,22 +95,17 @@ def register_user(
     db: Session,
     data: RegisterRequest
 ):
+    # NORMALIZE EMAIL
     email = str(
         data.email
     ).strip().lower()
 
-    # =========================
-    # PASSWORD
-    # =========================
-
+    # VALIDATE PASSWORD
     validate_password_strength(
         data.password
     )
 
-    # =========================
-    # CHECK EMAIL
-    # =========================
-
+    # CHECK EMAIL EXISTS
     existing_user = get_user_by_email(
         db,
         email
@@ -113,10 +117,7 @@ def register_user(
             detail="Email đã được đăng ký"
         )
 
-    # =========================
-    # NORMALIZE ACCOUNT
-    # =========================
-
+    # NORMALIZE ACCOUNT DATA
     if data.accountType == "personal":
 
         store_name = None
@@ -136,16 +137,13 @@ def register_user(
             else None
         )
 
-    # =========================
     # HASH PASSWORD
-    # =========================
-
     password_hash = get_password_hash(
         data.password
     )
 
     try:
-
+        # CREATE USER
         user = create_user(
             db=db,
 
@@ -165,27 +163,54 @@ def register_user(
 
             role=Roles.USER,
 
-            # Phải OTP trước
+            # Chưa xác thực OTP
             is_verified=False
         )
 
+        # CREATE OTP
+        otp_code = create_otp_code(
+            db=db,
+            user_id=user.user_id,
+            email=user.email,
+            purpose="verify_email"
+        )
+
+        # SEND OTP EMAIL
+        send_otp_email(
+            to_email=user.email,
+            otp_code=otp_code,
+            expire_minutes=OTP_EXPIRE_MINUTES,
+            purpose="verify_email"
+        )
+
+        # COMMIT USER + OTP
         db.commit()
 
         db.refresh(user)
 
+        # RESPONSE
         return {
             "success": True,
 
             "message": (
                 "Đăng ký thành công. "
-                "Vui lòng xác thực email."
+                "Mã OTP đã được gửi đến email của bạn."
             ),
 
             "email": user.email,
 
-            "nextAction": "verify_email"
+            "nextAction": "verify_email",
+
+            "otpExpiresIn": (
+                OTP_EXPIRE_MINUTES * 60
+            ),
+
+            "resendCountdown": (
+                OTP_RESEND_COOLDOWN_SECONDS
+            )
         }
 
+    # DATABASE CONFLICT
     except IntegrityError:
 
         db.rollback()
@@ -195,19 +220,24 @@ def register_user(
             detail="Email đã được đăng ký"
         )
 
+    # HTTP ERROR
     except HTTPException:
 
         db.rollback()
 
         raise
 
+    # UNKNOWN ERROR
     except Exception:
 
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể đăng ký tài khoản"
+            detail=(
+                "Không thể đăng ký tài khoản. "
+                "Vui lòng thử lại sau."
+            )
         )
 
 # LOGIN
