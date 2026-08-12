@@ -13,6 +13,12 @@ from app.configs.jwt import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 
+from app.services.refresh_token_service import (
+    create_refresh_token,
+    rotate_refresh_token,
+    revoke_refresh_token_value
+)
+
 from app.configs.roles import Roles
 
 from app.configs.security import (
@@ -31,7 +37,9 @@ from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
     VerifyOTPRequest,
-    SendOTPRequest
+    SendOTPRequest,
+    RefreshTokenRequest,
+    LogoutRequest
 )
 
 from app.services.otp_service import (
@@ -340,6 +348,13 @@ def verify_email_otp(
             "role": user.role
         })
 
+        refresh_token = create_refresh_token(
+            db=db,
+            user_id=user.user_id,
+            email=user.email,
+            role=user.role
+        )
+
         # COMMIT OTP + USER
         db.commit()
 
@@ -354,6 +369,10 @@ def verify_email_otp(
             ),
 
             "accessToken": access_token,
+
+            "refreshToken": refresh_token,
+
+            "tokenType": "bearer",
 
             "expiresIn": (
                 ACCESS_TOKEN_EXPIRE_MINUTES
@@ -495,6 +514,7 @@ def login_user(
     - Password đúng
     - Email đã verify
     """
+
     # NORMALIZE EMAIL
     email = str(
         data.email
@@ -507,11 +527,6 @@ def login_user(
     )
 
     # VERIFY PASSWORD
-
-    # Không tiết lộ:
-    # - email có tồn tại hay không
-    # - password sai hay không
-
     if (
         not user
         or not user.password_hash
@@ -527,7 +542,7 @@ def login_user(
                 "không chính xác"
             )
         )
-    
+        
     # EMAIL NOT VERIFIED
     if not user.is_verified:
         raise HTTPException(
@@ -537,32 +552,332 @@ def login_user(
                 "xác thực email"
             )
         )
-    
-    # CREATE ACCESS TOKEN
-    access_token = create_access_token({
-        "sub": str(
-            user.user_id
-        ),
-        "email": user.email,
-        "role": user.role
-    })
-    
-    # RESPONSE
-    return {
-        "success": True,
 
-        "accessToken": access_token,
+    try:
+        
+        # CREATE ACCESS TOKEN
+        access_token = create_access_token({
+            "sub": str(
+                user.user_id
+            ),
+            "email": user.email,
+            "role": user.role
+        })
 
-        "expiresIn": (
-            ACCESS_TOKEN_EXPIRE_MINUTES
-            * 60
-        ),
-
-        "user": user_to_dict(
-            user
+        
+        # CREATE REFRESH TOKEN
+        refresh_token = create_refresh_token(
+            db=db,
+            user_id=user.user_id,
+            email=user.email,
+            role=user.role
         )
-    }
 
+        
+        # COMMIT REFRESH TOKEN     
+        db.commit()
+
+        # RESPONSE
+        return {
+            "success": True,
+
+            "accessToken": access_token,
+
+            "refreshToken": refresh_token,
+
+            "tokenType": "bearer",
+
+            "expiresIn": (
+                ACCESS_TOKEN_EXPIRE_MINUTES
+                * 60
+            ),
+
+            "user": user_to_dict(
+                user
+            )
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except Exception:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể đăng nhập"
+        )
+# =========================================================
+# REFRESH ACCESS TOKEN
+# =========================================================
+
+def refresh_access_token(
+    db: Session,
+    data: RefreshTokenRequest
+):
+    """
+    Làm mới phiên đăng nhập.
+
+    Flow:
+    - Validate Refresh Token hiện tại
+    - Revoke Refresh Token cũ
+    - Tạo Refresh Token mới
+    - Tạo Access Token mới
+    - Commit rotation
+    """
+
+    try:
+        # =================================================
+        # ROTATE REFRESH TOKEN
+        # =================================================
+
+        result = rotate_refresh_token(
+            db=db,
+            token=data.refreshToken
+        )
+
+        user_id = result["userId"]
+
+        # =================================================
+        # GET CURRENT USER
+        # =================================================
+
+        user = get_user_by_id(
+            db,
+            user_id
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Người dùng không tồn tại"
+            )
+
+        if not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tài khoản chưa được xác thực"
+            )
+
+        # =================================================
+        # CREATE NEW ACCESS TOKEN
+        # =================================================
+
+        access_token = create_access_token({
+            "sub": str(user.user_id),
+            "email": user.email,
+            "role": user.role
+        })
+
+        # =================================================
+        # NEW REFRESH TOKEN
+        # =================================================
+
+        new_refresh_token = result[
+            "refreshToken"
+        ]
+
+        # =================================================
+        # COMMIT ROTATION
+        # =================================================
+
+        db.commit()
+
+        return {
+            "success": True,
+
+            "accessToken": access_token,
+
+            "refreshToken": new_refresh_token,
+
+            "tokenType": "bearer",
+
+            "expiresIn": (
+                ACCESS_TOKEN_EXPIRE_MINUTES
+                * 60
+            )
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except Exception:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể làm mới phiên đăng nhập"
+        )
+
+
+# =========================================================
+# LOGOUT
+# =========================================================
+
+def logout_user(
+    db: Session,
+    data: LogoutRequest
+):
+    """
+    Đăng xuất bằng cách revoke Refresh Token.
+    """
+
+    try:
+        revoke_refresh_token_value(
+            db=db,
+            token=data.refreshToken
+        )
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Đăng xuất thành công"
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except Exception:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể đăng xuất"
+        )
+        
+# REFRESH ACCESS TOKEN
+def refresh_access_token(
+    db: Session,
+    data: RefreshTokenRequest
+):
+    """
+    Làm mới phiên đăng nhập.
+
+    Flow:
+    - Validate Refresh Token hiện tại
+    - Revoke Refresh Token cũ
+    - Tạo Refresh Token mới
+    - Tạo Access Token mới
+    - Commit rotation
+    """
+
+    try:
+        # ROTATE REFRESH TOKEN
+        result = rotate_refresh_token(
+            db=db,
+            token=data.refreshToken
+        )
+
+        user_id = result["userId"]
+
+        # GET CURRENT USER
+        user = get_user_by_id(
+            db,
+            user_id
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Người dùng không tồn tại"
+            )
+
+        if not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tài khoản chưa được xác thực"
+            )
+
+        # CREATE NEW ACCESS TOKEN
+        access_token = create_access_token({
+            "sub": str(user.user_id),
+            "email": user.email,
+            "role": user.role
+        })
+
+        # NEW REFRESH TOKEN
+        new_refresh_token = result[
+            "refreshToken"
+        ]
+        
+        # COMMIT ROTATION
+        db.commit()
+
+        return {
+            "success": True,
+
+            "accessToken": access_token,
+
+            "refreshToken": new_refresh_token,
+
+            "tokenType": "bearer",
+
+            "expiresIn": (
+                ACCESS_TOKEN_EXPIRE_MINUTES
+                * 60
+            )
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except Exception:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể làm mới phiên đăng nhập"
+        )
+
+# LOGOUT
+def logout_user(
+    db: Session,
+    data: LogoutRequest
+):
+    """
+    Đăng xuất bằng cách revoke Refresh Token.
+    """
+
+    try:
+        revoke_refresh_token_value(
+            db=db,
+            token=data.refreshToken
+        )
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Đăng xuất thành công"
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except Exception:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể đăng xuất"
+        )
+        
 # CURRENT USER
 def get_current_user(
     db: Session,

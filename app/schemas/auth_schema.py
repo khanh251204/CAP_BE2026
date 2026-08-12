@@ -103,3 +103,23 @@ class SendOTPRequest(BaseModel):
     )
 
     email: EmailStr
+
+# REFRESH TOKEN
+class RefreshTokenRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    refreshToken: str = Field(
+        min_length=1
+    )
+
+# LOGOUT
+class LogoutRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    refreshToken: str = Field(
+        min_length=1
+    )

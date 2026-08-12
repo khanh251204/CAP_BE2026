@@ -13,7 +13,9 @@ from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
     VerifyOTPRequest,
-    SendOTPRequest
+    SendOTPRequest,
+    RefreshTokenRequest,
+    LogoutRequest
 )
 
 from app.controllers.auth_controller import (
@@ -21,7 +23,9 @@ from app.controllers.auth_controller import (
     login_controller,
     me_controller,
     verify_otp_controller,
-    send_otp_controller
+    send_otp_controller,
+    refresh_token_controller,
+    logout_controller
 )
 
 
@@ -73,6 +77,28 @@ def login(
     db: Session = Depends(get_db)
 ):
     return login_controller(
+        request=request,
+        db=db
+    )
+
+# REFRESH TOKEN
+@router.post("/refresh-token")
+def refresh_token(
+    request: RefreshTokenRequest,
+    db: Session = Depends(get_db)
+):
+    return refresh_token_controller(
+        request=request,
+        db=db
+    )
+
+# LOGOUT
+@router.post("/logout")
+def logout(
+    request: LogoutRequest,
+    db: Session = Depends(get_db)
+):
+    return logout_controller(
         request=request,
         db=db
     )

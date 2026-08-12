@@ -4,7 +4,9 @@ from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
     VerifyOTPRequest,
-    SendOTPRequest
+    SendOTPRequest,
+    RefreshTokenRequest,
+    LogoutRequest
 )
 
 from app.services.auth_service import (
@@ -12,7 +14,9 @@ from app.services.auth_service import (
     login_user,
     get_current_user,
     verify_email_otp,
-    send_verify_email_otp
+    send_verify_email_otp,
+    refresh_access_token,
+    logout_user
 )
 
 # REGISTER
@@ -21,16 +25,6 @@ def register_controller(
     db: Session
 ):
     return register_user(
-        db=db,
-        data=request
-    )
-
-# VERIFY OTP
-def verify_otp_controller(
-    request: VerifyOTPRequest,
-    db: Session
-):
-    return verify_email_otp(
         db=db,
         data=request
     )
@@ -45,12 +39,42 @@ def send_otp_controller(
         data=request
     )
 
+# VERIFY OTP
+def verify_otp_controller(
+    request: VerifyOTPRequest,
+    db: Session
+):
+    return verify_email_otp(
+        db=db,
+        data=request
+    )
+
 # LOGIN
 def login_controller(
     request: LoginRequest,
     db: Session
 ):
     return login_user(
+        db=db,
+        data=request
+    )
+
+# REFRESH TOKEN
+def refresh_token_controller(
+    request: RefreshTokenRequest,
+    db: Session
+):
+    return refresh_access_token(
+        db=db,
+        data=request
+    )
+
+# LOGOUT
+def logout_controller(
+    request: LogoutRequest,
+    db: Session
+):
+    return logout_user(
         db=db,
         data=request
     )
