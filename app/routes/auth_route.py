@@ -11,13 +11,17 @@ from app.configs.jwt import authenticate_user
 
 from app.schemas.auth_schema import (
     RegisterRequest,
-    LoginRequest
+    LoginRequest,
+    VerifyOTPRequest,
+    SendOTPRequest
 )
 
 from app.controllers.auth_controller import (
     register_controller,
     login_controller,
-    me_controller
+    me_controller,
+    verify_otp_controller,
+    send_otp_controller
 )
 
 
@@ -36,6 +40,28 @@ def register(
     db: Session = Depends(get_db)
 ):
     return register_controller(
+        request=request,
+        db=db
+    )
+
+# SEND / RESEND OTP
+@router.post("/send-otp")
+def send_otp(
+    request: SendOTPRequest,
+    db: Session = Depends(get_db)
+):
+    return send_otp_controller(
+        request=request,
+        db=db
+    )
+
+# VERIFY OTP
+@router.post("/verify-otp")
+def verify_otp(
+    request: VerifyOTPRequest,
+    db: Session = Depends(get_db)
+):
+    return verify_otp_controller(
         request=request,
         db=db
     )

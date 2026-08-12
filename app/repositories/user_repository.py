@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user_model import User
 
-
+# GET USER BY ID
 def get_user_by_id(
     db: Session,
     user_id: int
@@ -16,7 +16,7 @@ def get_user_by_id(
         .first()
     )
 
-
+# GET USER BY EMAIL
 def get_user_by_email(
     db: Session,
     email: str
@@ -28,7 +28,7 @@ def get_user_by_email(
         .first()
     )
 
-
+# CREATE USER
 def create_user(
     db: Session,
     *,
@@ -56,6 +56,19 @@ def create_user(
     )
 
     db.add(user)
+
+    # Có user_id nhưng chưa commit
+    db.flush()
+
+    return user
+
+# VERIFY USER
+def verify_user(
+    db: Session,
+    user: User
+) -> User:
+
+    user.is_verified = True
 
     db.flush()
 

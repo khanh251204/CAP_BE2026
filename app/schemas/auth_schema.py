@@ -8,7 +8,7 @@ from pydantic import (
     model_validator
 )
 
-
+# REGISTER
 class RegisterRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
@@ -69,7 +69,7 @@ class RegisterRequest(BaseModel):
 
         return self
 
-
+# LOGIN
 class LoginRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
@@ -81,3 +81,25 @@ class LoginRequest(BaseModel):
         min_length=1,
         max_length=128
     )
+
+# VERIFY OTP
+class VerifyOTPRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    email: EmailStr
+
+    code: str = Field(
+        min_length=6,
+        max_length=6,
+        pattern=r"^\d{6}$"
+    )
+
+# SEND / RESEND OTP
+class SendOTPRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    email: EmailStr
