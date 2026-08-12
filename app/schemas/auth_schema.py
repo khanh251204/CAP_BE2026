@@ -4,13 +4,19 @@ from pydantic import (
     BaseModel,
     EmailStr,
     Field,
-    ConfigDict
+    ConfigDict,
+    model_validator
 )
 
 
 class RegisterRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
+    )
+
+    fullName: str = Field(
+        min_length=2,
+        max_length=255
     )
 
     email: EmailStr
@@ -20,19 +26,19 @@ class RegisterRequest(BaseModel):
         max_length=128
     )
 
-    fullName: str = Field(
+    accountType: Literal[
+        "personal",
+        "business"
+    ]
+
+    province: str = Field(
         min_length=2,
-        max_length=255
-    )
-
-    phoneNumber: Optional[str] = Field(
-        default=None,
-        max_length=20
-    )
-
-    province: Optional[str] = Field(
-        default=None,
         max_length=100
+    )
+
+    storeName: Optional[str] = Field(
+        default=None,
+        max_length=255
     )
 
     businessField: Optional[str] = Field(
@@ -40,10 +46,28 @@ class RegisterRequest(BaseModel):
         max_length=100
     )
 
-    accountType: Literal[
-        "personal",
-        "business"
-    ] = "personal"
+    @model_validator(mode="after")
+    def validate_business_account(self):
+
+        if self.accountType == "business":
+
+            if (
+                not self.storeName
+                or not self.storeName.strip()
+            ):
+                raise ValueError(
+                    "Tên cửa hàng/doanh nghiệp là bắt buộc"
+                )
+
+            if (
+                not self.businessField
+                or not self.businessField.strip()
+            ):
+                raise ValueError(
+                    "Lĩnh vực kinh doanh là bắt buộc"
+                )
+
+        return self
 
 
 class LoginRequest(BaseModel):

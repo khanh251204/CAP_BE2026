@@ -35,10 +35,10 @@ def create_user(
     full_name: str,
     email: str,
     password_hash: str,
-    phone_number: str | None = None,
-    region: str | None = None,
+    region: str,
+    account_type: str,
+    store_name: str | None = None,
     business_type: str | None = None,
-    account_type: str = "personal",
     role: str = "user",
     is_verified: bool = False
 ) -> User:
@@ -46,18 +46,22 @@ def create_user(
     user = User(
         full_name=full_name,
         email=email,
-        phone_number=phone_number,
         password_hash=password_hash,
         region=region,
-        business_type=business_type,
+
         account_type=account_type,
+
+        store_name=store_name,
+
+        business_type=business_type,
+
         role=role,
+
         is_verified=is_verified
     )
 
     db.add(user)
 
-    # Có user_id sau INSERT nhưng chưa commit
     db.flush()
 
     return user

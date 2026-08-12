@@ -65,12 +65,20 @@ def user_to_dict(user):
         "userId": user.user_id,
         "fullName": user.full_name,
         "email": user.email,
-        "phoneNumber": user.phone_number,
+
         "province": user.region,
-        "businessField": user.business_type,
+
         "accountType": user.account_type,
+
+        "storeName": user.store_name,
+
+        "businessField": user.business_type,
+
         "role": user.role,
-        "isVerified": bool(user.is_verified)
+
+        "isVerified": bool(
+            user.is_verified
+        )
     }
 
 # REGISTER
@@ -78,14 +86,22 @@ def register_user(
     db: Session,
     data: RegisterRequest
 ):
-    email = str(data.email).strip().lower()
+    email = str(
+        data.email
+    ).strip().lower()
 
-    # Kiểm tra password
+    # =========================
+    # PASSWORD
+    # =========================
+
     validate_password_strength(
         data.password
     )
 
-    # Kiểm tra email tồn tại
+    # =========================
+    # CHECK EMAIL
+    # =========================
+
     existing_user = get_user_by_email(
         db,
         email
@@ -97,25 +113,59 @@ def register_user(
             detail="Email đã được đăng ký"
         )
 
+    # =========================
+    # NORMALIZE ACCOUNT
+    # =========================
+
+    if data.accountType == "personal":
+
+        store_name = None
+        business_type = None
+
+    else:
+
+        store_name = (
+            data.storeName.strip()
+            if data.storeName
+            else None
+        )
+
+        business_type = (
+            data.businessField.strip()
+            if data.businessField
+            else None
+        )
+
+    # =========================
+    # HASH PASSWORD
+    # =========================
+
     password_hash = get_password_hash(
         data.password
     )
 
     try:
+
         user = create_user(
             db=db,
+
             full_name=data.fullName.strip(),
+
             email=email,
+
             password_hash=password_hash,
-            phone_number=data.phoneNumber,
-            region=data.province,
-            business_type=data.businessField,
+
+            region=data.province.strip(),
+
             account_type=data.accountType,
 
-            # User đăng ký bình thường
+            store_name=store_name,
+
+            business_type=business_type,
+
             role=Roles.USER,
 
-            # Sau này OTP sẽ chuyển thành True
+            # Phải OTP trước
             is_verified=False
         )
 
@@ -125,26 +175,34 @@ def register_user(
 
         return {
             "success": True,
+
             "message": (
                 "Đăng ký thành công. "
                 "Vui lòng xác thực email."
             ),
-            "user": user_to_dict(user)
+
+            "email": user.email,
+
+            "nextAction": "verify_email"
         }
 
     except IntegrityError:
+
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Thông tin tài khoản đã tồn tại"
+            detail="Email đã được đăng ký"
         )
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(

@@ -41,15 +41,28 @@ class User(Base):
         nullable=True
     )
 
-    # API province -> DB region
+    # province từ Frontend
     region = Column(
         String(100),
         nullable=True
     )
 
-    # API businessField -> DB business_type
+    # lĩnh vực kinh doanh
     business_type = Column(
         String(100),
+        nullable=True
+    )
+
+    # personal | business
+    account_type = Column(
+        String(20),
+        nullable=False,
+        default="personal"
+    )
+
+    # Chỉ dành cho business
+    store_name = Column(
+        String(255),
         nullable=True
     )
 
@@ -73,12 +86,6 @@ class User(Base):
         String(30),
         nullable=False,
         default="user"
-    )
-
-    account_type = Column(
-        String(20),
-        nullable=False,
-        default="personal"
     )
 
     created_at = Column(
