@@ -9,6 +9,10 @@ router = APIRouter()
 def get_notifications():
     return NotificationController.get_all_notifications()
 
+@router.post("/notifications")
+def create_notification(data: dict):
+    return NotificationController.create_notification(data)
+
 
 @router.patch("/notifications/{notification_id}/read")
 def mark_notification_as_read(notification_id: str):
