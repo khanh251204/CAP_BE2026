@@ -9,7 +9,8 @@ from app.schemas.auth_schema import (
     LogoutRequest,
     ForgotPasswordRequest,
     VerifyResetOTPRequest,
-    ResetPasswordRequest
+    ResetPasswordRequest,
+    GoogleLoginRequest
 )
 
 from app.services.auth_service import (
@@ -22,7 +23,8 @@ from app.services.auth_service import (
     logout_user,
     forgot_password,
     verify_reset_password_otp,
-    reset_password
+    reset_password,
+    google_login
 )
 
 
@@ -98,6 +100,17 @@ def login_controller(
     db: Session
 ):
     return login_user(
+        db=db,
+        data=request
+    )
+
+
+# GOOGLE LOGIN
+def google_login_controller(
+    request: GoogleLoginRequest,
+    db: Session
+):
+    return google_login(
         db=db,
         data=request
     )

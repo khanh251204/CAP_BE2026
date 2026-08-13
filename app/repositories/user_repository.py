@@ -34,11 +34,13 @@ def create_user(
     *,
     full_name: str,
     email: str,
-    password_hash: str,
-    region: str,
-    account_type: str,
+    password_hash: str | None = None,
+    region: str | None = None,
+    account_type: str = "personal",
     store_name: str | None = None,
     business_type: str | None = None,
+    google_id: str | None = None,
+    apple_id: str | None = None,
     role: str = "user",
     is_verified: bool = False
 ) -> User:
@@ -51,13 +53,13 @@ def create_user(
         account_type=account_type,
         store_name=store_name,
         business_type=business_type,
+        google_id=google_id,
+        apple_id=apple_id,
         role=role,
         is_verified=is_verified
     )
 
     db.add(user)
-
-    # Có user_id nhưng chưa commit
     db.flush()
 
     return user
@@ -82,6 +84,34 @@ def update_user_password(
 ) -> User:
 
     user.password_hash = password_hash
+
+    db.flush()
+
+    return user
+
+# GET USER BY GOOGLE ID
+def get_user_by_google_id(
+    db: Session,
+    google_id: str
+) -> Optional[User]:
+
+    return (
+        db.query(User)
+        .filter(
+            User.google_id == google_id
+        )
+        .first()
+    )
+
+
+# LINK GOOGLE ACCOUNT
+def link_google_account(
+    db: Session,
+    user: User,
+    google_id: str
+) -> User:
+
+    user.google_id = google_id
 
     db.flush()
 

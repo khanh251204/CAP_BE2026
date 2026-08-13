@@ -32,6 +32,8 @@ from app.repositories.user_repository import (
     create_user,
     get_user_by_email,
     get_user_by_id,
+    get_user_by_google_id,
+    link_google_account,
     verify_user,
     update_user_password
 )
@@ -50,7 +52,12 @@ from app.schemas.auth_schema import (
     LogoutRequest,
     ForgotPasswordRequest,
     VerifyResetOTPRequest,
-    ResetPasswordRequest
+    ResetPasswordRequest,
+    GoogleLoginRequest
+)
+
+from app.services.google_auth_service import (
+    verify_google_id_token
 )
 
 # SERVICES
@@ -449,6 +456,178 @@ def verify_email_otp(
             )
         )
 
+# GOOGLE LOGIN
+def google_login(
+    db: Session,
+    data: GoogleLoginRequest
+):
+    google_data = (
+        verify_google_id_token(
+            data.idToken
+        )
+    )
+
+    google_id = google_data[
+        "googleId"
+    ]
+
+    email = google_data[
+        "email"
+    ]
+
+    full_name = google_data[
+        "fullName"
+    ]
+
+    try:
+        # Ưu tiên tìm bằng Google sub
+        user = get_user_by_google_id(
+            db,
+            google_id
+        )
+
+        # Chưa từng link Google
+        if not user:
+            user = get_user_by_email(
+                db,
+                email
+            )
+
+            # Email đã tồn tại bằng local login
+            if user:
+                if (
+                    user.google_id
+                    and user.google_id
+                    != google_id
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "Email đã liên kết với "
+                            "một tài khoản Google khác"
+                        )
+                    )
+
+                link_google_account(
+                    db=db,
+                    user=user,
+                    google_id=google_id
+                )
+
+                # Google xác nhận email rồi
+                user.is_verified = True
+
+                db.flush()
+
+            # User mới hoàn toàn
+            else:
+                user = create_user(
+                    db=db,
+
+                    full_name=full_name,
+
+                    email=email,
+
+                    password_hash=None,
+
+                    region=None,
+
+                    account_type="personal",
+
+                    store_name=None,
+
+                    business_type=None,
+
+                    google_id=google_id,
+
+                    role=Roles.USER,
+
+                    is_verified=True
+                )
+
+        # Access Token của hệ thống
+        access_token = (
+            create_access_token({
+                "sub": str(
+                    user.user_id
+                ),
+
+                "email": user.email,
+
+                "role": user.role
+            })
+        )
+
+        # Refresh Token của hệ thống
+        refresh_token = (
+            create_refresh_token(
+                db=db,
+
+                user_id=user.user_id,
+
+                email=user.email,
+
+                role=user.role
+            )
+        )
+
+        db.commit()
+
+        db.refresh(
+            user
+        )
+
+        return {
+            "success": True,
+
+            "accessToken": (
+                access_token
+            ),
+
+            "refreshToken": (
+                refresh_token
+            ),
+
+            "tokenType": "bearer",
+
+            "expiresIn": (
+                ACCESS_TOKEN_EXPIRE_MINUTES
+                * 60
+            ),
+
+            "user": user_to_dict(
+                user
+            )
+        }
+
+    except HTTPException:
+
+        db.rollback()
+        raise
+
+    except IntegrityError:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Không thể liên kết "
+                "tài khoản Google"
+            )
+        )
+
+    except Exception:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Không thể đăng nhập bằng Google"
+            )
+        )
+        
 # SEND / RESEND VERIFY EMAIL OTP
 def send_verify_email_otp(
     db: Session,
