@@ -15,7 +15,10 @@ from app.schemas.auth_schema import (
     VerifyOTPRequest,
     SendOTPRequest,
     RefreshTokenRequest,
-    LogoutRequest
+    LogoutRequest,
+    ForgotPasswordRequest,
+    VerifyResetOTPRequest,
+    ResetPasswordRequest
 )
 
 from app.controllers.auth_controller import (
@@ -25,7 +28,10 @@ from app.controllers.auth_controller import (
     verify_otp_controller,
     send_otp_controller,
     refresh_token_controller,
-    logout_controller
+    logout_controller,
+    forgot_password_controller,
+    verify_reset_otp_controller,
+    reset_password_controller
 )
 
 
@@ -33,6 +39,7 @@ router = APIRouter(
     prefix="/api/auth",
     tags=["Authentication"]
 )
+
 
 # REGISTER
 @router.post(
@@ -48,7 +55,8 @@ def register(
         db=db
     )
 
-# SEND / RESEND OTP
+
+# SEND / RESEND VERIFY EMAIL OTP
 @router.post("/send-otp")
 def send_otp(
     request: SendOTPRequest,
@@ -59,7 +67,8 @@ def send_otp(
         db=db
     )
 
-# VERIFY OTP
+
+# VERIFY EMAIL OTP
 @router.post("/verify-otp")
 def verify_otp(
     request: VerifyOTPRequest,
@@ -69,6 +78,43 @@ def verify_otp(
         request=request,
         db=db
     )
+
+
+# FORGOT PASSWORD
+@router.post("/forgot-password")
+def forgot_password_route(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    return forgot_password_controller(
+        request=request,
+        db=db
+    )
+
+
+# VERIFY RESET OTP
+@router.post("/verify-reset-otp")
+def verify_reset_otp(
+    request: VerifyResetOTPRequest,
+    db: Session = Depends(get_db)
+):
+    return verify_reset_otp_controller(
+        request=request,
+        db=db
+    )
+
+
+# RESET PASSWORD
+@router.post("/reset-password")
+def reset_password_route(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    return reset_password_controller(
+        request=request,
+        db=db
+    )
+
 
 # LOGIN
 @router.post("/login")
@@ -81,6 +127,7 @@ def login(
         db=db
     )
 
+
 # REFRESH TOKEN
 @router.post("/refresh-token")
 def refresh_token(
@@ -92,6 +139,7 @@ def refresh_token(
         db=db
     )
 
+
 # LOGOUT
 @router.post("/logout")
 def logout(
@@ -102,6 +150,7 @@ def logout(
         request=request,
         db=db
     )
+
 
 # CURRENT USER
 @router.get("/me")

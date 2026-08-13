@@ -73,3 +73,16 @@ def verify_user(
     db.flush()
 
     return user
+
+# UPDATE PASSWORD
+def update_user_password(
+    db: Session,
+    user: User,
+    password_hash: str
+) -> User:
+
+    user.password_hash = password_hash
+
+    db.flush()
+
+    return user

@@ -6,7 +6,10 @@ from app.schemas.auth_schema import (
     VerifyOTPRequest,
     SendOTPRequest,
     RefreshTokenRequest,
-    LogoutRequest
+    LogoutRequest,
+    ForgotPasswordRequest,
+    VerifyResetOTPRequest,
+    ResetPasswordRequest
 )
 
 from app.services.auth_service import (
@@ -16,8 +19,12 @@ from app.services.auth_service import (
     verify_email_otp,
     send_verify_email_otp,
     refresh_access_token,
-    logout_user
+    logout_user,
+    forgot_password,
+    verify_reset_password_otp,
+    reset_password
 )
+
 
 # REGISTER
 def register_controller(
@@ -29,7 +36,8 @@ def register_controller(
         data=request
     )
 
-# SEND / RESEND OTP
+
+# SEND / RESEND VERIFY EMAIL OTP
 def send_otp_controller(
     request: SendOTPRequest,
     db: Session
@@ -39,7 +47,8 @@ def send_otp_controller(
         data=request
     )
 
-# VERIFY OTP
+
+# VERIFY EMAIL OTP
 def verify_otp_controller(
     request: VerifyOTPRequest,
     db: Session
@@ -48,6 +57,40 @@ def verify_otp_controller(
         db=db,
         data=request
     )
+
+
+# FORGOT PASSWORD
+def forgot_password_controller(
+    request: ForgotPasswordRequest,
+    db: Session
+):
+    return forgot_password(
+        db=db,
+        data=request
+    )
+
+
+# VERIFY RESET OTP
+def verify_reset_otp_controller(
+    request: VerifyResetOTPRequest,
+    db: Session
+):
+    return verify_reset_password_otp(
+        db=db,
+        data=request
+    )
+
+
+# RESET PASSWORD
+def reset_password_controller(
+    request: ResetPasswordRequest,
+    db: Session
+):
+    return reset_password(
+        db=db,
+        data=request
+    )
+
 
 # LOGIN
 def login_controller(
@@ -59,6 +102,7 @@ def login_controller(
         data=request
     )
 
+
 # REFRESH TOKEN
 def refresh_token_controller(
     request: RefreshTokenRequest,
@@ -69,6 +113,7 @@ def refresh_token_controller(
         data=request
     )
 
+
 # LOGOUT
 def logout_controller(
     request: LogoutRequest,
@@ -78,6 +123,7 @@ def logout_controller(
         db=db,
         data=request
     )
+
 
 # CURRENT USER
 def me_controller(

@@ -123,3 +123,40 @@ class LogoutRequest(BaseModel):
     refreshToken: str = Field(
         min_length=1
     )
+    
+# FORGOT PASSWORD
+class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    email: EmailStr
+
+# VERIFY RESET OTP
+class VerifyResetOTPRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    email: EmailStr
+
+    code: str = Field(
+        min_length=6,
+        max_length=6,
+        pattern=r"^\d{6}$"
+    )
+
+# RESET PASSWORD
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    resetToken: str = Field(
+        min_length=1
+    )
+
+    newPassword: str = Field(
+        min_length=8,
+        max_length=128
+    )
