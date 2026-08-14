@@ -12,16 +12,31 @@ def get_password_hash(password: str) -> str:
     # Trả về dạng string để lưu vào DB
     return hashed_password.decode('utf-8')
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Kiểm tra mật khẩu - Tương tự bcrypt.compare()
-    """
+def verify_password(
+    plain_password: str,
+    hashed_password: str
+) -> bool:
+
+    if not hashed_password:
+        return False
+
     try:
-        # Chuyển cả 2 về dạng bytes để bcrypt so sánh
-        password_byte = plain_password.encode('utf-8')
-        hashed_byte = hashed_password.encode('utf-8')
-        
-        return bcrypt.checkpw(password_byte, hashed_byte)
-    except Exception as e:
-        print(f"❌ Lỗi verify password: {e}")
+
+        password_byte = (
+            plain_password.encode("utf-8")
+        )
+
+        hashed_byte = (
+            hashed_password.encode("utf-8")
+        )
+
+        return bcrypt.checkpw(
+            password_byte,
+            hashed_byte
+        )
+
+    except (
+        ValueError,
+        TypeError
+    ):
         return False
