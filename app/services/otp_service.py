@@ -3,7 +3,10 @@ import hmac
 import hashlib
 import secrets
 
-from datetime import datetime, timedelta
+from datetime import (
+    datetime,
+    timedelta
+)
 
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
@@ -17,7 +20,11 @@ from app.repositories.otp_repository import (
     mark_otp_used
 )
 
-# LOAD ENV
+from app.services.email_service import (
+    send_otp_email
+)
+
+
 load_dotenv()
 
 
@@ -39,45 +46,33 @@ JWT_SECRET_KEY = os.getenv(
     "JWT_SECRET_KEY"
 )
 
-
 if not JWT_SECRET_KEY:
     raise RuntimeError(
-        "JWT_SECRET_KEY chưa được cấu hình trong .env"
+        "JWT_SECRET_KEY chưa được cấu hình"
     )
 
-# GENERATE OTP
-def generate_otp() -> str:
-    """
-    Sinh OTP đúng 6 chữ số.
 
-    Ví dụ:
-    004821
-    582039
-    """
+VERIFY_EMAIL = "verify_email"
+FORGOT_PASSWORD = "forgot_password"
 
+ALLOWED_PURPOSES = {
+    VERIFY_EMAIL,
+    FORGOT_PASSWORD
+}
+
+
+def _generate_otp() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
-# HASH OTP
-def hash_otp(
+
+def _hash_otp(
     email: str,
     purpose: str,
-    otp_code: str
+    code: str
 ) -> str:
-    """
-    Hash OTP bằng HMAC-SHA256.
-
-    Database chỉ lưu otp_hash,
-    không lưu OTP plaintext.
-    """
-
-    normalized_email = (
-        email
-        .strip()
-        .lower()
-    )
 
     message = (
-        f"{normalized_email}:{purpose}:{otp_code}"
+        f"{email}:{purpose}:{code}"
     ).encode("utf-8")
 
     return hmac.new(
@@ -86,151 +81,77 @@ def hash_otp(
         hashlib.sha256
     ).hexdigest()
 
-# VERIFY HASH
-def verify_otp_hash(
-    email: str,
-    purpose: str,
-    otp_code: str,
-    stored_hash: str
-) -> bool:
-    """
-    So sánh OTP người dùng nhập với otp_hash trong DB.
-    """
 
-    current_hash = hash_otp(
-        email=email,
-        purpose=purpose,
-        otp_code=otp_code
-    )
-
-    return hmac.compare_digest(
-        current_hash,
-        stored_hash
-    )
-
-# CHECK COOLDOWN
-def check_resend_cooldown(
+def _check_cooldown(
     db: Session,
-    *,
     email: str,
     purpose: str
 ):
-    """
-    Chặn gửi OTP liên tục.
-
-    Ví dụ:
-    OTP_RESEND_COOLDOWN_SECONDS = 60
-
-    User phải chờ đủ 60 giây mới gửi lại.
-    """
-
-    normalized_email = (
-        email
-        .strip()
-        .lower()
-    )
-
-    latest_otp = get_latest_otp(
+    latest = get_latest_otp(
         db,
-        email=normalized_email,
+        email=email,
         purpose=purpose
     )
 
-    if not latest_otp:
+    if not latest:
         return
 
-    now = datetime.utcnow()
-
-    seconds_passed = (
-        now - latest_otp.created_at
+    passed = (
+        datetime.utcnow()
+        - latest.created_at
     ).total_seconds()
 
-    if (
-        seconds_passed
-        < OTP_RESEND_COOLDOWN_SECONDS
-    ):
+    if passed < OTP_RESEND_COOLDOWN_SECONDS:
+
         remaining = max(
             1,
             int(
                 OTP_RESEND_COOLDOWN_SECONDS
-                - seconds_passed
+                - passed
             )
         )
 
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
-                "message": (
-                    "Vui lòng chờ trước khi gửi lại OTP"
-                ),
+                "message": "Vui lòng chờ trước khi gửi lại OTP",
                 "resendAfter": remaining
             }
         )
 
-# CREATE OTP
-def create_otp_code(
+
+def send_otp(
     db: Session,
     *,
-    user_id: int | None,
-    email: str,
+    user,
     purpose: str
-) -> str:
-    """
-    Tạo OTP mới.
+) -> dict:
 
-    Flow:
-    1. Chuẩn hóa email
-    2. Check cooldown
-    3. Invalidate OTP cũ
-    4. Sinh OTP mới
-    5. Hash OTP
-    6. Lưu otp_hash vào DB
-    7. Trả OTP plaintext để email_service gửi mail
-
-    Lưu ý:
-    Function này KHÔNG commit.
-    Service cấp cao hơn sẽ commit.
-    """
-
-    normalized_email = (
-        email
-        .strip()
-        .lower()
-    )
-
-    # VALIDATE PURPOSE
-    allowed_purposes = {
-        "verify_email",
-        "forgot_password"
-    }
-
-    if purpose not in allowed_purposes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP purpose không hợp lệ"
+    if purpose not in ALLOWED_PURPOSES:
+        raise ValueError(
+            "OTP purpose không hợp lệ"
         )
 
-    # COOLDOWN
-    check_resend_cooldown(
+    email = user.email.strip().lower()
+
+    _check_cooldown(
         db,
-        email=normalized_email,
-        purpose=purpose
+        email,
+        purpose
     )
 
-    # INVALIDATE OLD OTP
     invalidate_old_otps(
         db,
-        email=normalized_email,
+        email=email,
         purpose=purpose
     )
 
-    # GENERATE OTP
-    otp_code = generate_otp()
+    code = _generate_otp()
 
-    otp_hash = hash_otp(
-        email=normalized_email,
-        purpose=purpose,
-        otp_code=otp_code
+    otp_hash = _hash_otp(
+        email,
+        purpose,
+        code
     )
 
     expires_at = (
@@ -240,99 +161,87 @@ def create_otp_code(
         )
     )
 
-    # SAVE DB
     create_otp(
         db,
-        user_id=user_id,
-        email=normalized_email,
+        user_id=user.user_id,
+        email=email,
         otp_hash=otp_hash,
         purpose=purpose,
         expires_at=expires_at
     )
 
-    # Trả OTP plaintext để gửi email
-    return otp_code
+    send_otp_email(
+        to_email=email,
+        otp_code=code,
+        expire_minutes=OTP_EXPIRE_MINUTES,
+        purpose=purpose
+    )
 
-# VERIFY OTP
-def verify_otp_code(
+    return {
+        "otpExpiresIn": (
+            OTP_EXPIRE_MINUTES * 60
+        ),
+        "resendCountdown": (
+            OTP_RESEND_COOLDOWN_SECONDS
+        )
+    }
+
+
+def verify_otp(
     db: Session,
     *,
-    email: str,
+    user,
     code: str,
     purpose: str
 ):
-    """
-    Xác thực OTP.
 
-    Nếu đúng:
-    - đánh dấu is_used = True
-    - trả OTP record
-
-    Nếu sai/hết hạn:
-    - HTTPException
-    """
-
-    normalized_email = (
-        email
-        .strip()
-        .lower()
-    )
-
-    # VALIDATE CODE
-    if (
-        len(code) != 6
-        or not code.isdigit()
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mã OTP phải gồm đúng 6 chữ số"
+    if purpose not in ALLOWED_PURPOSES:
+        raise ValueError(
+            "OTP purpose không hợp lệ"
         )
 
-    allowed_purposes = {
-        "verify_email",
-        "forgot_password"
-    }
+    email = user.email.strip().lower()
 
-    if purpose not in allowed_purposes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP purpose không hợp lệ"
-        )
-
-    now = datetime.utcnow()
-
-    # FIND VALID OTP
     otp = get_latest_valid_otp(
         db,
-        email=normalized_email,
+        email=email,
         purpose=purpose,
-        now=now
+        now=datetime.utcnow()
     )
 
     if not otp:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Mã OTP không tồn tại, "
-                "đã hết hạn hoặc đã được sử dụng"
+                "Mã OTP không hợp lệ "
+                "hoặc đã hết hạn"
             )
         )
 
-    # VERIFY HASH
-    is_valid = verify_otp_hash(
-        email=normalized_email,
-        purpose=purpose,
-        otp_code=code,
-        stored_hash=otp.otp_hash
+    if (
+        otp.user_id is not None
+        and otp.user_id != user.user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mã OTP không hợp lệ"
+        )
+
+    incoming_hash = _hash_otp(
+        email,
+        purpose,
+        code
     )
 
-    if not is_valid:
+    if not hmac.compare_digest(
+        incoming_hash,
+        otp.otp_hash
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Mã OTP không chính xác"
         )
 
-    # MARK USED
     mark_otp_used(
         db,
         otp

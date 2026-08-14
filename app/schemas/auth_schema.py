@@ -8,11 +8,10 @@ from pydantic import (
     model_validator
 )
 
+
 # REGISTER
 class RegisterRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
+    model_config = ConfigDict(extra="forbid")
 
     fullName: str = Field(
         min_length=2,
@@ -47,8 +46,7 @@ class RegisterRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_business_account(self):
-
+    def validate_business(self):
         if self.accountType == "business":
 
             if (
@@ -69,11 +67,10 @@ class RegisterRequest(BaseModel):
 
         return self
 
+
 # LOGIN
 class LoginRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
+    model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
 
@@ -82,11 +79,22 @@ class LoginRequest(BaseModel):
         max_length=128
     )
 
+
+# SEND OTP
+class SendOTPRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+
+    purpose: Literal[
+        "verify_email",
+        "forgot_password"
+    ]
+
+
 # VERIFY OTP
 class VerifyOTPRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
+    model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
 
@@ -96,61 +104,15 @@ class VerifyOTPRequest(BaseModel):
         pattern=r"^\d{6}$"
     )
 
-# SEND / RESEND OTP
-class SendOTPRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
+    purpose: Literal[
+        "verify_email",
+        "forgot_password"
+    ]
 
-    email: EmailStr
-
-# REFRESH TOKEN
-class RefreshTokenRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
-
-    refreshToken: str = Field(
-        min_length=1
-    )
-
-# LOGOUT
-class LogoutRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
-
-    refreshToken: str = Field(
-        min_length=1
-    )
-    
-# FORGOT PASSWORD
-class ForgotPasswordRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
-
-    email: EmailStr
-
-# VERIFY RESET OTP
-class VerifyResetOTPRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
-
-    email: EmailStr
-
-    code: str = Field(
-        min_length=6,
-        max_length=6,
-        pattern=r"^\d{6}$"
-    )
 
 # RESET PASSWORD
 class ResetPasswordRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
-    )
+    model_config = ConfigDict(extra="forbid")
 
     resetToken: str = Field(
         min_length=1
@@ -160,12 +122,20 @@ class ResetPasswordRequest(BaseModel):
         min_length=8,
         max_length=128
     )
-    
-# GOOGLE LOGIN
-class GoogleLoginRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid"
+
+
+# TOKEN
+class RefreshTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refreshToken: str = Field(
+        min_length=1
     )
+
+
+# GOOGLE
+class GoogleLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
     idToken: str = Field(
         min_length=1

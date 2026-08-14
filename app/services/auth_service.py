@@ -2,15 +2,10 @@ import re
 
 from datetime import datetime
 
-from fastapi import (
-    HTTPException,
-    status
-)
-
+from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-# CONFIG
 from app.configs.jwt import (
     create_access_token,
     create_reset_token,
@@ -27,13 +22,11 @@ from app.configs.security import (
     verify_password
 )
 
-# REPOSITORIES
 from app.repositories.user_repository import (
     create_user,
     get_user_by_email,
     get_user_by_id,
     get_user_by_google_id,
-    link_google_account,
     verify_user,
     update_user_password
 )
@@ -42,16 +35,12 @@ from app.repositories.refresh_token_repository import (
     revoke_all_user_refresh_tokens
 )
 
-# SCHEMAS
 from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
-    VerifyOTPRequest,
     SendOTPRequest,
+    VerifyOTPRequest,
     RefreshTokenRequest,
-    LogoutRequest,
-    ForgotPasswordRequest,
-    VerifyResetOTPRequest,
     ResetPasswordRequest,
     GoogleLoginRequest
 )
@@ -60,16 +49,13 @@ from app.services.google_auth_service import (
     verify_google_id_token
 )
 
-# SERVICES
 from app.services.otp_service import (
-    create_otp_code,
-    verify_otp_code,
+    send_otp,
+    verify_otp,
     OTP_EXPIRE_MINUTES,
-    OTP_RESEND_COOLDOWN_SECONDS
-)
-
-from app.services.email_service import (
-    send_otp_email
+    OTP_RESEND_COOLDOWN_SECONDS,
+    VERIFY_EMAIL,
+    FORGOT_PASSWORD
 )
 
 from app.services.refresh_token_service import (
@@ -78,19 +64,19 @@ from app.services.refresh_token_service import (
     revoke_refresh_token_value
 )
 
-# PASSWORD VALIDATION
+
+# HELPERS
+def normalize_email(
+    email
+) -> str:
+    return str(
+        email
+    ).strip().lower()
+
+
 def validate_password_strength(
     password: str
 ):
-    """
-    Password phải có:
-
-    - >= 8 ký tự
-    - chữ hoa
-    - chữ thường
-    - số
-    """
-
     if len(password) < 8:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -124,70 +110,102 @@ def validate_password_strength(
             detail="Mật khẩu phải có ít nhất 1 chữ số"
         )
 
-# USER RESPONSE
+
 def user_to_dict(
     user
 ):
     return {
         "userId": user.user_id,
-
         "fullName": user.full_name,
-
         "email": user.email,
-
         "province": user.region,
-
         "accountType": user.account_type,
-
         "storeName": user.store_name,
-
         "businessField": user.business_type,
-
         "role": user.role,
-
         "isVerified": bool(
             user.is_verified
         )
     }
 
-# REGISTER=
 
+def create_session(
+    db: Session,
+    user
+) -> dict:
+    access_token = create_access_token({
+        "sub": str(
+            user.user_id
+        ),
+        "email": user.email,
+        "role": user.role
+    })
+
+    refresh_token = create_refresh_token(
+        db=db,
+        user_id=user.user_id,
+        email=user.email,
+        role=user.role
+    )
+
+    return {
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "tokenType": "bearer",
+        "expiresIn": (
+            ACCESS_TOKEN_EXPIRE_MINUTES
+            * 60
+        )
+    }
+
+
+def create_access_session(
+    user
+) -> dict:
+    access_token = create_access_token({
+        "sub": str(
+            user.user_id
+        ),
+        "email": user.email,
+        "role": user.role
+    })
+
+    return {
+        "accessToken": access_token,
+        "tokenType": "bearer",
+        "expiresIn": (
+            ACCESS_TOKEN_EXPIRE_MINUTES
+            * 60
+        )
+    }
+
+
+# REGISTER
 def register_user(
     db: Session,
     data: RegisterRequest
 ):
-    email = str(
+    email = normalize_email(
         data.email
-    ).strip().lower()
-    
-    # PASSWORD
+    )
+
     validate_password_strength(
         data.password
     )
 
-    # CHECK EMAIL
-    existing_user = (
-        get_user_by_email(
-            db,
-            email
-        )
-    )
-
-    if existing_user:
+    if get_user_by_email(
+        db,
+        email
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email đã được đăng ký"
         )
-        
-    # ACCOUNT DATA
-    if (
-        data.accountType
-        == "personal"
-    ):
-        store_name = None
-        business_type = None
 
-    else:
+    store_name = None
+    business_type = None
+
+    if data.accountType == "business":
         store_name = (
             data.storeName.strip()
             if data.storeName
@@ -200,71 +218,28 @@ def register_user(
             else None
         )
 
-    # PASSWORD HASH
-    password_hash = (
-        get_password_hash(
-            data.password
-        )
-    )
-
     try:
-        # CREATE USER
         user = create_user(
             db=db,
-
-            full_name=(
-                data.fullName.strip()
-            ),
-
+            full_name=data.fullName.strip(),
             email=email,
-
-            password_hash=(
-                password_hash
+            password_hash=get_password_hash(
+                data.password
             ),
-
-            region=(
-                data.province.strip()
-            ),
-
-            account_type=(
-                data.accountType
-            ),
-
+            region=data.province.strip(),
+            account_type=data.accountType,
             store_name=store_name,
-
-            business_type=(
-                business_type
-            ),
-
+            business_type=business_type,
             role=Roles.USER,
-
             is_verified=False
         )
 
-        # CREATE OTP
-        otp_code = create_otp_code(
-            db=db,
-
-            user_id=user.user_id,
-
-            email=user.email,
-
-            purpose="verify_email"
+        otp_info = send_otp(
+            db,
+            user=user,
+            purpose=VERIFY_EMAIL
         )
-        # SEND OTP
-        send_otp_email(
-            to_email=user.email,
 
-            otp_code=otp_code,
-
-            expire_minutes=(
-                OTP_EXPIRE_MINUTES
-            ),
-
-            purpose="verify_email"
-        )
-        
-        # COMMIT
         db.commit()
 
         db.refresh(
@@ -273,30 +248,16 @@ def register_user(
 
         return {
             "success": True,
-
             "message": (
                 "Đăng ký thành công. "
-                "Mã OTP đã được gửi đến email của bạn."
+                "Mã OTP đã được gửi đến email."
             ),
-
             "email": user.email,
-
-            "nextAction": (
-                "verify_email"
-            ),
-
-            "otpExpiresIn": (
-                OTP_EXPIRE_MINUTES
-                * 60
-            ),
-
-            "resendCountdown": (
-                OTP_RESEND_COOLDOWN_SECONDS
-            )
+            "nextAction": "verify_email",
+            **otp_info
         }
 
     except IntegrityError:
-
         db.rollback()
 
         raise HTTPException(
@@ -305,620 +266,234 @@ def register_user(
         )
 
     except HTTPException:
-
         db.rollback()
-
         raise
 
     except Exception:
-
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Không thể đăng ký tài khoản. "
-                "Vui lòng thử lại sau."
-            )
+            detail="Không thể đăng ký tài khoản"
         )
 
-# VERIFY EMAIL OTP
-def verify_email_otp(
-    db: Session,
-    data: VerifyOTPRequest
-):
-    email = str(
-        data.email
-    ).strip().lower()
 
-    # USER
-    user = get_user_by_email(
-        db,
-        email
-    )
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy tài khoản"
-        )
-
-    if user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email đã được xác thực"
-        )
-
-    try:
-        # OTP
-        otp = verify_otp_code(
-            db=db,
-
-            email=email,
-
-            code=data.code,
-
-            purpose="verify_email"
-        )
-
-        if (
-            otp.user_id is not None
-            and otp.user_id
-            != user.user_id
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mã OTP không hợp lệ"
-            )
-
-        # VERIFY USER
-        verify_user(
-            db,
-            user
-        )
-        
-        # ACCESS TOKEN
-        access_token = (
-            create_access_token({
-                "sub": str(
-                    user.user_id
-                ),
-
-                "email": user.email,
-
-                "role": user.role
-            })
-        )
-        
-        # REFRESH TOKEN
-        refresh_token = (
-            create_refresh_token(
-                db=db,
-
-                user_id=(
-                    user.user_id
-                ),
-
-                email=user.email,
-
-                role=user.role
-            )
-        )
-
-        db.commit()
-
-        db.refresh(
-            user
-        )
-
-        return {
-            "success": True,
-
-            "message": (
-                "Xác thực email thành công"
-            ),
-
-            "accessToken": (
-                access_token
-            ),
-
-            "refreshToken": (
-                refresh_token
-            ),
-
-            "tokenType": "bearer",
-
-            "expiresIn": (
-                ACCESS_TOKEN_EXPIRE_MINUTES
-                * 60
-            ),
-
-            "user": user_to_dict(
-                user
-            )
-        }
-
-    except HTTPException:
-
-        db.rollback()
-
-        raise
-
-    except Exception:
-
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Không thể xác thực email. "
-                "Vui lòng thử lại sau."
-            )
-        )
-
-# GOOGLE LOGIN
-def google_login(
-    db: Session,
-    data: GoogleLoginRequest
-):
-    google_data = (
-        verify_google_id_token(
-            data.idToken
-        )
-    )
-
-    google_id = google_data[
-        "googleId"
-    ]
-
-    email = google_data[
-        "email"
-    ]
-
-    full_name = google_data[
-        "fullName"
-    ]
-
-    try:
-        # Ưu tiên tìm bằng Google sub
-        user = get_user_by_google_id(
-            db,
-            google_id
-        )
-
-        # Chưa từng link Google
-        if not user:
-            user = get_user_by_email(
-                db,
-                email
-            )
-
-            # Email đã tồn tại bằng local login
-            if user:
-                if (
-                    user.google_id
-                    and user.google_id
-                    != google_id
-                ):
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=(
-                            "Email đã liên kết với "
-                            "một tài khoản Google khác"
-                        )
-                    )
-
-                link_google_account(
-                    db=db,
-                    user=user,
-                    google_id=google_id
-                )
-
-                # Google xác nhận email rồi
-                user.is_verified = True
-
-                db.flush()
-
-            # User mới hoàn toàn
-            else:
-                user = create_user(
-                    db=db,
-
-                    full_name=full_name,
-
-                    email=email,
-
-                    password_hash=None,
-
-                    region=None,
-
-                    account_type="personal",
-
-                    store_name=None,
-
-                    business_type=None,
-
-                    google_id=google_id,
-
-                    role=Roles.USER,
-
-                    is_verified=True
-                )
-
-        # Access Token của hệ thống
-        access_token = (
-            create_access_token({
-                "sub": str(
-                    user.user_id
-                ),
-
-                "email": user.email,
-
-                "role": user.role
-            })
-        )
-
-        # Refresh Token của hệ thống
-        refresh_token = (
-            create_refresh_token(
-                db=db,
-
-                user_id=user.user_id,
-
-                email=user.email,
-
-                role=user.role
-            )
-        )
-
-        db.commit()
-
-        db.refresh(
-            user
-        )
-
-        return {
-            "success": True,
-
-            "accessToken": (
-                access_token
-            ),
-
-            "refreshToken": (
-                refresh_token
-            ),
-
-            "tokenType": "bearer",
-
-            "expiresIn": (
-                ACCESS_TOKEN_EXPIRE_MINUTES
-                * 60
-            ),
-
-            "user": user_to_dict(
-                user
-            )
-        }
-
-    except HTTPException:
-
-        db.rollback()
-        raise
-
-    except IntegrityError:
-
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Không thể liên kết "
-                "tài khoản Google"
-            )
-        )
-
-    except Exception:
-
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Không thể đăng nhập bằng Google"
-            )
-        )
-        
-# SEND / RESEND VERIFY EMAIL OTP
-def send_verify_email_otp(
+# SEND OTP
+def send_auth_otp(
     db: Session,
     data: SendOTPRequest
 ):
-    email = str(
+    email = normalize_email(
         data.email
-    ).strip().lower()
+    )
 
     user = get_user_by_email(
         db,
         email
     )
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy tài khoản"
-        )
-
-    if user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email đã được xác thực"
-        )
-
-    try:
-        otp_code = (
-            create_otp_code(
-                db=db,
-
-                user_id=user.user_id,
-
-                email=user.email,
-
-                purpose="verify_email"
+    # VERIFY EMAIL
+    if data.purpose == VERIFY_EMAIL:
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy tài khoản"
             )
-        )
 
-        send_otp_email(
-            to_email=user.email,
+        if user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email đã được xác thực"
+            )
 
-            otp_code=otp_code,
-
-            expire_minutes=(
-                OTP_EXPIRE_MINUTES
-            ),
-
-            purpose="verify_email"
-        )
-
-        db.commit()
-
-        return {
+    # FORGOT PASSWORD
+    if data.purpose == FORGOT_PASSWORD:
+        response = {
             "success": True,
-
             "message": (
-                "Mã OTP mới đã được gửi "
-                "đến email của bạn."
+                "Nếu email tồn tại trong hệ thống, "
+                "mã OTP sẽ được gửi đến email."
             ),
-
-            "email": user.email,
-
             "otpExpiresIn": (
                 OTP_EXPIRE_MINUTES
                 * 60
             ),
-
             "resendCountdown": (
                 OTP_RESEND_COOLDOWN_SECONDS
             )
         }
 
-    except HTTPException:
-
-        db.rollback()
-
-        raise
-
-    except Exception:
-
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Không thể gửi mã OTP. "
-                "Vui lòng thử lại sau."
-            )
-        )
-
-# FORGOT PASSWORD
-def forgot_password(
-    db: Session,
-    data: ForgotPasswordRequest
-):
-    """
-    Gửi OTP đặt lại mật khẩu.
-
-    Response không tiết lộ email
-    có tồn tại hay không.
-    """
-
-    email = str(
-        data.email
-    ).strip().lower()
-
-    user = get_user_by_email(
-        db,
-        email
-    )
-
-    generic_response = {
-        "success": True,
-
-        "message": (
-            "Nếu email tồn tại trong hệ thống, "
-            "mã OTP sẽ được gửi đến email của bạn."
-        ),
-
-        "email": email,
-
-        "otpExpiresIn": (
-            OTP_EXPIRE_MINUTES
-            * 60
-        ),
-
-        "resendCountdown": (
-            OTP_RESEND_COOLDOWN_SECONDS
-        )
-    }
-
-    # USER NOT ELIGIBLE
-    if (
-        not user
-        or not user.password_hash
-        or not user.is_verified
-    ):
-        return generic_response
+        if (
+            not user
+            or not user.password_hash
+            or not user.is_verified
+        ):
+            return response
 
     try:
-        # CREATE OTP
-        otp_code = create_otp_code(
-            db=db,
-
-            user_id=user.user_id,
-
-            email=user.email,
-
-            purpose="forgot_password"
-        )
-
-        # SEND 
-        send_otp_email(
-            to_email=user.email,
-
-            otp_code=otp_code,
-
-            expire_minutes=(
-                OTP_EXPIRE_MINUTES
-            ),
-
-            purpose="forgot_password"
+        otp_info = send_otp(
+            db,
+            user=user,
+            purpose=data.purpose
         )
 
         db.commit()
 
-        return generic_response
+        if data.purpose == FORGOT_PASSWORD:
+            return {
+                "success": True,
+                "message": (
+                    "Nếu email tồn tại trong hệ thống, "
+                    "mã OTP sẽ được gửi đến email."
+                ),
+                **otp_info
+            }
+
+        return {
+            "success": True,
+            "message": "Mã OTP đã được gửi",
+            "email": user.email,
+            **otp_info
+        }
 
     except HTTPException as exc:
-
         db.rollback()
 
-        # Không để cooldown làm lộ
-        # email có tồn tại hay không.
+        # Không làm lộ email khi forgot password
         if (
-            exc.status_code
+            data.purpose == FORGOT_PASSWORD
+            and exc.status_code
             == status.HTTP_429_TOO_MANY_REQUESTS
         ):
-            return generic_response
+            return {
+                "success": True,
+                "message": (
+                    "Nếu email tồn tại trong hệ thống, "
+                    "mã OTP sẽ được gửi đến email."
+                ),
+                "otpExpiresIn": (
+                    OTP_EXPIRE_MINUTES
+                    * 60
+                ),
+                "resendCountdown": (
+                    OTP_RESEND_COOLDOWN_SECONDS
+                )
+            }
 
         raise
 
     except Exception:
-
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Không thể xử lý yêu cầu "
-                "khôi phục mật khẩu"
-            )
+            detail="Không thể gửi mã OTP"
         )
 
-# VERIFY RESET OTP
-def verify_reset_password_otp(
+
+# VERIFY OTP
+def verify_auth_otp(
     db: Session,
-    data: VerifyResetOTPRequest
+    data: VerifyOTPRequest
 ):
-    email = str(
+    email = normalize_email(
         data.email
-    ).strip().lower()
+    )
 
     user = get_user_by_email(
         db,
         email
     )
 
-    if (
-        not user
-        or not user.password_hash
-        or not user.is_verified
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Mã OTP không hợp lệ "
-                "hoặc đã hết hạn"
+    if not user:
+        if data.purpose == FORGOT_PASSWORD:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã OTP không hợp lệ hoặc đã hết hạn"
             )
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy tài khoản"
         )
 
-    try:
-        # VERIFY OTP
-        otp = verify_otp_code(
-            db=db,
+    if data.purpose == VERIFY_EMAIL:
+        if user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email đã được xác thực"
+            )
 
-            email=email,
-
-            code=data.code,
-
-            purpose="forgot_password"
-        )
-
+    if data.purpose == FORGOT_PASSWORD:
         if (
-            otp.user_id is not None
-            and otp.user_id
-            != user.user_id
+            not user.password_hash
+            or not user.is_verified
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mã OTP không hợp lệ"
+                detail="Mã OTP không hợp lệ hoặc đã hết hạn"
             )
 
-        # CREATE RESET TOKEN
-        reset_token = (
-            create_reset_token(
-                user_id=(
-                    user.user_id
-                ),
-
-                email=user.email,
-
-                password_hash=(
-                    user.password_hash
-                )
-            )
+    try:
+        verify_otp(
+            db,
+            user=user,
+            code=data.code,
+            purpose=data.purpose
         )
 
-        # OTP đã được mark is_used=True
+        # VERIFY EMAIL
+        if data.purpose == VERIFY_EMAIL:
+            verify_user(
+                db,
+                user
+            )
+
+            session = create_session(
+                db,
+                user
+            )
+
+            db.commit()
+
+            db.refresh(
+                user
+            )
+
+            return {
+                "success": True,
+                "message": "Xác thực email thành công",
+                **session,
+                "user": user_to_dict(
+                    user
+                )
+            }
+
+        # FORGOT PASSWORD
+        reset_token = create_reset_token(
+            user_id=user.user_id,
+            email=user.email,
+            password_hash=user.password_hash
+        )
+
         db.commit()
 
         return {
             "success": True,
-
-            "message": (
-                "Xác thực OTP thành công"
-            ),
-
-            "resetToken": (
-                reset_token
-            ),
-
+            "message": "Xác thực OTP thành công",
+            "resetToken": reset_token,
             "expiresIn": (
                 PASSWORD_RESET_EXPIRE_MINUTES
                 * 60
             ),
-
-            "nextAction": (
-                "reset_password"
-            )
+            "nextAction": "reset_password"
         }
 
     except HTTPException:
-
         db.rollback()
-
         raise
 
     except Exception:
-
         db.rollback()
 
         raise HTTPException(
@@ -926,41 +501,27 @@ def verify_reset_password_otp(
             detail="Không thể xác thực OTP"
         )
 
+
 # RESET PASSWORD
 def reset_password(
     db: Session,
     data: ResetPasswordRequest
 ):
-    # VALIDATE PASSWORD
     validate_password_strength(
         data.newPassword
     )
 
-    # RESET TOKEN
     payload = decode_reset_token(
         data.resetToken
     )
 
-    user_id = payload.get(
-        "sub"
-    )
-
-    token_email = payload.get(
-        "email"
-    )
-
-    token_password_fingerprint = (
-        payload.get(
-            "passwordFingerprint"
-        )
-    )
-
     try:
         user_id = int(
-            user_id
+            payload["sub"]
         )
 
     except (
+        KeyError,
         TypeError,
         ValueError
     ):
@@ -969,7 +530,6 @@ def reset_password(
             detail="Reset token không hợp lệ"
         )
 
-    # FIND USER
     user = get_user_by_id(
         db,
         user_id
@@ -984,30 +544,30 @@ def reset_password(
             detail="Reset token không hợp lệ"
         )
 
-    # CHECK EMAIL
-    if (
-        not token_email
-        or user.email.lower()
-        != str(
-            token_email
-        ).lower()
+    token_email = normalize_email(
+        payload.get(
+            "email",
+            ""
+        )
+    )
+
+    if token_email != normalize_email(
+        user.email
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Reset token không hợp lệ"
         )
 
-    # CHECK TOKEN ONE-TIME STATE
-    current_password_fingerprint = (
-        create_password_fingerprint(
-            user.password_hash
-        )
+    fingerprint = create_password_fingerprint(
+        user.password_hash
     )
 
     if (
-        not token_password_fingerprint
-        or token_password_fingerprint
-        != current_password_fingerprint
+        payload.get(
+            "passwordFingerprint"
+        )
+        != fingerprint
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1018,57 +578,33 @@ def reset_password(
         )
 
     try:
-        # HASH NEW PASSWORD
-        new_password_hash = (
-            get_password_hash(
+        update_user_password(
+            db=db,
+            user=user,
+            password_hash=get_password_hash(
                 data.newPassword
             )
         )
 
-        # UPDATE PASSWORD
-        update_user_password(
-            db=db,
-
-            user=user,
-
-            password_hash=(
-                new_password_hash
-            )
-        )
-
-        # REVOKE ALL REFRESH TOKENS
         revoke_all_user_refresh_tokens(
             db=db,
-
             user_id=user.user_id,
-
-            revoked_at=(
-                datetime.utcnow()
-            )
+            revoked_at=datetime.utcnow()
         )
-        
-        # COMMIT
+
         db.commit()
 
         return {
             "success": True,
-
-            "message": (
-                "Đặt lại mật khẩu thành công. "
-                "Vui lòng đăng nhập lại."
-            ),
-
+            "message": "Đặt lại mật khẩu thành công",
             "nextAction": "login"
         }
 
     except HTTPException:
-
         db.rollback()
-
         raise
 
     except Exception:
-
         db.rollback()
 
         raise HTTPException(
@@ -1076,21 +612,21 @@ def reset_password(
             detail="Không thể đặt lại mật khẩu"
         )
 
+
 # LOGIN
 def login_user(
     db: Session,
     data: LoginRequest
 ):
-    email = str(
+    email = normalize_email(
         data.email
-    ).strip().lower()
-    
-    # FIND USER
+    )
+
     user = get_user_by_email(
         db,
         email
     )
-    # PASSWORD
+
     if (
         not user
         or not user.password_hash
@@ -1101,82 +637,32 @@ def login_user(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=(
-                "Email hoặc mật khẩu "
-                "không chính xác"
-            )
+            detail="Email hoặc mật khẩu không chính xác"
         )
 
-    # VERIFIED
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "Tài khoản chưa được "
-                "xác thực email"
-            )
+            detail="Tài khoản chưa được xác thực email"
         )
 
     try:
-        # ACCESS TOKEN
-        access_token = (
-            create_access_token({
-                "sub": str(
-                    user.user_id
-                ),
-
-                "email": user.email,
-
-                "role": user.role
-            })
-        )
-
-        # REFRESH TOKEN
-        refresh_token = (
-            create_refresh_token(
-                db=db,
-
-                user_id=user.user_id,
-
-                email=user.email,
-
-                role=user.role
-            )
+        session = create_session(
+            db,
+            user
         )
 
         db.commit()
 
         return {
             "success": True,
-
-            "accessToken": (
-                access_token
-            ),
-
-            "refreshToken": (
-                refresh_token
-            ),
-
-            "tokenType": "bearer",
-
-            "expiresIn": (
-                ACCESS_TOKEN_EXPIRE_MINUTES
-                * 60
-            ),
-
+            **session,
             "user": user_to_dict(
                 user
             )
         }
 
-    except HTTPException:
-
-        db.rollback()
-
-        raise
-
     except Exception:
-
         db.rollback()
 
         raise HTTPException(
@@ -1184,31 +670,115 @@ def login_user(
             detail="Không thể đăng nhập"
         )
 
-# REFRESH ACCESS TOKEN
+
+# GOOGLE LOGIN
+def google_login(
+    db: Session,
+    data: GoogleLoginRequest
+):
+    google_data = verify_google_id_token(
+        data.idToken
+    )
+
+    google_id = google_data[
+        "googleId"
+    ]
+
+    email = normalize_email(
+        google_data["email"]
+    )
+
+    try:
+        user = get_user_by_google_id(
+            db,
+            google_id
+        )
+
+        if not user:
+            existing_user = get_user_by_email(
+                db,
+                email
+            )
+
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Email đã tồn tại. "
+                        "Vui lòng đăng nhập bằng mật khẩu."
+                    )
+                )
+
+            user = create_user(
+                db=db,
+                full_name=google_data[
+                    "fullName"
+                ],
+                email=email,
+                password_hash=None,
+                region=None,
+                account_type="personal",
+                store_name=None,
+                business_type=None,
+                google_id=google_id,
+                role=Roles.USER,
+                is_verified=True
+            )
+
+        session = create_session(
+            db,
+            user
+        )
+
+        db.commit()
+
+        db.refresh(
+            user
+        )
+
+        return {
+            "success": True,
+            **session,
+            "user": user_to_dict(
+                user
+            )
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except IntegrityError:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tài khoản Google đã tồn tại"
+        )
+
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể đăng nhập bằng Google"
+        )
+
+
+# REFRESH TOKEN
 def refresh_access_token(
     db: Session,
     data: RefreshTokenRequest
 ):
     try:
-        # ROTATE
-        result = (
-            rotate_refresh_token(
-                db=db,
-
-                token=(
-                    data.refreshToken
-                )
-            )
+        result = rotate_refresh_token(
+            db=db,
+            token=data.refreshToken
         )
 
-        user_id = result[
-            "userId"
-        ]
-
-        # USER
         user = get_user_by_id(
             db,
-            user_id
+            result["userId"]
         )
 
         if not user:
@@ -1223,76 +793,42 @@ def refresh_access_token(
                 detail="Tài khoản chưa được xác thực"
             )
 
-        # ACCESS TOKEN
-        access_token = (
-            create_access_token({
-                "sub": str(
-                    user.user_id
-                ),
-
-                "email": user.email,
-
-                "role": user.role
-            })
+        access = create_access_session(
+            user
         )
 
-        new_refresh_token = (
-            result[
-                "refreshToken"
-            ]
-        )
-        
-        # COMMIT ROTATION
         db.commit()
 
         return {
             "success": True,
-
-            "accessToken": (
-                access_token
-            ),
-
-            "refreshToken": (
-                new_refresh_token
-            ),
-
-            "tokenType": "bearer",
-
-            "expiresIn": (
-                ACCESS_TOKEN_EXPIRE_MINUTES
-                * 60
-            )
+            **access,
+            "refreshToken": result[
+                "refreshToken"
+            ]
         }
 
     except HTTPException:
-
         db.rollback()
-
         raise
 
     except Exception:
-
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Không thể làm mới phiên đăng nhập"
-            )
+            detail="Không thể làm mới phiên đăng nhập"
         )
+
 
 # LOGOUT
 def logout_user(
     db: Session,
-    data: LogoutRequest
+    data: RefreshTokenRequest
 ):
     try:
         revoke_refresh_token_value(
             db=db,
-
-            token=(
-                data.refreshToken
-            )
+            token=data.refreshToken
         )
 
         db.commit()
@@ -1303,13 +839,10 @@ def logout_user(
         }
 
     except HTTPException:
-
         db.rollback()
-
         raise
 
     except Exception:
-
         db.rollback()
 
         raise HTTPException(
@@ -1317,29 +850,20 @@ def logout_user(
             detail="Không thể đăng xuất"
         )
 
+
 # CURRENT USER
 def get_current_user(
     db: Session,
     payload: dict
 ):
-    user_id = payload.get(
-        "sub"
-    )
-
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ"
-        )
-
     try:
         user_id = int(
-            user_id
+            payload.get("sub")
         )
 
     except (
-        ValueError,
-        TypeError
+        TypeError,
+        ValueError
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1359,7 +883,6 @@ def get_current_user(
 
     return {
         "success": True,
-
         "user": user_to_dict(
             user
         )

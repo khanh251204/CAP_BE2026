@@ -3,28 +3,23 @@ from sqlalchemy.orm import Session
 from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
-    VerifyOTPRequest,
     SendOTPRequest,
-    RefreshTokenRequest,
-    LogoutRequest,
-    ForgotPasswordRequest,
-    VerifyResetOTPRequest,
+    VerifyOTPRequest,
     ResetPasswordRequest,
+    RefreshTokenRequest,
     GoogleLoginRequest
 )
 
 from app.services.auth_service import (
     register_user,
     login_user,
-    get_current_user,
-    verify_email_otp,
-    send_verify_email_otp,
+    send_auth_otp,
+    verify_auth_otp,
+    reset_password,
+    google_login,
     refresh_access_token,
     logout_user,
-    forgot_password,
-    verify_reset_password_otp,
-    reset_password,
-    google_login
+    get_current_user
 )
 
 
@@ -34,52 +29,30 @@ def register_controller(
     db: Session
 ):
     return register_user(
-        db=db,
-        data=request
+        db,
+        request
     )
 
 
-# SEND / RESEND VERIFY EMAIL OTP
+# SEND OTP
 def send_otp_controller(
     request: SendOTPRequest,
     db: Session
 ):
-    return send_verify_email_otp(
-        db=db,
-        data=request
+    return send_auth_otp(
+        db,
+        request
     )
 
 
-# VERIFY EMAIL OTP
+# VERIFY OTP
 def verify_otp_controller(
     request: VerifyOTPRequest,
     db: Session
 ):
-    return verify_email_otp(
-        db=db,
-        data=request
-    )
-
-
-# FORGOT PASSWORD
-def forgot_password_controller(
-    request: ForgotPasswordRequest,
-    db: Session
-):
-    return forgot_password(
-        db=db,
-        data=request
-    )
-
-
-# VERIFY RESET OTP
-def verify_reset_otp_controller(
-    request: VerifyResetOTPRequest,
-    db: Session
-):
-    return verify_reset_password_otp(
-        db=db,
-        data=request
+    return verify_auth_otp(
+        db,
+        request
     )
 
 
@@ -89,8 +62,8 @@ def reset_password_controller(
     db: Session
 ):
     return reset_password(
-        db=db,
-        data=request
+        db,
+        request
     )
 
 
@@ -100,50 +73,50 @@ def login_controller(
     db: Session
 ):
     return login_user(
-        db=db,
-        data=request
+        db,
+        request
     )
 
 
-# GOOGLE LOGIN
+# GOOGLE
 def google_login_controller(
     request: GoogleLoginRequest,
     db: Session
 ):
     return google_login(
-        db=db,
-        data=request
+        db,
+        request
     )
 
 
-# REFRESH TOKEN
+# REFRESH
 def refresh_token_controller(
     request: RefreshTokenRequest,
     db: Session
 ):
     return refresh_access_token(
-        db=db,
-        data=request
+        db,
+        request
     )
 
 
 # LOGOUT
 def logout_controller(
-    request: LogoutRequest,
+    request: RefreshTokenRequest,
     db: Session
 ):
     return logout_user(
-        db=db,
-        data=request
+        db,
+        request
     )
 
 
-# CURRENT USER
+# ME
 def me_controller(
     payload: dict,
     db: Session
 ):
     return get_current_user(
-        db=db,
-        payload=payload
+        db,
+        payload
     )

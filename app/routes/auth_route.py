@@ -12,28 +12,23 @@ from app.configs.jwt import authenticate_user
 from app.schemas.auth_schema import (
     RegisterRequest,
     LoginRequest,
-    VerifyOTPRequest,
     SendOTPRequest,
-    RefreshTokenRequest,
-    LogoutRequest,
-    ForgotPasswordRequest,
-    VerifyResetOTPRequest,
+    VerifyOTPRequest,
     ResetPasswordRequest,
+    RefreshTokenRequest,
     GoogleLoginRequest
 )
 
 from app.controllers.auth_controller import (
     register_controller,
     login_controller,
-    me_controller,
-    verify_otp_controller,
     send_otp_controller,
+    verify_otp_controller,
+    reset_password_controller,
+    google_login_controller,
     refresh_token_controller,
     logout_controller,
-    forgot_password_controller,
-    verify_reset_otp_controller,
-    reset_password_controller,
-    google_login_controller
+    me_controller
 )
 
 
@@ -53,68 +48,44 @@ def register(
     db: Session = Depends(get_db)
 ):
     return register_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
-# SEND / RESEND VERIFY EMAIL OTP
+# SEND OTP
 @router.post("/send-otp")
 def send_otp(
     request: SendOTPRequest,
     db: Session = Depends(get_db)
 ):
     return send_otp_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
-# VERIFY EMAIL OTP
+# VERIFY OTP
 @router.post("/verify-otp")
 def verify_otp(
     request: VerifyOTPRequest,
     db: Session = Depends(get_db)
 ):
     return verify_otp_controller(
-        request=request,
-        db=db
-    )
-
-
-# FORGOT PASSWORD
-@router.post("/forgot-password")
-def forgot_password_route(
-    request: ForgotPasswordRequest,
-    db: Session = Depends(get_db)
-):
-    return forgot_password_controller(
-        request=request,
-        db=db
-    )
-
-
-# VERIFY RESET OTP
-@router.post("/verify-reset-otp")
-def verify_reset_otp(
-    request: VerifyResetOTPRequest,
-    db: Session = Depends(get_db)
-):
-    return verify_reset_otp_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
 # RESET PASSWORD
 @router.post("/reset-password")
-def reset_password_route(
+def reset_password(
     request: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ):
     return reset_password_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
@@ -125,48 +96,48 @@ def login(
     db: Session = Depends(get_db)
 ):
     return login_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
-# GOOGLE LOGIN
+# GOOGLE
 @router.post("/google")
-def google_login_route(
+def google_login(
     request: GoogleLoginRequest,
     db: Session = Depends(get_db)
 ):
     return google_login_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
-# REFRESH TOKEN
+# REFRESH
 @router.post("/refresh-token")
 def refresh_token(
     request: RefreshTokenRequest,
     db: Session = Depends(get_db)
 ):
     return refresh_token_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
 # LOGOUT
 @router.post("/logout")
 def logout(
-    request: LogoutRequest,
+    request: RefreshTokenRequest,
     db: Session = Depends(get_db)
 ):
     return logout_controller(
-        request=request,
-        db=db
+        request,
+        db
     )
 
 
-# CURRENT USER
+# ME
 @router.get("/me")
 def me(
     payload: dict = Depends(
@@ -175,6 +146,6 @@ def me(
     db: Session = Depends(get_db)
 ):
     return me_controller(
-        payload=payload,
-        db=db
+        payload,
+        db
     )
