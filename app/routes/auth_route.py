@@ -42,10 +42,7 @@ from app.controllers.auth_controller import (
 )
 
 
-router = APIRouter(
-    prefix="/api/auth",
-    tags=["Authentication"]
-)
+router = APIRouter()
 
 
 # REGISTER

@@ -29,7 +29,8 @@ app.include_router(
 
 # Authentication
 app.include_router(
-    auth_router
+    auth_router,
+    prefix="/api/v1"
 )
 
 # ROOT
