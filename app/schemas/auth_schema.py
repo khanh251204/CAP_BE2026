@@ -123,16 +123,6 @@ class ResetPasswordRequest(BaseModel):
         max_length=128
     )
 
-
-# TOKEN
-class RefreshTokenRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    refreshToken: str = Field(
-        min_length=1
-    )
-
-
 # GOOGLE
 class GoogleLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")

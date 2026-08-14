@@ -1,13 +1,24 @@
 from fastapi import (
     APIRouter,
+    Cookie,
     Depends,
+    Response,
     status
 )
 
 from sqlalchemy.orm import Session
 
-from app.configs.database import get_db
-from app.configs.jwt import authenticate_user
+from app.configs.cookie import (
+    JWT_COOKIE_NAME
+)
+
+from app.configs.database import (
+    get_db
+)
+
+from app.configs.jwt import (
+    authenticate_user
+)
 
 from app.schemas.auth_schema import (
     RegisterRequest,
@@ -15,7 +26,6 @@ from app.schemas.auth_schema import (
     SendOTPRequest,
     VerifyOTPRequest,
     ResetPasswordRequest,
-    RefreshTokenRequest,
     GoogleLoginRequest
 )
 
@@ -48,8 +58,8 @@ def register(
     db: Session = Depends(get_db)
 ):
     return register_controller(
-        request,
-        db
+        request=request,
+        db=db
     )
 
 
@@ -60,8 +70,8 @@ def send_otp(
     db: Session = Depends(get_db)
 ):
     return send_otp_controller(
-        request,
-        db
+        request=request,
+        db=db
     )
 
 
@@ -69,75 +79,91 @@ def send_otp(
 @router.post("/verify-otp")
 def verify_otp(
     request: VerifyOTPRequest,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     return verify_otp_controller(
-        request,
-        db
+        request=request,
+        response=response,
+        db=db
     )
 
 
-# RESET PASSWORD
 @router.post("/reset-password")
 def reset_password(
     request: ResetPasswordRequest,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     return reset_password_controller(
-        request,
-        db
+        request=request,
+        response=response,
+        db=db
     )
-
-
+    
 # LOGIN
 @router.post("/login")
 def login(
     request: LoginRequest,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     return login_controller(
-        request,
-        db
+        request=request,
+        response=response,
+        db=db
     )
 
 
-# GOOGLE
+# GOOGLE LOGIN
 @router.post("/google")
 def google_login(
     request: GoogleLoginRequest,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     return google_login_controller(
-        request,
-        db
+        request=request,
+        response=response,
+        db=db
     )
 
 
-# REFRESH
+# REFRESH TOKEN
 @router.post("/refresh-token")
 def refresh_token(
-    request: RefreshTokenRequest,
+    response: Response,
+    refresh_token: str | None = Cookie(
+        default=None,
+        alias=JWT_COOKIE_NAME
+    ),
     db: Session = Depends(get_db)
 ):
     return refresh_token_controller(
-        request,
-        db
+        token=refresh_token,
+        response=response,
+        db=db
     )
 
 
 # LOGOUT
 @router.post("/logout")
 def logout(
-    request: RefreshTokenRequest,
+    response: Response,
+    refresh_token: str | None = Cookie(
+        default=None,
+        alias=JWT_COOKIE_NAME
+    ),
     db: Session = Depends(get_db)
 ):
     return logout_controller(
-        request,
-        db
+        token=refresh_token,
+        response=response,
+        db=db
     )
 
 
-# ME
+# CURRENT USER
 @router.get("/me")
 def me(
     payload: dict = Depends(
@@ -146,6 +172,6 @@ def me(
     db: Session = Depends(get_db)
 ):
     return me_controller(
-        payload,
-        db
+        payload=payload,
+        db=db
     )

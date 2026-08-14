@@ -1,4 +1,16 @@
+from fastapi import (
+    HTTPException,
+    Response,
+    status
+)
+
 from sqlalchemy.orm import Session
+
+from app.configs.cookie import (
+    set_access_cookie,
+    set_refresh_cookie,
+    delete_auth_cookies
+)
 
 from app.schemas.auth_schema import (
     RegisterRequest,
@@ -6,22 +18,47 @@ from app.schemas.auth_schema import (
     SendOTPRequest,
     VerifyOTPRequest,
     ResetPasswordRequest,
-    RefreshTokenRequest,
     GoogleLoginRequest
 )
 
 from app.services.auth_service import (
     register_user,
-    login_user,
     send_auth_otp,
     verify_auth_otp,
     reset_password,
+    login_user,
     google_login,
     refresh_access_token,
     logout_user,
     get_current_user
 )
 
+# SET SESSION COOKIE
+def set_session_cookie(
+    response: Response,
+    result: dict
+):
+    access_token = result.pop(
+        "accessToken",
+        None
+    )
+
+    refresh_token = result.pop(
+        "refreshToken",
+        None
+    )
+
+    if access_token:
+        set_access_cookie(
+            response=response,
+            token=access_token
+        )
+
+    if refresh_token:
+        set_refresh_cookie(
+            response=response,
+            token=refresh_token
+        )
 
 # REGISTER
 def register_controller(
@@ -29,8 +66,8 @@ def register_controller(
     db: Session
 ):
     return register_user(
-        db,
-        request
+        db=db,
+        data=request
     )
 
 
@@ -40,83 +77,151 @@ def send_otp_controller(
     db: Session
 ):
     return send_auth_otp(
-        db,
-        request
+        db=db,
+        data=request
     )
-
 
 # VERIFY OTP
 def verify_otp_controller(
     request: VerifyOTPRequest,
+    response: Response,
     db: Session
 ):
-    return verify_auth_otp(
-        db,
-        request
+    result = verify_auth_otp(
+        db=db,
+        data=request
     )
 
+    if result.get(
+        "accessToken"
+    ):
+        set_session_cookie(
+            response=response,
+            result=result
+        )
+
+        return {
+            "success": True
+        }
+
+    return result
 
 # RESET PASSWORD
 def reset_password_controller(
     request: ResetPasswordRequest,
+    response: Response,
     db: Session
 ):
-    return reset_password(
-        db,
-        request
+    result = reset_password(
+        db=db,
+        data=request
     )
 
+    delete_auth_cookies(
+        response=response
+    )
+
+    return result
 
 # LOGIN
 def login_controller(
     request: LoginRequest,
+    response: Response,
     db: Session
 ):
-    return login_user(
-        db,
-        request
+    result = login_user(
+        db=db,
+        data=request
     )
 
+    set_session_cookie(
+        response=response,
+        result=result
+    )
 
-# GOOGLE
+    return {
+        "success": True
+    }
+
+# GOOGLE LOGIN
 def google_login_controller(
     request: GoogleLoginRequest,
+    response: Response,
     db: Session
 ):
-    return google_login(
-        db,
-        request
+    result = google_login(
+        db=db,
+        data=request
     )
 
+    set_session_cookie(
+        response=response,
+        result=result
+    )
 
-# REFRESH
+    return {
+        "success": True
+    }
+
+# REFRESH TOKEN
 def refresh_token_controller(
-    request: RefreshTokenRequest,
+    token: str | None,
+    response: Response,
     db: Session
 ):
-    return refresh_access_token(
-        db,
-        request
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token không tồn tại"
+        )
+
+    result = refresh_access_token(
+        db=db,
+        token=token
     )
 
+    set_session_cookie(
+        response=response,
+        result=result
+    )
+
+    return {
+        "success": True
+    }
 
 # LOGOUT
 def logout_controller(
-    request: RefreshTokenRequest,
+    token: str | None,
+    response: Response,
     db: Session
 ):
-    return logout_user(
-        db,
-        request
-    )
+    try:
+        if token:
+            logout_user(
+                db=db,
+                token=token
+            )
 
+    except HTTPException:
+        # Refresh token hết hạn / đã revoke
+        # vẫn cho phép logout
+        db.rollback()
 
-# ME
+    finally:
+        delete_auth_cookies(
+            response=response
+        )
+
+    return {
+        "success": True
+    }
+
+# CURRENT USER
 def me_controller(
     payload: dict,
     db: Session
 ):
     return get_current_user(
-        db,
-        payload
+        db=db,
+        payload=payload
     )

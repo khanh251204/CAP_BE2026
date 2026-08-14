@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from fastapi import (
     Depends,
     HTTPException,
+    Request,
     status
 )
 
@@ -27,7 +28,11 @@ from jose import (
     ExpiredSignatureError
 )
 
-# ENV
+from app.configs.cookie import (
+    JWT_ACCESS_COOKIE_NAME
+)
+
+
 load_dotenv()
 
 
@@ -61,40 +66,26 @@ if not SECRET_KEY:
     )
 
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(
+    auto_error=False
+)
+
 
 # PASSWORD FINGERPRINT
 def create_password_fingerprint(
     password_hash: str
 ) -> str:
-    """
-    Tạo fingerprint từ password_hash.
-
-    Dùng để làm Reset Token chỉ sử dụng được
-    khi password hiện tại chưa bị thay đổi.
-
-    Sau khi reset password thành công:
-    password_hash thay đổi
-        ↓
-    fingerprint thay đổi
-        ↓
-    Reset Token cũ tự động mất hiệu lực.
-    """
-
     return hmac.new(
         SECRET_KEY.encode("utf-8"),
         password_hash.encode("utf-8"),
         hashlib.sha256
     ).hexdigest()
 
+
 # ACCESS TOKEN
 def create_access_token(
     data: dict
 ) -> str:
-    """
-    Tạo JWT Access Token.
-    """
-
     to_encode = data.copy()
 
     expire = (
@@ -117,14 +108,11 @@ def create_access_token(
         algorithm=ALGORITHM
     )
 
+
 # DECODE ACCESS TOKEN
 def decode_access_token(
     token: str
 ) -> dict:
-    """
-    Decode Access Token.
-    """
-
     try:
         payload = jwt.decode(
             token,
@@ -152,18 +140,17 @@ def decode_access_token(
         return payload
 
     except ExpiredSignatureError:
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token đã hết hạn"
         )
 
     except JWTError:
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token không hợp lệ"
         )
+
 
 # PASSWORD RESET TOKEN
 def create_reset_token(
@@ -171,13 +158,6 @@ def create_reset_token(
     email: str,
     password_hash: str
 ) -> str:
-    """
-    Tạo Reset Token sau khi OTP quên mật khẩu
-    được xác thực thành công.
-
-    Reset Token gắn với password_hash hiện tại.
-    """
-
     expire = (
         datetime.now(
             timezone.utc
@@ -197,15 +177,11 @@ def create_reset_token(
         "sub": str(
             user_id
         ),
-
         "email": email,
-
         "type": "password_reset",
-
         "passwordFingerprint": (
             password_fingerprint
         ),
-
         "exp": expire
     }
 
@@ -215,14 +191,11 @@ def create_reset_token(
         algorithm=ALGORITHM
     )
 
+
 # DECODE RESET TOKEN
 def decode_reset_token(
     token: str
 ) -> dict:
-    """
-    Decode Password Reset Token.
-    """
-
     try:
         payload = jwt.decode(
             token,
@@ -264,62 +237,56 @@ def decode_reset_token(
         return payload
 
     except ExpiredSignatureError:
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Reset token đã hết hạn"
         )
 
     except JWTError:
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Reset token không hợp lệ"
         )
 
+
 # AUTHENTICATION
 def authenticate_user(
-    credentials: HTTPAuthorizationCredentials = Depends(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(
         bearer_scheme
     )
 ):
-    """
-    Dependency lấy Access Token từ:
+    token = request.cookies.get(
+        JWT_ACCESS_COOKIE_NAME
+    )
 
-    Authorization: Bearer <token>
-    """
+    # Fallback Bearer Token
+    if (
+        not token
+        and credentials
+    ):
+        token = credentials.credentials
 
-    token = credentials.credentials
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bạn chưa đăng nhập"
+        )
 
     return decode_access_token(
         token
     )
 
+
 # AUTHORIZATION
 def authorize_roles(
     *roles
 ):
-    """
-    Kiểm tra quyền role.
-
-    Ví dụ:
-
-    Depends(
-        authorize_roles("admin")
-    )
-    """
-
     def wrapper(
         user=Depends(
             authenticate_user
         )
     ):
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Bạn chưa đăng nhập"
-            )
-
         if (
             user.get("role")
             not in roles

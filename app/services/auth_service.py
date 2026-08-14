@@ -40,7 +40,6 @@ from app.schemas.auth_schema import (
     LoginRequest,
     SendOTPRequest,
     VerifyOTPRequest,
-    RefreshTokenRequest,
     ResetPasswordRequest,
     GoogleLoginRequest
 )
@@ -768,12 +767,12 @@ def google_login(
 # REFRESH TOKEN
 def refresh_access_token(
     db: Session,
-    data: RefreshTokenRequest
+    token: str
 ):
     try:
         result = rotate_refresh_token(
             db=db,
-            token=data.refreshToken
+            token=token
         )
 
         user = get_user_by_id(
@@ -819,16 +818,15 @@ def refresh_access_token(
             detail="Không thể làm mới phiên đăng nhập"
         )
 
-
 # LOGOUT
 def logout_user(
     db: Session,
-    data: RefreshTokenRequest
+    token: str
 ):
     try:
         revoke_refresh_token_value(
             db=db,
-            token=data.refreshToken
+            token=token
         )
 
         db.commit()
@@ -849,7 +847,6 @@ def logout_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng xuất"
         )
-
 
 # CURRENT USER
 def get_current_user(
