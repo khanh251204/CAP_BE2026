@@ -1,7 +1,49 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 
-router = APIRouter()
+from app.configs.database import get_db
+from app.controllers.transaction_controller import (
+    TransactionController
+)
 
-@router.post("/api/")
-def sync_employees_route():
-    return {"message": "Sync employees route called successfully."}
+
+transaction_router = APIRouter(
+    prefix="/api/transactions",
+    tags=["Transactions"]
+)
+
+
+@transaction_router.get("")
+def get_transactions(
+    page: int = Query(
+        default=1,
+        ge=1
+    ),
+
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=100
+    ),
+
+    db: Session = Depends(get_db)
+):
+
+    return TransactionController.get_transactions(
+        db=db,
+        page=page,
+        limit=limit
+    )
+
+
+@transaction_router.get("/{transaction_id}")
+def get_transaction_detail(
+    transaction_id: int,
+
+    db: Session = Depends(get_db)
+):
+
+    return TransactionController.get_transaction_detail(
+        db=db,
+        transaction_id=transaction_id
+    )

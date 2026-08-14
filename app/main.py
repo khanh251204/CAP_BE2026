@@ -5,6 +5,8 @@ from app.routes.category_route import router as category_router
 
 from app.configs.database import auth_db
 
+from app.routes.transaction_route import transaction_router
+
 
 app = FastAPI(
     title="Expense Tracker API",
@@ -27,6 +29,9 @@ app.include_router(
     prefix="/api/v1"
 )
 
+app.include_router(
+    transaction_router
+)
 
 @app.get("/")
 def root():
