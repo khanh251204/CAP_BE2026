@@ -8,6 +8,7 @@ from sqlalchemy import (
     Text,
     DateTime
 )
+from sqlalchemy.orm import relationship
 
 from app.configs.database import Base
 class Transaction(Base):
@@ -61,10 +62,10 @@ class Transaction(Base):
 
     type = Column(
         Enum(
-            "Income",
-            "Expense",
-            "Transfer",
-            "Refund"
+            "INCOME",
+            "EXPENSE",
+            "TRANSFER",
+            "REFUND"
         ),
         nullable=False
     )
@@ -76,8 +77,8 @@ class Transaction(Base):
 
     input_method = Column(
         Enum(
-             "Voice",
-             "Manual"
+             "VOICE",
+             "MANUAL"
         ),
         nullable=False
     )
@@ -100,4 +101,10 @@ class Transaction(Base):
     updated_at = Column(
         DateTime,
         nullable=False
+    )
+
+    details = relationship(
+        "TransactionDetail",
+        back_populates="transaction",
+        cascade="all, delete-orphan"
     )

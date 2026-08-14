@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 
 from app.configs.database import Base
+from sqlalchemy.orm import relationship
 
 
 class Product(Base):
@@ -26,7 +27,7 @@ class Product(Base):
         nullable=False
     )
 
-    image = Column(
+    img = Column(
         String(500),
         nullable=False
     )
@@ -60,4 +61,9 @@ class Product(Base):
     updated_at = Column(
         DateTime,
         nullable=False
+    )
+
+    transaction_details = relationship(
+        "TransactionDetail",
+        back_populates="product"
     )

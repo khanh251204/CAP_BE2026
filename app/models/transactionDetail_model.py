@@ -14,7 +14,7 @@ from app.configs.database import Base
 class TransactionDetail(Base):
     __tablename__ = "Transaction_Detail"
 
-    item_id = Column(
+    detail_id = Column(
         Integer,
         primary_key=True,
         index=True
@@ -32,10 +32,7 @@ class TransactionDetail(Base):
         nullable=True
     )
 
-    item_name = Column(
-        String(255),
-        nullable=False
-    )
+    
 
     quantity = Column(
         Numeric(15, 2),
@@ -61,3 +58,4 @@ class TransactionDetail(Base):
         "Product",
         lazy="joined"
     )
+

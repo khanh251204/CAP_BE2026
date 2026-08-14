@@ -1,7 +1,12 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 
 from app.models.transaction_model import Transaction
+from app.models.product_model import Product
+from app.models.transactionDetail_model import TransactionDetail
+from app.models.transactionDetail_model import (
+    TransactionDetail
+)
 
 
 class TransactionRepository:
@@ -37,6 +42,13 @@ class TransactionRepository:
     ):
         return (
             db.query(Transaction)
+            .options(
+                joinedload(
+                    Transaction.details
+                ).joinedload(
+                    TransactionDetail.product
+                )
+            )
             .filter(
                 Transaction.transaction_id == transaction_id
             )
