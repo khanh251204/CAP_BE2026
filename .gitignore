@@ -1,4 +1,24 @@
+# Environment
 .env
-firebase-service-account.json
-**/__pycache__/
+.venv/
+venv/
+
+# Python cache
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+
+# Test / cache
+.pytest_cache/
+.mypy_cache/
+
+firebase-service-account.json
+
+/app/ai
+/app/routes/groq_route.py
+/app/schemas/analysis_schema.py
