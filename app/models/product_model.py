@@ -28,7 +28,7 @@ class Product(Base):
     )
 
     img = Column(
-        String(500),
+        String(600),
         nullable=False
     )
 
@@ -39,6 +39,10 @@ class Product(Base):
 
     default_unit = Column(
         String(50),
+        nullable=True
+    )
+    unit_price = Column(
+        Numeric(15, 2),
         nullable=True
     )
 

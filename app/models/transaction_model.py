@@ -25,50 +25,38 @@ class Transaction(Base):
         ForeignKey("User.user_id"),
         nullable=False
     )
+    category_id = Column(
+            Integer,
+            ForeignKey("Category.category_id"),
+            nullable=True
+        )
 
     account_id = Column(
         Integer,
         ForeignKey("Account.account_id"),
         nullable=True
     )
-
-    customer_id = Column(
+    intent_id = Column(
         Integer,
-        ForeignKey("Customer.customer_id"),
+        ForeignKey("Intent.intent_id"),
         nullable=True
     )
+    customer_id = Column(
+            Integer,
+            ForeignKey("Customer.customer_id"),
+            nullable=True
+        )
 
     supplier_id = Column(
-        Integer,
-        ForeignKey("Supplier.supplier_id"),
-        nullable=True
-    )
-
-    intent = Column(
-        String(255),
-        nullable=True
-    )
-
-    category_id = Column(
-        Integer,
-        ForeignKey("Category.category_id"),
-        nullable=True
-    )
-
+            Integer,
+            ForeignKey("Supplier.supplier_id"),
+            nullable=True
+        )
     total_amount = Column(
         Numeric(15, 2),
         nullable=False
     )
 
-    type = Column(
-        Enum(
-            "INCOME",
-            "EXPENSE",
-            "TRANSFER",
-            "REFUND"
-        ),
-        nullable=False
-    )
 
     payment_status = Column(
         String(50),
@@ -81,6 +69,10 @@ class Transaction(Base):
              "MANUAL"
         ),
         nullable=False
+    )
+    input_text = Column(
+        Text,
+        nullable=True
     )
 
     note = Column(
@@ -103,8 +95,29 @@ class Transaction(Base):
         nullable=False
     )
 
-    details = relationship(
+    transaction_detail = relationship(
         "TransactionDetail",
-        back_populates="transaction",
-        cascade="all, delete-orphan"
+        back_populates="transaction"
     )
+    category = relationship(
+        "Category",
+        back_populates="transactions"
+    )
+    customer = relationship(
+        "Customer",
+        back_populates="transactions"
+    )
+    supplier = relationship(
+        "Supplier",
+        back_populates="transactions"
+    )
+    account = relationship(
+        "Account",
+        back_populates="transactions"
+    )
+    intent = relationship(
+        "Intent",
+        back_populates="transactions"
+    )
+
+   

@@ -28,9 +28,11 @@ def get_transactions(
 
     db: Session = Depends(get_db)
 ):
+    user_id = 150002
 
     return TransactionController.get_transactions(
         db=db,
+        user_id=user_id,
         page=page,
         limit=limit
     )
@@ -42,8 +44,10 @@ def get_transaction_detail(
 
     db: Session = Depends(get_db)
 ):
+    user_id = 150002
 
     return TransactionController.get_transaction_detail(
         db=db,
+        user_id=user_id,
         transaction_id=transaction_id
     )
