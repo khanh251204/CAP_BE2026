@@ -18,7 +18,8 @@ from app.schemas.auth_schema import (
     SendOTPRequest,
     VerifyOTPRequest,
     ResetPasswordRequest,
-    GoogleLoginRequest
+    GoogleLoginRequest,
+    UpdateProfileRequest
 )
 
 from app.services.auth_service import (
@@ -30,8 +31,21 @@ from app.services.auth_service import (
     google_login,
     refresh_access_token,
     logout_user,
-    get_current_user
+    get_current_user,
+    update_profile
 )
+
+# UPDATE PROFILE
+def update_profile_controller(
+    request: UpdateProfileRequest,
+    payload: dict,
+    db: Session
+):
+    return update_profile(
+        db=db,
+        payload=payload,
+        data=request
+    )
 
 # SET SESSION COOKIE
 def set_session_cookie(

@@ -116,3 +116,17 @@ def link_google_account(
     db.flush()
 
     return user
+
+# UPDATE PROFILE
+def update_user_profile(
+    user,
+    updates: dict
+):
+    for field, value in updates.items():
+        setattr(
+            user,
+            field,
+            value
+        )
+
+    return user

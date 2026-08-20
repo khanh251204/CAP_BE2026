@@ -47,6 +47,26 @@ class User(Base):
         nullable=True
     )
 
+    province_code = Column(
+        String(20),
+        nullable=True
+    )
+
+    ward_code = Column(
+        String(20),
+        nullable=True
+    )
+
+    ward_name = Column(
+        String(150),
+        nullable=True
+    )
+
+    address_detail = Column(
+        String(255),
+        nullable=True
+    )
+
     # lĩnh vực kinh doanh
     business_type = Column(
         String(100),

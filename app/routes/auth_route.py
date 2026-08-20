@@ -26,7 +26,8 @@ from app.schemas.auth_schema import (
     SendOTPRequest,
     VerifyOTPRequest,
     ResetPasswordRequest,
-    GoogleLoginRequest
+    GoogleLoginRequest,
+    UpdateProfileRequest
 )
 
 from app.controllers.auth_controller import (
@@ -38,9 +39,9 @@ from app.controllers.auth_controller import (
     google_login_controller,
     refresh_token_controller,
     logout_controller,
-    me_controller
+    me_controller,
+    update_profile_controller
 )
-
 
 router = APIRouter(
     prefix="/api/auth",
@@ -172,6 +173,21 @@ def me(
     db: Session = Depends(get_db)
 ):
     return me_controller(
+        payload=payload,
+        db=db
+    )
+
+# UPDATE PROFILE
+@router.patch("/me")
+def update_me(
+    request: UpdateProfileRequest,
+    payload: dict = Depends(
+        authenticate_user
+    ),
+    db: Session = Depends(get_db)
+):
+    return update_profile_controller(
+        request=request,
         payload=payload,
         db=db
     )

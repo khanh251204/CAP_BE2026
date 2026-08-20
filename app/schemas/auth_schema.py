@@ -8,6 +8,75 @@ from pydantic import (
     model_validator
 )
 
+from typing import (
+    Literal,
+    Optional
+)
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field
+)
+
+# UPDATE PROFILE
+class UpdateProfileRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid"
+    )
+
+    fullName: Optional[str] = Field(
+        default=None,
+        min_length=2,
+        max_length=255
+    )
+
+    phoneNumber: Optional[str] = Field(
+        default=None,
+        max_length=20
+    )
+
+    provinceCode: Optional[str] = Field(
+        default=None,
+        max_length=20
+    )
+
+    province: Optional[str] = Field(
+        default=None,
+        max_length=100
+    )
+
+    wardCode: Optional[str] = Field(
+        default=None,
+        max_length=20
+    )
+
+    ward: Optional[str] = Field(
+        default=None,
+        max_length=150
+    )
+
+    addressDetail: Optional[str] = Field(
+        default=None,
+        max_length=255
+    )
+
+    accountType: Optional[
+        Literal[
+            "personal",
+            "business"
+        ]
+    ] = None
+
+    storeName: Optional[str] = Field(
+        default=None,
+        max_length=255
+    )
+
+    businessField: Optional[str] = Field(
+        default=None,
+        max_length=100
+    )
 
 # REGISTER
 class RegisterRequest(BaseModel):

@@ -23,6 +23,11 @@ from app.configs.security import (
 )
 
 from app.repositories.user_repository import (
+    get_user_by_id,
+    update_user_profile
+)
+
+from app.repositories.user_repository import (
     create_user,
     get_user_by_email,
     get_user_by_id,
@@ -110,23 +115,33 @@ def validate_password_strength(
         )
 
 
-def user_to_dict(
-    user
-):
+def user_to_dict(user):
     return {
         "userId": user.user_id,
         "fullName": user.full_name,
         "email": user.email,
+        "phoneNumber": user.phone_number,
+
+        "provinceCode": user.province_code,
         "province": user.region,
+
+        "wardCode": user.ward_code,
+        "ward": user.ward_name,
+        "addressDetail": user.address_detail,
+
         "accountType": user.account_type,
         "storeName": user.store_name,
         "businessField": user.business_type,
+
         "role": user.role,
-        "isVerified": bool(
-            user.is_verified
+        "isVerified": bool(user.is_verified),
+
+        "createdAt": (
+            user.created_at.isoformat()
+            if user.created_at
+            else None
         )
     }
-
 
 def create_session(
     db: Session,
@@ -884,3 +899,175 @@ def get_current_user(
             user
         )
     }
+
+# UPDATE PROFILE
+def update_profile(
+    db: Session,
+    payload: dict,
+    data
+):
+    try:
+        user_id = int(
+            payload.get("sub")
+        )
+
+        user = get_user_by_id(
+            db=db,
+            user_id=user_id
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy người dùng"
+            )
+
+        request_data = data.model_dump(
+            exclude_unset=True
+        )
+
+        account_type = request_data.get(
+            "accountType",
+            user.account_type
+        )
+
+        store_name = request_data.get(
+            "storeName",
+            user.store_name
+        )
+
+        business_field = request_data.get(
+            "businessField",
+            user.business_type
+        )
+
+        # BUSINESS ACCOUNT
+        if account_type == "business":
+
+            if (
+                not store_name
+                or not store_name.strip()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Tên cửa hàng/doanh nghiệp là bắt buộc"
+                )
+
+            if (
+                not business_field
+                or not business_field.strip()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Lĩnh vực kinh doanh là bắt buộc"
+                )
+
+        # PERSONAL ACCOUNT
+        if account_type == "personal":
+            store_name = None
+            business_field = None
+
+        updates = {}
+
+        if "fullName" in request_data:
+            updates["full_name"] = (
+                request_data["fullName"].strip()
+            )
+
+        if "phoneNumber" in request_data:
+            phone_number = request_data[
+                "phoneNumber"
+            ]
+
+            updates["phone_number"] = (
+                phone_number.strip()
+                if phone_number
+                else None
+            )
+
+        if "provinceCode" in request_data:
+            prov_code_val = request_data["provinceCode"]
+            updates["province_code"] = prov_code_val.strip() if prov_code_val else None
+
+        if "province" in request_data:
+            prov_val = request_data["province"]
+            updates["region"] = prov_val.strip() if prov_val else None
+
+        if "wardCode" in request_data:
+            ward_code_val = request_data["wardCode"]
+            updates["ward_code"] = ward_code_val.strip() if ward_code_val else None
+
+        if "ward" in request_data:
+            ward_val = request_data["ward"]
+            updates["ward_name"] = ward_val.strip() if ward_val else None
+
+        if "addressDetail" in request_data:
+            addr_detail_val = request_data["addressDetail"]
+            updates["address_detail"] = addr_detail_val.strip() if addr_detail_val else None
+
+        # Clear ward if province changed and new ward is not provided in request
+        if "provinceCode" in request_data:
+            new_prov_code = request_data["provinceCode"]
+            current_prov_code = user.province_code
+            if new_prov_code != current_prov_code:
+                if "wardCode" not in request_data:
+                    updates["ward_code"] = None
+                    updates["ward_name"] = None
+
+        if "accountType" in request_data:
+            updates["account_type"] = (
+                account_type
+            )
+
+        if account_type == "business":
+
+            if (
+                "storeName" in request_data
+                or "accountType" in request_data
+            ):
+                updates["store_name"] = (
+                    store_name.strip()
+                )
+
+            if (
+                "businessField" in request_data
+                or "accountType" in request_data
+            ):
+                updates["business_type"] = (
+                    business_field.strip()
+                )
+
+        else:
+            updates["store_name"] = None
+            updates["business_type"] = None
+
+        update_user_profile(
+            user=user,
+            updates=updates
+        )
+
+        db.commit()
+
+        db.refresh(
+            user
+        )
+
+        return {
+            "success": True,
+            "message": "Cập nhật thông tin thành công",
+            "user": user_to_dict(
+                user
+            )
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể cập nhật thông tin"
+        )
