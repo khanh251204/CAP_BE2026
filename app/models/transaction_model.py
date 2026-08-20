@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime
 )
 from sqlalchemy.orm import relationship
+from datetime import datetime
 
 from app.configs.database import Base
 class Transaction(Base):
@@ -22,14 +23,14 @@ class Transaction(Base):
 
     user_id = Column(
         Integer,
-        ForeignKey("User.user_id"),
+        # ForeignKey("User.user_id"),
         nullable=False
     )
-    category_id = Column(
-            Integer,
-            ForeignKey("Category.category_id"),
-            nullable=True
-        )
+    # category_id = Column(
+    #         Integer,
+    #         ForeignKey("Category.category_id"),
+    #         nullable=True
+    #     )
 
     account_id = Column(
         Integer,
@@ -86,23 +87,26 @@ class Transaction(Base):
     )
 
     created_at = Column(
-        DateTime,
-        nullable=False
+        DateTime, 
+        default=datetime.now,
+        nullable=True
     )
 
     updated_at = Column(
-        DateTime,
-        nullable=False
+        DateTime, 
+        default=datetime.now, 
+        onupdate=datetime.now, # Tự động cập nhật lại giờ khi có chỉnh sửa
+        nullable=True
     )
 
     transaction_detail = relationship(
         "TransactionDetail",
         back_populates="transaction"
     )
-    category = relationship(
-        "Category",
-        back_populates="transactions"
-    )
+    # category = relationship(
+    #     "Category",
+    #     back_populates="transactions"
+    # )
     customer = relationship(
         "Customer",
         back_populates="transactions"

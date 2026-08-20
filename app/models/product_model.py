@@ -23,7 +23,7 @@ class Product(Base):
 
     user_id = Column(
         Integer,
-        ForeignKey("User.user_id"),
+        # ForeignKey("User.user_id"),
         nullable=False
     )
 

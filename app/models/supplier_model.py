@@ -14,7 +14,10 @@ class Supplier(Base):
     __tablename__ = "Supplier"
 
     supplier_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("User.user_id"), nullable=True)
+    user_id = Column(
+        Integer, 
+        # ForeignKey("User.user_id"), 
+        nullable=True)
     name = Column(String(255), nullable=False)
     phone_number = Column(String(20),nullable=False)
     note = Column(Text, nullable=False)

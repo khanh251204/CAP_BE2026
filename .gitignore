@@ -4,4 +4,29 @@ __pycache__/
 *.pyc 
 
 __pycache__/app/configs
- 
+ # Environment
+.env
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+
+# Test / cache
+.pytest_cache/
+.mypy_cache/
+
+firebase-service-account.json
+
+/app/ai
+/app/routes/groq_route.py
+/app/schemas/analysis_schema.py
+/app/routes/category_route.py
+/app/models/category_model.py
