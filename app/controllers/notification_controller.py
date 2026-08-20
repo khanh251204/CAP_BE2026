@@ -23,8 +23,10 @@ class NotificationController:
 
     @staticmethod
     def mark_as_read(
-        notification_id: str
+        notification_id: str,
+        user_id: str
     ):
         return NotificationService.mark_as_read(
-            notification_id
+            notification_id,
+            user_id
         )
