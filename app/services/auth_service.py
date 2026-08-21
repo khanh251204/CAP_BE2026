@@ -6,6 +6,8 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.controllers.notification_controller import NotificationController
+
 from app.configs.jwt import (
     create_access_token,
     create_reset_token,
@@ -193,6 +195,7 @@ def create_access_session(
 
 
 # REGISTER
+# REGISTER
 def register_user(
     db: Session,
     data: RegisterRequest
@@ -231,6 +234,9 @@ def register_user(
         )
 
     try:
+        # ==============================
+        # TẠO USER
+        # ==============================
         user = create_user(
             db=db,
             full_name=data.fullName.strip(),
@@ -246,18 +252,41 @@ def register_user(
             is_verified=False
         )
 
+        # ==============================
+        # GỬI OTP
+        # ==============================
         otp_info = send_otp(
             db,
             user=user,
             purpose=VERIFY_EMAIL
         )
 
+        # ==============================
+        # LƯU USER
+        # ==============================
         db.commit()
 
         db.refresh(
             user
         )
 
+        # ==============================
+        # 🔔 TẠO THÔNG BÁO
+        # ==============================
+        NotificationController.create_notification({
+            "userId": str(user.user_id),
+            "title": "Đăng ký thành công 🎉",
+            "description": "Chào mừng bạn đến với VoiceCashBook!",
+            "icon": "check",
+            "iconColor": "#FFFFFF",
+            "borderColor": "#20D66B",
+            "notificationType": "register",
+            "isRead": False
+        })
+
+        # ==============================
+        # RESPONSE
+        # ==============================
         return {
             "success": True,
             "message": (
@@ -281,15 +310,18 @@ def register_user(
         db.rollback()
         raise
 
-    except Exception:
+    except Exception as e:
         db.rollback()
+
+        print(
+            "❌ REGISTER ERROR:",
+            str(e)
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng ký tài khoản"
         )
-
-
 # SEND OTP
 def send_auth_otp(
     db: Session,
@@ -639,6 +671,7 @@ def login_user(
         email
     )
 
+    # Kiểm tra tài khoản
     if (
         not user
         or not user.password_hash
@@ -652,6 +685,7 @@ def login_user(
             detail="Email hoặc mật khẩu không chính xác"
         )
 
+    # Kiểm tra email đã xác thực
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -659,6 +693,9 @@ def login_user(
         )
 
     try:
+        # ================================
+        # TẠO SESSION
+        # ================================
         session = create_session(
             db,
             user
@@ -666,23 +703,50 @@ def login_user(
 
         db.commit()
 
+        db.refresh(user)
+
+        # ================================
+        # 🔔 TẠO THÔNG BÁO ĐĂNG NHẬP
+        # ================================
+        NotificationController.create_notification({
+            "userId": str(user.user_id),
+            "title": "Đăng nhập thành công 👋",
+            "description": (
+                f"Chào mừng {user.full_name} "
+                "quay trở lại VoiceCashBook!"
+            ),
+            "icon": "check",
+            "iconColor": "#FFFFFF",
+            "borderColor": "#20D66B",
+            "notificationType": "login",
+            "isRead": False
+        })
+
+        # ================================
+        # RESPONSE
+        # ================================
         return {
             "success": True,
             **session,
-            "user": user_to_dict(
-                user
-            )
+            "user": user_to_dict(user)
         }
 
-    except Exception:
+    except HTTPException:
         db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+
+        print(
+            "❌ Login error:",
+            e
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng nhập"
         )
-
-
 # GOOGLE LOGIN
 def google_login(
     db: Session,
