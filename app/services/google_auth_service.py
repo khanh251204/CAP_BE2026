@@ -1,10 +1,11 @@
 import os
+import requests as requests_lib
 
 from dotenv import load_dotenv
 
 from fastapi import (
     HTTPException,
-    status
+    status,
 )
 
 from google.oauth2 import id_token
@@ -14,108 +15,122 @@ from google.auth.transport import requests
 load_dotenv()
 
 
-GOOGLE_CLIENT_ID = os.getenv(
-    "GOOGLE_CLIENT_ID"
-)
-
 GOOGLE_WEB_CLIENT_ID = os.getenv(
     "GOOGLE_WEB_CLIENT_ID"
 )
-
-GOOGLE_ANDROID_CLIENT_ID = os.getenv(
-    "GOOGLE_ANDROID_CLIENT_ID"
-)
-
-GOOGLE_IOS_CLIENT_ID = os.getenv(
-    "GOOGLE_IOS_CLIENT_ID"
+GOOGLE_CLIENT_SECRET = os.getenv(
+    "GOOGLE_CLIENT_SECRET"
 )
 
 
-def get_google_client_ids() -> set[str]:
-    client_ids = {
-        GOOGLE_CLIENT_ID,
-        GOOGLE_WEB_CLIENT_ID,
-        GOOGLE_ANDROID_CLIENT_ID,
-        GOOGLE_IOS_CLIENT_ID
-    }
+def exchange_code_for_id_token(
+    code: str,
+    redirect_uri: str,
+    code_verifier: str | None = None,
+) -> str:
+    """
+    Trao đổi Authorization Code lấy ID Token.
+    """
+    if not GOOGLE_WEB_CLIENT_ID:
+        raise RuntimeError(
+            "Chưa cấu hình GOOGLE_WEB_CLIENT_ID"
+        )
+    if not GOOGLE_CLIENT_SECRET:
+        raise RuntimeError(
+            "Chưa cấu hình GOOGLE_CLIENT_SECRET"
+        )
 
-    return {
-        client_id
-        for client_id in client_ids
-        if client_id
+    url = "https://oauth2.googleapis.com/token"
+    payload = {
+        "code": code,
+        "client_id": GOOGLE_WEB_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
     }
+    if code_verifier:
+        payload["code_verifier"] = code_verifier
+
+    try:
+        response = requests_lib.post(url, data=payload, timeout=10)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Không thể kết nối đến máy chủ Google OAuth",
+        ) from exc
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Lỗi khi trao đổi mã Google: {response.text}",
+        )
+
+    data = response.json()
+    id_token_val = data.get("id_token")
+    if not id_token_val:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google không trả về ID Token",
+        )
+
+    return id_token_val
 
 
 def verify_google_id_token(
-    token: str
+    token: str,
 ) -> dict:
     """
-    Verify Google ID Token.
+    Xác thực Google ID Token.
 
     Kiểm tra:
-    - chữ ký Google
-    - exp
-    - iss
-    - aud
+    - Chữ ký Google
+    - Thời hạn token
+    - Audience
+    - Issuer
+    - Google user ID
+    - Email
+    - Email đã được xác thực
     """
 
-    allowed_client_ids = (
-        get_google_client_ids()
-    )
-
-    if not allowed_client_ids:
+    if not GOOGLE_WEB_CLIENT_ID:
         raise RuntimeError(
-            "Chưa cấu hình Google Client ID"
+            "Chưa cấu hình GOOGLE_WEB_CLIENT_ID"
+        )
+
+    if not token or not token.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google ID Token không được để trống",
         )
 
     try:
-        # Không truyền audience ở đây
-        # vì backend có nhiều client:
-        # Android / iOS / Web
-        payload = (
-            id_token.verify_oauth2_token(
-                token,
-                requests.Request()
-            )
+        payload = id_token.verify_oauth2_token(
+            token.strip(),
+            requests.Request(),
+            GOOGLE_WEB_CLIENT_ID,
+            clock_skew_in_seconds=60,
         )
 
-    except ValueError:
+    except ValueError as exc:
+        print("GOOGLE TOKEN VERIFICATION ERROR DETAILS:", str(exc))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google ID Token không hợp lệ"
-        )
+            detail=f"Google ID Token không hợp lệ: {str(exc)}",
+        ) from exc
 
-    audience = payload.get(
-        "aud"
-    )
-
-    if audience not in allowed_client_ids:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google Client ID không hợp lệ"
-        )
-
-    issuer = payload.get(
-        "iss"
-    )
+    issuer = payload.get("iss")
 
     if issuer not in {
         "accounts.google.com",
-        "https://accounts.google.com"
+        "https://accounts.google.com",
     }:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google ID Token không hợp lệ"
+            detail="Google ID Token không hợp lệ",
         )
 
-    google_id = payload.get(
-        "sub"
-    )
-
-    email = payload.get(
-        "email"
-    )
-
+    google_id = payload.get("sub")
+    email = payload.get("email")
     email_verified = payload.get(
         "email_verified"
     )
@@ -123,34 +138,27 @@ def verify_google_id_token(
     if not google_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google ID Token thiếu user id"
+            detail="Google ID Token thiếu user id",
         )
 
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google ID Token thiếu email"
+            detail="Google ID Token thiếu email",
         )
 
     if email_verified is not True:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email Google chưa được xác thực"
+            detail="Email Google chưa được xác thực",
         )
 
     return {
         "googleId": google_id,
-
-        "email": (
-            email.strip().lower()
-        ),
-
+        "email": email.strip().lower(),
         "fullName": (
             payload.get("name")
             or email.split("@")[0]
         ),
-
-        "picture": payload.get(
-            "picture"
-        )
+        "picture": payload.get("picture"),
     }

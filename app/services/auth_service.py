@@ -23,17 +23,14 @@ from app.configs.security import (
 )
 
 from app.repositories.user_repository import (
-    get_user_by_id,
-    update_user_profile
-)
-
-from app.repositories.user_repository import (
     create_user,
     get_user_by_email,
     get_user_by_id,
     get_user_by_google_id,
+    link_google_account,
+    update_user_password,
+    update_user_profile,
     verify_user,
-    update_user_password
 )
 
 from app.repositories.refresh_token_repository import (
@@ -50,7 +47,8 @@ from app.schemas.auth_schema import (
 )
 
 from app.services.google_auth_service import (
-    verify_google_id_token
+    verify_google_id_token,
+    exchange_code_for_id_token
 )
 
 from app.services.otp_service import (
@@ -690,8 +688,22 @@ def google_login(
     db: Session,
     data: GoogleLoginRequest
 ):
+    if data.idToken:
+        token_val = data.idToken
+    elif data.code and data.redirectUri:
+        token_val = exchange_code_for_id_token(
+            code=data.code,
+            code_verifier=data.codeVerifier,
+            redirect_uri=data.redirectUri
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Thiếu idToken hoặc thiếu thông tin Authorization Code (code, redirectUri)"
+        )
+
     google_data = verify_google_id_token(
-        data.idToken
+        token_val
     )
 
     google_id = google_data[
@@ -703,11 +715,13 @@ def google_login(
     )
 
     try:
+        # 1. Tìm theo Google ID trước
         user = get_user_by_google_id(
             db,
             google_id
         )
 
+        # 2. Chưa từng đăng nhập Google
         if not user:
             existing_user = get_user_by_email(
                 db,
@@ -715,30 +729,49 @@ def google_login(
             )
 
             if existing_user:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "Email đã tồn tại. "
-                        "Vui lòng đăng nhập bằng mật khẩu."
+                # Email đã tồn tại và chưa liên kết Google
+                if not existing_user.google_id:
+                    user = link_google_account(
+                        db=db,
+                        user=existing_user,
+                        google_id=google_id
                     )
+
+                # Email này đã liên kết với Google account khác
+                elif (
+                    existing_user.google_id
+                    != google_id
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "Email này đã được liên kết "
+                            "với một tài khoản Google khác."
+                        )
+                    )
+
+                else:
+                    user = existing_user
+
+            else:
+                # 3. User hoàn toàn mới
+                user = create_user(
+                    db=db,
+                    full_name=google_data[
+                        "fullName"
+                    ],
+                    email=email,
+                    password_hash=None,
+                    region=None,
+                    account_type="personal",
+                    store_name=None,
+                    business_type=None,
+                    google_id=google_id,
+                    role=Roles.USER,
+                    is_verified=True
                 )
 
-            user = create_user(
-                db=db,
-                full_name=google_data[
-                    "fullName"
-                ],
-                email=email,
-                password_hash=None,
-                region=None,
-                account_type="personal",
-                store_name=None,
-                business_type=None,
-                google_id=google_id,
-                role=Roles.USER,
-                is_verified=True
-            )
-
+        # 4. Tạo phiên VoiceCashBook
         session = create_session(
             db,
             user
@@ -767,7 +800,10 @@ def google_login(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Tài khoản Google đã tồn tại"
+            detail=(
+                "Không thể liên kết "
+                "tài khoản Google."
+            )
         )
 
     except Exception:
@@ -775,9 +811,11 @@ def google_login(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể đăng nhập bằng Google"
+            detail=(
+                "Không thể đăng nhập "
+                "bằng Google."
+            )
         )
-
 
 # REFRESH TOKEN
 def refresh_access_token(

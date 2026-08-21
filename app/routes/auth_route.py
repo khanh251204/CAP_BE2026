@@ -118,7 +118,7 @@ def login(
 
 # GOOGLE LOGIN
 @router.post("/google")
-def google_login(
+def google_login_route(
     request: GoogleLoginRequest,
     response: Response,
     db: Session = Depends(get_db)
@@ -128,6 +128,51 @@ def google_login(
         response=response,
         db=db
     )
+
+
+from fastapi.responses import RedirectResponse
+from fastapi import Request
+from app.services.google_auth_service import exchange_code_for_id_token
+from app.services.auth_service import google_login
+
+# GOOGLE LOGIN CALLBACK (DIRECT REDIRECT FLOW FOR EXPO GO)
+@router.get("/google/callback")
+def google_callback(
+    request: Request,
+    code: str,
+    state: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        # Construct the redirect URI dynamically to match the current domain (e.g. cloudflare tunnel)
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host", request.url.netloc)
+        redirect_uri = f"{scheme}://{host}/api/auth/google/callback"
+
+        parts = state.split("|")
+        local_redirect = parts[0]
+        code_verifier = parts[1] if len(parts) > 1 else None
+
+        id_token_val = exchange_code_for_id_token(
+            code=code,
+            code_verifier=code_verifier,
+            redirect_uri=redirect_uri
+        )
+
+        login_req = GoogleLoginRequest(idToken=id_token_val)
+        result = google_login(db=db, data=login_req)
+
+        access_token = result.get("accessToken")
+        refresh_token = result.get("refreshToken")
+
+        redirect_url = f"{local_redirect}?accessToken={access_token}&refreshToken={refresh_token}&success=true"
+        return RedirectResponse(url=redirect_url)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        local_redirect = state.split("|")[0] if state else "exp://localhost:8081"
+        redirect_url = f"{local_redirect}?error={str(e)}&success=false"
+        return RedirectResponse(url=redirect_url)
 
 
 # REFRESH TOKEN

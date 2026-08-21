@@ -196,6 +196,7 @@ class ResetPasswordRequest(BaseModel):
 class GoogleLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    idToken: str = Field(
-        min_length=1
-    )
+    idToken: Optional[str] = Field(default=None)
+    code: Optional[str] = Field(default=None)
+    codeVerifier: Optional[str] = Field(default=None)
+    redirectUri: Optional[str] = Field(default=None)
