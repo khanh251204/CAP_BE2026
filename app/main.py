@@ -2,11 +2,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.hello_route import router as hello_router
+# from app.routes.category_route import router as category_router
+
+from app.configs.database import auth_db
+
+from app.routes.transaction_route import transaction_router
+from app.routes.groq_route import router as groq_router
+
+
 from app.routes.category_route import router as category_router
 from app.routes.auth_route import router as auth_router
 from app.routes.notification_route import router as notification_router
 
-from app.configs.database import auth_db
+from app.routes.auth_route import router as auth_router
 
 app = FastAPI(
     title="Expense Tracker API",
@@ -47,19 +55,27 @@ app.include_router(
     prefix="/api/v1"
 )
 
+# app.include_router(
+#     category_router,
+#     prefix="/api/v1"
+# )
+
 app.include_router(
-    category_router,
-    prefix="/api/v1"
+    transaction_router
 )
 
-# Authentication
 app.include_router(
-    auth_router,
+    groq_router,
     prefix="/api/v1"
 )
 
 app.include_router(
     notification_router,
+    prefix="/api/v1"
+)
+
+app.include_router(
+    auth_router,
     prefix="/api/v1"
 )
 

@@ -14,8 +14,8 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={
         "ssl": {
-            "ca": "core/ca.pem",
-            "check_hostname": True
+            "check_hostname": False,
+            "cert_reqs": 0
         }
     },
     pool_pre_ping=True
