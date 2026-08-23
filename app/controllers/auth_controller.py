@@ -52,14 +52,12 @@ def set_session_cookie(
     response: Response,
     result: dict
 ):
-    access_token = result.pop(
-        "accessToken",
-        None
+    access_token = result.get(
+        "accessToken"
     )
 
-    refresh_token = result.pop(
-        "refreshToken",
-        None
+    refresh_token = result.get(
+        "refreshToken"
     )
 
     if access_token:
@@ -106,16 +104,30 @@ def verify_otp_controller(
         data=request
     )
 
-    if result.get(
-        "accessToken"
-    ):
+    if result.get("accessToken"):
         set_session_cookie(
             response=response,
             result=result
         )
 
         return {
-            "success": True
+            "success": True,
+            "message": result.get(
+                "message"
+            ),
+            "accessToken": result[
+                "accessToken"
+            ],
+            "tokenType": result.get(
+                "tokenType",
+                "bearer"
+            ),
+            "expiresIn": result.get(
+                "expiresIn"
+            ),
+            "user": result.get(
+                "user"
+            )
         }
 
     return result
