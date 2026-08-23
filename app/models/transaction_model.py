@@ -23,7 +23,7 @@ class Transaction(Base):
 
     user_id = Column(
         Integer,
-        # ForeignKey("User.user_id"),
+        ForeignKey("User.user_id"),
         nullable=False
     )
     # category_id = Column(
@@ -121,6 +121,10 @@ class Transaction(Base):
     )
     intent = relationship(
         "Intent",
+        back_populates="transactions"
+    )
+    user = relationship(
+        "User",
         back_populates="transactions"
     )
 

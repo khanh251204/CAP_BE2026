@@ -23,7 +23,7 @@ class Product(Base):
 
     user_id = Column(
         Integer,
-        # ForeignKey("User.user_id"),
+        ForeignKey("User.user_id"),
         nullable=False
     )
 
@@ -69,5 +69,9 @@ class Product(Base):
 
     transaction_details = relationship(
         "TransactionDetail",
+        back_populates="product"
+    )
+    user = relationship(
+        "User",
         back_populates="product"
     )

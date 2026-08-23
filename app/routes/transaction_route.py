@@ -6,6 +6,7 @@ from app.controllers.transaction_controller import (
     TransactionController
 )
 from app.schemas.transaction_schema import TransactionCreateRequest
+from app.configs.jwt import get_current_user_id
 
 
 transaction_router = APIRouter(
@@ -56,7 +57,8 @@ transaction_router = APIRouter(
 @transaction_router.post("/")
 def save_transaction(
     request: TransactionCreateRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
 ):
     try:
         # Tự động gom dữ liệu phẳng từ FE thành cấu trúc Nested cho Service đọc
@@ -78,7 +80,7 @@ def save_transaction(
             }
         }
         
-        user_id = 150002 
+
         
         # Gọi thẳng xuống Controller
         saved_transaction = TransactionController.save_groq_transaction(

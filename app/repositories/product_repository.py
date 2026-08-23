@@ -12,7 +12,7 @@ def get_product_by_name(
     return (
         db.query(Product)
         .filter(
-            Product.user_id == 150002,
+            Product.user_id == user_id,
             Product.name == name
         )
         .first()
@@ -28,7 +28,7 @@ def create_product(
 ):
 
     product = Product(
-        user_id=150002,
+        user_id=user_id,
         name=name,
         default_unit=unit,
         unit_price=price

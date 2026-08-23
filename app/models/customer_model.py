@@ -16,7 +16,7 @@ class Customer(Base):
     customer_id = Column(Integer, primary_key=True, index=True)
     user_id = Column(
         Integer, 
-        # ForeignKey("User.user_id"), 
+        ForeignKey("User.user_id"), 
         nullable=True
         )
     name = Column(String(255), nullable=False)
@@ -27,5 +27,9 @@ class Customer(Base):
 
     transactions = relationship(
             "Transaction",
+            back_populates="customer"
+        )
+    user = relationship(
+            "User",
             back_populates="customer"
         )
