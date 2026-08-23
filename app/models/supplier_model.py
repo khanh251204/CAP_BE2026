@@ -1,11 +1,14 @@
 from sqlalchemy import (
     Column,
-    DateTime,
     Integer,
     String,
+    ForeignKey,
+    DateTime,
     Text,
     func
 )
+
+from sqlalchemy.orm import relationship
 
 from app.configs.database import Base
 
@@ -16,12 +19,14 @@ class Supplier(Base):
     supplier_id = Column(
         Integer,
         primary_key=True,
-        autoincrement=True
+        autoincrement=True,
+        index=True
     )
 
     user_id = Column(
         Integer,
-        nullable=False,
+        ForeignKey("User.user_id"),
+        nullable=True,
         index=True
     )
 
@@ -71,4 +76,14 @@ class Supplier(Base):
         nullable=True,
         server_default=func.now(),
         onupdate=func.now()
+    )
+
+    transactions = relationship(
+        "Transaction",
+        back_populates="supplier"
+    )
+
+    user = relationship(
+        "User",
+        back_populates="supplier"
     )

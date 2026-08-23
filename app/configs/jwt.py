@@ -299,3 +299,9 @@ def authorize_roles(
         return user
 
     return wrapper
+
+
+def get_current_user_id(
+    payload: dict = Depends(authenticate_user)
+) -> int:
+    return int(payload["sub"])

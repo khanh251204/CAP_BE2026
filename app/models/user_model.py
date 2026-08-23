@@ -8,7 +8,7 @@ from sqlalchemy import (
 )
 
 from app.configs.database import Base
-
+from sqlalchemy.orm import relationship
 
 class User(Base):
     __tablename__ = "User"
@@ -113,3 +113,33 @@ class User(Base):
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP")
     )
+    transactions = relationship(
+            "Transaction",
+            back_populates="user"
+        )
+    
+    customer = relationship(
+            "Customer",
+            back_populates="user"
+        )
+    supplier = relationship(
+            "Supplier",
+            back_populates="user"
+        )
+    account = relationship(
+        "Account",
+        back_populates="user"
+    )
+    product = relationship(
+        "Product",
+        back_populates="user"
+    )
+    inventory_transaction = relationship(
+        "InventoryTransaction",
+        back_populates="user"
+    )
+    debt = relationship(
+        "Debt",
+        back_populates="user"
+    )
+    
