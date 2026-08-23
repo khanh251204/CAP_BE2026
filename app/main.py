@@ -58,8 +58,7 @@ app.include_router(
 )
 
 app.include_router(
-    auth_router,
-    prefix="/api/v1"
+    auth_router
 )
 
 app.include_router(
