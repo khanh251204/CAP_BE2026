@@ -201,19 +201,23 @@ def refresh_token_controller(
             detail="Refresh token không tồn tại"
         )
 
-    result = refresh_access_token(
-        db=db,
-        token=token
-    )
+    try:
+        result = refresh_access_token(
+            db=db,
+            token=token
+        )
 
-    set_session_cookie(
-        response=response,
-        result=result
-    )
+        set_session_cookie(
+            response=response,
+            result=result
+        )
 
-    return {
-        "success": True
-    }
+        return {
+            "success": True
+        }
+    except HTTPException as exc:
+        delete_auth_cookies(response=response)
+        raise exc
 
 # LOGOUT
 def logout_controller(

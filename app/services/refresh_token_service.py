@@ -35,6 +35,8 @@ from app.repositories.refresh_token_repository import (
     revoke_refresh_token
 )
 
+from app.models.refresh_token_model import RefreshToken
+
 # ENV
 load_dotenv()
 
@@ -226,9 +228,22 @@ def validate_refresh_token(
     """
 
     # DECODE JWT
-    payload = decode_refresh_token(
-        token
-    )
+    try:
+        payload = decode_refresh_token(
+            token
+        )
+    except HTTPException as exc:
+        if exc.detail == "Refresh token đã hết hạn":
+            incoming_hash = hash_refresh_token(token)
+            token_record = (
+                db.query(RefreshToken)
+                .filter(RefreshToken.token_hash == incoming_hash)
+                .first()
+            )
+            if token_record:
+                db.delete(token_record)
+                db.commit()
+        raise exc
 
     jti = payload.get(
         "jti"
@@ -264,6 +279,15 @@ def validate_refresh_token(
     )
 
     if not token_record:
+        db_token = get_refresh_token_by_jti(db, jti=jti)
+        if db_token and db_token.expires_at <= now:
+            db.delete(db_token)
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token đã hết hạn"
+            )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=(
