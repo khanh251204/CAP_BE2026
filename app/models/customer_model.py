@@ -33,3 +33,7 @@ class Customer(Base):
             "User",
             back_populates="customer"
         )
+    debt = relationship(
+            "Debt",
+            back_populates="customer"
+        )

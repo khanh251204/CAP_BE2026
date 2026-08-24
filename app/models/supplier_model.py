@@ -32,3 +32,7 @@ class Supplier(Base):
             "User",
             back_populates="supplier"
         )
+    debt = relationship(
+            "Debt",
+            back_populates="supplier"
+        )
