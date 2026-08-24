@@ -85,3 +85,15 @@ class Debt(Base):
         "User",
         back_populates="debt"
      )
+    transactions = relationship(
+        "Transaction",
+        back_populates="debt"
+     )
+    customer = relationship(
+        "Customer",
+        back_populates="debt"
+     )
+    supplier = relationship(
+        "Supplier",
+        back_populates="debt"
+     )

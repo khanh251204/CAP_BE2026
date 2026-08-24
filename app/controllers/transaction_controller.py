@@ -5,34 +5,7 @@ from app.services.transaction_service import (
 
 class TransactionController:
 
-    # @staticmethod
-    # def get_transactions(
-    #     db,
-    #     user_id: int,
-    #     page: int,
-    #     limit: int
-    # ):
-
-    #     return TransactionService.get_transactions(
-    #         db=db,
-    #         user_id=user_id,
-    #         page=page,
-    #         limit=limit
-    #     )
-
-    # @staticmethod
-    # def get_transaction_detail(
-    #     db,
-    #     user_id: int,
-    #     transaction_id: int
-    # ):
-
-    #     return TransactionService.get_transaction_detail(
-    #         db=db,
-    #         user_id=user_id,
-    #         transaction_id=transaction_id
-    #     )
-
+    # lưu
     @staticmethod
     def save_groq_transaction(
         db,
@@ -46,6 +19,36 @@ class TransactionController:
             user_id=user_id,
             account_id=account_id,
             groq_result=groq_result
+        )
+    
+
+    # list
+    @staticmethod
+    def get_transactions(
+        db,
+        user_id: int,
+        page: int,
+        limit: int
+    ):
+
+        return TransactionService.get_transactions(
+            db=db,
+            user_id=user_id,
+            page=page,
+            limit=limit
+        )
+
+    @staticmethod
+    def get_transaction_by_id(
+        db,
+        user_id: int,
+        transaction_id: int
+    ):
+
+        return TransactionService.get_transaction_by_id(
+            db=db,
+            user_id=user_id,
+            transaction_id=transaction_id
         )
 
 

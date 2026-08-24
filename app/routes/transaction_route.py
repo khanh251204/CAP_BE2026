@@ -15,44 +15,45 @@ transaction_router = APIRouter(
 )
 
 
-# @transaction_router.get("")
-# def get_transactions(
-#     page: int = Query(
-#         default=1,
-#         ge=1
-#     ),
+@transaction_router.get("")
+def get_transactions(
+    page: int = Query(
+        default=1,
+        ge=1
+    ),
 
-#     limit: int = Query(
-#         default=10,
-#         ge=1,
-#         le=100
-#     ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=100
+    ),
 
-#     db: Session = Depends(get_db)
-# ):
-#     user_id = 150002
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
 
-#     return TransactionController.get_transactions(
-#         db=db,
-#         user_id=user_id,
-#         page=page,
-#         limit=limit
-#     )
+    return TransactionController.get_transactions(
+        db=db,
+        user_id=user_id,
+        page=page,
+        limit=limit
+    )
 
 
-# @transaction_router.get("/{transaction_id}")
-# def get_transaction_detail(
-#     transaction_id: int,
+@transaction_router.get("/{transaction_id}")
+def get_transaction_by_id(
+    transaction_id: int,
 
-#     db: Session = Depends(get_db)
-# ):
-#     user_id = 150002
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
 
-#     return TransactionController.get_transaction_detail(
-#         db=db,
-#         user_id=user_id,
-#         transaction_id=transaction_id
-#     )
+
+    return TransactionController.get_transaction_by_id(
+        db=db,
+        user_id=user_id,
+        transaction_id=transaction_id
+    )
 
 @transaction_router.post("/")
 def save_transaction(
