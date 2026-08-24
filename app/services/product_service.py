@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.product import Product
+from app.models.product_model import Product
 
 
 class ProductService:
@@ -95,3 +95,16 @@ class ProductService:
         db.refresh(product)
 
         return product
+    
+    
+    @staticmethod
+    def search_products_by_name(
+        name: str,
+        user_id: int,
+        db: Session
+    ):
+        return db.query(Product).filter(
+            Product.user_id == user_id,
+            Product.is_active == True,
+            Product.name.ilike(f"%{name}%")
+        ).all()

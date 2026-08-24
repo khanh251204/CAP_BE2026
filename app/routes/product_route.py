@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
 from app.controllers.product_controller import ProductController
+from app.configs.jwt import get_current_user_id
 
 
 router = APIRouter()
@@ -23,7 +24,7 @@ def get_all_products(
 # GET PRODUCT THEO ID
 # ==========================================
 
-@router.get("/products/{product_id}")
+@router.get("/product/{product_id}")
 def get_product_by_id(
     product_id: int,
     db: Session = Depends(get_db)
@@ -38,9 +39,9 @@ def get_product_by_id(
 # GET PRODUCT THEO USER
 # ==========================================
 
-@router.get("/products/user/{user_id}")
+@router.get("/products/user")
 def get_products_by_user_id(
-    user_id: int,
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     return ProductController.get_products_by_user_id(
