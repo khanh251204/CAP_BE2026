@@ -28,12 +28,17 @@ from jose import (
     ExpiredSignatureError
 )
 
-from app.configs.cookie import (
-    JWT_ACCESS_COOKIE_NAME
+load_dotenv()
+
+JWT_ACCESS_COOKIE_NAME = os.getenv(
+    "JWT_ACCESS_COOKIE_NAME",
+    "access_token"
 )
 
-
-load_dotenv()
+JWT_COOKIE_NAME = os.getenv(
+    "JWT_REFRESH_COOKIE_NAME",
+    "refresh_token"
+)
 
 
 SECRET_KEY = os.getenv(
@@ -56,6 +61,13 @@ PASSWORD_RESET_EXPIRE_MINUTES = int(
     os.getenv(
         "PASSWORD_RESET_EXPIRE_MINUTES",
         "10"
+    )
+)
+
+REFRESH_TOKEN_EXPIRE_DAYS = int(
+    os.getenv(
+        "REFRESH_TOKEN_EXPIRE_DAYS",
+        "15"
     )
 )
 

@@ -7,14 +7,11 @@ from fastapi import Response
 load_dotenv()
 
 
-JWT_ACCESS_COOKIE_NAME = os.getenv(
-    "JWT_ACCESS_COOKIE_NAME",
-    "access_token"
-)
-
-JWT_COOKIE_NAME = os.getenv(
-    "JWT_COOKIE_NAME",
-    "refresh_token"
+from app.configs.jwt import (
+    JWT_ACCESS_COOKIE_NAME,
+    JWT_COOKIE_NAME,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS
 )
 
 JWT_COOKIE_HTTPONLY = (
@@ -36,20 +33,6 @@ JWT_COOKIE_SECURE = (
 JWT_COOKIE_SAMESITE = os.getenv(
     "JWT_COOKIE_SAMESITE",
     "lax"
-)
-
-ACCESS_TOKEN_EXPIRE_MINUTES = int(
-    os.getenv(
-        "ACCESS_TOKEN_EXPIRE_MINUTES",
-        "5"
-    )
-)
-
-REFRESH_TOKEN_EXPIRE_DAYS = int(
-    os.getenv(
-        "REFRESH_TOKEN_EXPIRE_DAYS",
-        "15"
-    )
 )
 
 

@@ -25,14 +25,16 @@ from sqlalchemy.orm import Session
 
 from app.configs.jwt import (
     SECRET_KEY,
-    ALGORITHM
+    ALGORITHM,
+    REFRESH_TOKEN_EXPIRE_DAYS
 )
 
 from app.repositories.refresh_token_repository import (
     create_refresh_token as create_refresh_token_record,
     get_refresh_token_by_jti,
     get_active_refresh_token_by_jti,
-    revoke_refresh_token
+    revoke_refresh_token,
+    delete_expired_refresh_tokens
 )
 
 from app.models.refresh_token_model import RefreshToken
@@ -41,12 +43,6 @@ from app.models.refresh_token_model import RefreshToken
 load_dotenv()
 
 
-REFRESH_TOKEN_EXPIRE_DAYS = int(
-    os.getenv(
-        "REFRESH_TOKEN_EXPIRE_DAYS",
-        "30"
-    )
-)
 
 # HASH REFRESH TOKEN
 def hash_refresh_token(
@@ -81,8 +77,6 @@ def create_refresh_token(
     - jti
     - type=refresh
     - exp
-
-    Không commit tại đây.
     """
 
     # ID duy nhất cho refresh token
@@ -137,6 +131,12 @@ def create_refresh_token(
         expires_at_utc.replace(
             tzinfo=None
         )
+    )
+
+    # XÓA CỨNG TOÀN BỘ REFRESH TOKEN ĐÃ HẾT HẠN
+    delete_expired_refresh_tokens(
+        db=db,
+        now=now.replace(tzinfo=None)
     )
 
     create_refresh_token_record(
@@ -234,15 +234,12 @@ def validate_refresh_token(
         )
     except HTTPException as exc:
         if exc.detail == "Refresh token đã hết hạn":
-            incoming_hash = hash_refresh_token(token)
-            token_record = (
-                db.query(RefreshToken)
-                .filter(RefreshToken.token_hash == incoming_hash)
-                .first()
+            # Xóa cứng toàn bộ refresh token đã hết hạn khỏi DB
+            delete_expired_refresh_tokens(
+                db=db,
+                now=datetime.utcnow()
             )
-            if token_record:
-                db.delete(token_record)
-                db.commit()
+            db.commit()
         raise exc
 
     jti = payload.get(
@@ -281,7 +278,11 @@ def validate_refresh_token(
     if not token_record:
         db_token = get_refresh_token_by_jti(db, jti=jti)
         if db_token and db_token.expires_at <= now:
-            db.delete(db_token)
+            # Xóa cứng toàn bộ refresh token đã hết hạn khỏi DB
+            delete_expired_refresh_tokens(
+                db=db,
+                now=now
+            )
             db.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

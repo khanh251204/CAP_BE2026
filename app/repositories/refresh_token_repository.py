@@ -139,3 +139,25 @@ def revoke_all_user_refresh_tokens(
     db.flush()
 
     return updated_rows
+
+# DELETE EXPIRED REFRESH TOKENS
+def delete_expired_refresh_tokens(
+    db: Session,
+    *,
+    now: datetime
+) -> int:
+    """
+    Xóa cứng toàn bộ refresh token đã hết hạn khỏi database.
+    """
+
+    deleted_rows = (
+        db.query(RefreshToken)
+        .filter(
+            RefreshToken.expires_at <= now
+        )
+        .delete(synchronize_session=False)
+    )
+
+    db.flush()
+
+    return deleted_rows
