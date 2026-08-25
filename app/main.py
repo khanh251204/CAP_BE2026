@@ -7,7 +7,8 @@ from app.routes.hello_route import router as hello_router
 from app.configs.database import auth_db
 
 from app.routes.transaction_route import transaction_router
-from app.routes.groq_route import router as groq_router
+# Debt
+from app.routes.debt_router import router as debt_router
 
 
 from app.routes.category_route import router as category_router
@@ -65,11 +66,6 @@ app.include_router(
 )
 
 app.include_router(
-    groq_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     notification_router,
     prefix="/api/v1"
 )
@@ -78,7 +74,11 @@ app.include_router(
     auth_router,
     prefix="/api/v1"
 )
-
+# DEBT
+app.include_router(
+    debt_router,
+    prefix="/api/v1"
+)
 # ROOT
 @app.get("/")
 def root():
