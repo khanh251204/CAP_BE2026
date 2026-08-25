@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.models.debt_model import Debt
 from app.models.customer_model import Customer
+from app.models.supplier_model import Supplier
 from app.repositories.debt_repository import DebtRepository
 
 
@@ -14,34 +15,27 @@ class DebtService:
     @staticmethod
     def format_debt(result):
 
-        debt, customer_name = result
+        debt, customer_name, supplier_name = result
 
         return {
-            "debt_id": debt.debt_id,
-            "transaction_id": debt.transaction_id,
-            "user_id": debt.user_id,
+    "debt_id": debt.debt_id,
+    "transaction_id": debt.transaction_id,
+    "user_id": debt.user_id,
 
-            "customer_id": debt.customer_id,
-            "customer_name": customer_name,
+    "customer_id": debt.customer_id,
+    "customer_name": customer_name,
 
-            "supplier_id": debt.supplier_id,
+    "supplier_id": debt.supplier_id,
+    "supplier_name": supplier_name,
 
-            "direction": debt.direction,
+    "direction": debt.direction,
 
-            "original_amount": float(
-                debt.original_amount
-            ),
-
-            "remaining_amount": float(
-                debt.remaining_amount
-            ),
-
-            "status": debt.status,
-
-            "created_at": debt.created_at,
-            "updated_at": debt.updated_at
-        }
-
+    "original_amount": debt.original_amount,
+    "remaining_amount": debt.remaining_amount,
+    "status": debt.status,
+    "created_at": debt.created_at,
+    "updated_at": debt.updated_at,
+}
     # ==========================================
     # GET ALL
     # ==========================================
@@ -112,7 +106,7 @@ class DebtService:
         db: Session
     ):
 
-        results = DebtRepository.search_by_customer_name(
+        results = DebtRepository.search_by_name(
             name,
             db
         )
@@ -123,7 +117,7 @@ class DebtService:
         ]
 
     # ==========================================
-    # GET CUSTOMER NAME
+    # GET CUSTOMER
     # ==========================================
 
     @staticmethod
@@ -146,6 +140,29 @@ class DebtService:
         }
 
     # ==========================================
+    # GET SUPPLIER
+    # ==========================================
+
+    @staticmethod
+    def get_supplier_name(
+        supplier_id: int,
+        db: Session
+    ):
+
+        supplier = DebtRepository.get_supplier_by_id(
+            supplier_id,
+            db
+        )
+
+        if not supplier:
+            return None
+
+        return {
+            "supplier_id": supplier.supplier_id,
+            "name": supplier.name
+        }
+
+    # ==========================================
     # CREATE DEBT
     # ==========================================
 
@@ -155,10 +172,6 @@ class DebtService:
         db: Session
     ):
 
-        # --------------------------------------
-        # USER ID
-        # --------------------------------------
-
         user_id = data.get("user_id")
 
         if not user_id:
@@ -166,49 +179,90 @@ class DebtService:
                 "User ID không được để trống"
             )
 
-        # --------------------------------------
-        # CUSTOMER ID
-        # --------------------------------------
-
         customer_id = data.get("customer_id")
+        supplier_id = data.get("supplier_id")
 
-        if not customer_id:
+        # ======================================
+        # PHẢI CÓ CUSTOMER HOẶC SUPPLIER
+        # ======================================
+
+        if not customer_id and not supplier_id:
             raise ValueError(
-                "Customer ID không được để trống"
+                "Phải có Customer ID hoặc Supplier ID"
             )
 
-        # --------------------------------------
-        # TÌM CUSTOMER
-        # --------------------------------------
+        # ======================================
+        # CUSTOMER
+        # ======================================
 
-        customer = DebtRepository.get_customer_by_id(
-            customer_id,
-            db
-        )
+        if customer_id:
 
-        # --------------------------------------
-        # NẾU CHƯA CÓ CUSTOMER → TẠO
-        # --------------------------------------
+            customer = DebtRepository.get_customer_by_id(
+                customer_id,
+                db
+            )
 
-        if not customer:
+            if not customer:
 
-            customer = Customer(
-                customer_id=customer_id,
-                user_id=user_id,
-                name=data.get(
-                    "customer_name",
-                    f"Khách hàng {customer_id}"
+                customer = Customer(
+                    customer_id=customer_id,
+                    user_id=user_id,
+                    name=data.get(
+                        "customer_name",
+                        f"Khách hàng {customer_id}"
+                    ),
+                    phone_number=data.get(
+                        "phone_number",
+                        ""
+                    ),
+                    note=data.get(
+                        "note",
+                        ""
+                    )
                 )
+
+                db.add(customer)
+                db.flush()
+
+        # ======================================
+        # SUPPLIER
+        # ======================================
+
+        if supplier_id:
+
+            supplier = DebtRepository.get_supplier_by_id(
+                supplier_id,
+                db
             )
 
-            db.add(customer)
-            db.flush()
+            if not supplier:
 
-        # --------------------------------------
-        # TẠO DEBT
-        # --------------------------------------
+                supplier = Supplier(
+                    supplier_id=supplier_id,
+                    user_id=user_id,
+                    name=data.get(
+                        "supplier_name",
+                        f"Nhà cung cấp {supplier_id}"
+                    ),
+                    phone_number=data.get(
+                        "phone_number",
+                        ""
+                    ),
+                    note=data.get(
+                        "note",
+                        ""
+                    )
+                )
+
+                db.add(supplier)
+                db.flush()
+
+        # ======================================
+        # CREATE DEBT
+        # ======================================
 
         debt = Debt(
+
             transaction_id=data.get(
                 "transaction_id"
             ),
@@ -217,9 +271,7 @@ class DebtService:
 
             customer_id=customer_id,
 
-            supplier_id=data.get(
-                "supplier_id"
-            ),
+            supplier_id=supplier_id,
 
             direction=data["direction"],
 
@@ -236,17 +288,13 @@ class DebtService:
             )
         )
 
-        # --------------------------------------
-        # LƯU DATABASE
-        # --------------------------------------
-
         return DebtRepository.create(
             debt,
             db
         )
 
     # ==========================================
-    # UPDATE DEBT
+    # UPDATE
     # ==========================================
 
     @staticmethod
@@ -264,25 +312,47 @@ class DebtService:
         if not result:
             return None
 
-        debt, customer_name = result
+        debt, customer_name, supplier_name = result
 
-        # --------------------------------------
-        # KIỂM TRA CUSTOMER
-        # --------------------------------------
+        # ======================================
+        # CUSTOMER
+        # ======================================
 
         if "customer_id" in data:
 
-            customer = DebtRepository.get_customer_by_id(
-                data["customer_id"],
-                db
-            )
+            customer_id = data["customer_id"]
 
-            if not customer:
-                return None
+            if customer_id:
 
-        # --------------------------------------
+                customer = DebtRepository.get_customer_by_id(
+                    customer_id,
+                    db
+                )
+
+                if not customer:
+                    return None
+
+        # ======================================
+        # SUPPLIER
+        # ======================================
+
+        if "supplier_id" in data:
+
+            supplier_id = data["supplier_id"]
+
+            if supplier_id:
+
+                supplier = DebtRepository.get_supplier_by_id(
+                    supplier_id,
+                    db
+                )
+
+                if not supplier:
+                    return None
+
+        # ======================================
         # UPDATE
-        # --------------------------------------
+        # ======================================
 
         for key, value in data.items():
 
@@ -294,16 +364,12 @@ class DebtService:
                     value
                 )
 
-        # --------------------------------------
-        # SAVE
-        # --------------------------------------
-
         db.commit()
         db.refresh(debt)
 
-        # --------------------------------------
-        # LẤY LẠI DATA
-        # --------------------------------------
+        # ======================================
+        # GET AGAIN
+        # ======================================
 
         result = DebtRepository.get_by_id(
             debt_id,
@@ -335,7 +401,7 @@ class DebtService:
         if not result:
             return None
 
-        debt, customer_name = result
+        debt, customer_name, supplier_name = result
 
         return DebtRepository.delete(
             debt,

@@ -1,7 +1,10 @@
 from sqlalchemy.orm import Session
-from app.models.debt_model import Debt
 
-from app.models.customer_model import  Customer
+from app.models.debt_model import Debt
+from app.models.customer_model import Customer
+from app.models.supplier_model import Supplier
+
+
 class DebtRepository:
 
     # ==========================================
@@ -13,11 +16,19 @@ class DebtRepository:
         debt_id: int,
         db: Session
     ):
-        return db.query(Debt).filter(
+        return db.query(
+            Debt,
+            Customer.name.label("customer_name"),
+            Supplier.name.label("supplier_name")
+        ).outerjoin(
+            Customer,
+            Debt.customer_id == Customer.customer_id
+        ).outerjoin(
+            Supplier,
+            Debt.supplier_id == Supplier.supplier_id
+        ).filter(
             Debt.debt_id == debt_id,
-            Debt.is_active == True
         ).first()
-
 
     # ==========================================
     # LẤY TẤT CẢ
@@ -25,34 +36,22 @@ class DebtRepository:
 
     @staticmethod
     def get_all_by_user(
-        user_id : int,
+        user_id: int,
         db: Session
-    ):
-        return db.query(Debt,Customer.name.label("customer_name")
-        ).outerjoin(
-        Customer,
-        Debt.customer_id == Customer.customer_id
-    ).filter(
-        Debt.user_id == user_id
-    ).all()
-    # ==========================================
-    # LẤY DEBT THEO ID
-    # ==========================================
-    @staticmethod
-    def get_by_id(
-        debt_id:int,
-        db:Session
     ):
         return db.query(
             Debt,
-            Customer.name.label("customer_name")
+            Customer.name.label("customer_name"),
+            Supplier.name.label("supplier_name")
         ).outerjoin(
             Customer,
             Debt.customer_id == Customer.customer_id
+        ).outerjoin(
+            Supplier,
+            Debt.supplier_id == Supplier.supplier_id
         ).filter(
-            Debt.debt_id == debt_id
-        ).first()
-
+            Debt.user_id == user_id,
+        ).all()
 
     # ==========================================
     # LẤY THEO USER
@@ -63,12 +62,23 @@ class DebtRepository:
         user_id: int,
         db: Session
     ):
-        return db.query(Debt).filter(
-            Debt.user_id == user_id).all()
-
+        return db.query(
+            Debt,
+            Customer.name.label("customer_name"),
+            Supplier.name.label("supplier_name")
+        ).outerjoin(
+            Customer,
+            Debt.customer_id == Customer.customer_id
+        ).outerjoin(
+            Supplier,
+            Debt.supplier_id == Supplier.supplier_id
+        ).filter(
+            Debt.user_id == user_id,
+        ).all()
 
     # ==========================================
     # TÌM KIẾM THEO TÊN
+    # CUSTOMER + SUPPLIER
     # ==========================================
 
     @staticmethod
@@ -76,18 +86,26 @@ class DebtRepository:
         name: str,
         db: Session
     ):
-        return db.query(Debt,
-            Customer.name.label("customer_name")
-        ).join(
+        return db.query(
+            Debt,
+            Customer.name.label("customer_name"),
+            Supplier.name.label("supplier_name")
+        ).outerjoin(
             Customer,
             Debt.customer_id == Customer.customer_id
+        ).outerjoin(
+            Supplier,
+            Debt.supplier_id == Supplier.supplier_id
         ).filter(
-            Customer.name.ilike(f"%{name}%")
+            (
+                Customer.name.ilike(f"%{name}%")
+                |
+                Supplier.name.ilike(f"%{name}%")
+            )
         ).all()
 
-
     # ==========================================
-    # TÌM THEO tên
+    # LẤY CUSTOMER
     # ==========================================
 
     @staticmethod
@@ -95,10 +113,26 @@ class DebtRepository:
         customer_id: int,
         db: Session
     ):
-        return db.query(Customer).filter(
+        return db.query(
+            Customer
+        ).filter(
             Customer.customer_id == customer_id
         ).first()
 
+    # ==========================================
+    # LẤY SUPPLIER
+    # ==========================================
+
+    @staticmethod
+    def get_supplier_by_id(
+        supplier_id: int,
+        db: Session
+    ):
+        return db.query(
+            Supplier
+        ).filter(
+            Supplier.supplier_id == supplier_id
+        ).first()
 
     # ==========================================
     # THÊM
@@ -116,7 +150,6 @@ class DebtRepository:
 
         return debt
 
-
     # ==========================================
     # SỬA
     # ==========================================
@@ -132,7 +165,6 @@ class DebtRepository:
 
         return debt
 
-
     # ==========================================
     # XÓA MỀM
     # ==========================================
@@ -143,11 +175,9 @@ class DebtRepository:
         db: Session
     ):
 
-        debt.is_active = False
+        #debt.is_active = False
 
         db.commit()
         db.refresh(debt)
 
         return debt
-
-    
