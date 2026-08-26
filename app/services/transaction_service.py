@@ -23,6 +23,8 @@ from app.repositories.product_repository import (
     create_product
 )
 from decimal import Decimal
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 class TransactionService:
 
@@ -908,4 +910,223 @@ class TransactionService:
                 if new_transaction.updated_at
                 else None
             )
+        }
+
+    # list 
+    @staticmethod
+    def get_transactions(
+        db: Session,
+        user_id: int,
+        page: int = 1,
+        limit: int = 20
+    ):
+
+        transactions, total = (
+            TransactionRepository.get_transactions(
+                db=db,
+                user_id=user_id,
+                page=page,
+                limit=limit
+            )
+        )
+
+        total_pages = ceil(total / limit)
+
+        data = []
+
+        for transaction in transactions:
+
+            details = []
+
+            for detail in transaction.transaction_detail:
+
+                details.append({
+                    "detail_id": detail.detail_id,
+                    "quantity": float(detail.quantity),
+                    "unit": detail.unit,
+                    "unit_price": float(detail.unit_price),
+                    "subtotal": float(detail.subtotal),
+                    "product_id": detail.product_id,
+                    "product": (
+                        {
+                            "name": detail.product.name,
+                            "image": detail.product.img 
+                        }
+                        if detail.product
+                        else None
+                    )
+                })
+
+            data.append({
+                "transaction_id": transaction.transaction_id,
+                "intent": (
+                    transaction.intent.name_intent
+                    if transaction.intent
+                    else None
+                ),
+                "account": (
+                    {
+                        
+                        "name": transaction.account.name,
+                        "type": transaction.account.type,
+                    }
+                    if transaction.account
+                    else None
+                ),
+
+                "customer": (
+                    {
+                        
+                        "name": transaction.customer.name,
+                    }
+                    if transaction.customer
+                    else None
+                ),
+
+                "supplier": (
+                    {
+                        
+                        "name": transaction.supplier.name,
+                    }
+                    if transaction.supplier
+                    else None
+                ),
+
+                "total_amount": float(
+                    transaction.total_amount
+                ),
+
+                "payment_status": transaction.payment_status,
+
+                "input_method": transaction.input_method,
+
+                "input_text": transaction.input_text,
+
+                "transaction_date": (
+                    transaction.transaction_date.isoformat()
+                    if transaction.transaction_date
+                    else None
+                ),
+
+                "details": details
+            })
+
+        return {
+            "items": data,
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "total_pages": total_pages
+        }
+
+
+
+    @staticmethod
+    def get_transaction_by_id(
+        db: Session,
+        user_id: int,
+        transaction_id: int
+    ):
+
+        transaction = (
+            TransactionRepository.get_transaction_by_id(
+                db=db,
+                user_id=user_id,
+                transaction_id=transaction_id
+            )
+        )
+
+        if not transaction:
+            raise ValueError(
+            "Không tìm thấy giao dịch"
+            )
+
+        details = []
+
+        for detail in transaction.transaction_detail:
+
+            details.append({
+                "detail_id": detail.detail_id,
+                "product_id": detail.product_id,
+                "quantity": float(detail.quantity),
+                "unit": detail.unit,
+                "unit_price": float(detail.unit_price),
+                "subtotal": float(detail.subtotal),
+
+                "product": (
+                    {
+                        "name": detail.product.name,
+                        "image": detail.product.img
+                    }
+                    if detail.product
+                    else None
+                )
+            })
+
+        return {
+            "transaction_id": transaction.transaction_id,
+
+            "intent": (
+                transaction.intent.name_intent
+                if transaction.intent
+                else None
+            ),
+
+            "account": (
+                {
+                    "account_id": transaction.account.account_id,
+                    "name": transaction.account.name,
+                    "type": transaction.account.type
+                }
+                if transaction.account
+                else None
+            ),
+
+            "customer": (
+                {
+    
+                    "name": transaction.customer.name
+                }
+                if transaction.customer
+                else None
+            ),
+
+            "supplier": (
+                {
+        
+                    "name": transaction.supplier.name
+                }
+                if transaction.supplier
+                else None
+            ),
+
+            "total_amount": float(
+                transaction.total_amount
+            ),
+
+            "payment_status": transaction.payment_status,
+
+            "input_method": transaction.input_method,
+
+            "input_text": transaction.input_text,
+
+            "transaction_date": (
+                transaction.transaction_date.isoformat()
+                if transaction.transaction_date
+                else None
+            ),
+
+            "created_at": (
+                transaction.created_at.isoformat()
+                if transaction.created_at
+                else None
+            ),
+
+            "updated_at": (
+                transaction.updated_at.isoformat()
+                if transaction.updated_at
+                else None
+            ),
+
+            "details": details
         }

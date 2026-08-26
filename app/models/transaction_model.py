@@ -127,5 +127,13 @@ class Transaction(Base):
         "User",
         back_populates="transactions"
     )
+    inventory_transaction = relationship(
+        "InventoryTransaction",
+        back_populates="transactions"
+    )
+    debt = relationship(
+        "Debt",
+        back_populates="transactions"
+    )
 
    

@@ -75,3 +75,7 @@ class Product(Base):
         "User",
         back_populates="product"
     )
+    inventory_transaction = relationship(
+        "InventoryTransaction",
+        back_populates="product"
+    )
