@@ -64,7 +64,8 @@ app.include_router(
 # )
 
 app.include_router(
-    transaction_router
+    transaction_router,
+    prefix="/api/v1"
 )
 
 app.include_router(

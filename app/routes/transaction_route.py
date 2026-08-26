@@ -9,13 +9,10 @@ from app.schemas.transaction_schema import TransactionCreateRequest
 from app.configs.jwt import get_current_user_id
 
 
-transaction_router = APIRouter(
-    prefix="/api/transactions",
-    tags=["Transactions"]
-)
+transaction_router = APIRouter()
 
 
-@transaction_router.get("")
+@transaction_router.get("/transactions")
 def get_transactions(
     page: int = Query(
         default=1,
@@ -40,7 +37,7 @@ def get_transactions(
     )
 
 
-@transaction_router.get("/{transaction_id}")
+@transaction_router.get("/transaction/{transaction_id}")
 def get_transaction_by_id(
     transaction_id: int,
 
@@ -55,7 +52,7 @@ def get_transaction_by_id(
         transaction_id=transaction_id
     )
 
-@transaction_router.post("/")
+@transaction_router.post("/transaction")
 def save_transaction(
     request: TransactionCreateRequest,
     db: Session = Depends(get_db),
