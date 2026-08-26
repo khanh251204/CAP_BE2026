@@ -7,7 +7,7 @@ from app.routes.hello_route import router as hello_router
 from app.configs.database import auth_db
 
 from app.routes.transaction_route import transaction_router
-from app.routes.groq_route import router as groq_router
+# from app.routes.groq_route import router as groq_router
 
 
 from app.routes.category_route import router as category_router
@@ -67,10 +67,10 @@ app.include_router(
     transaction_router
 )
 
-app.include_router(
-    groq_router,
-    prefix="/api/v1"
-)
+# app.include_router(
+#     groq_router,
+#     prefix="/api/v1"
+# )
 
 app.include_router(
     notification_router,
