@@ -28,10 +28,10 @@ class ProductService:
 
     # Xác nhận / nhập tay Product
     @staticmethod
-    def create_product(data: dict, db: Session):
+    def create_product(data: dict, db: Session, user_id: int ):
 
         product = Product(
-            user_id=data["user_id"],
+            user_id=user_id,
             name=data["name"],
             default_unit=data.get("default_unit"),
             min_quantity=data.get("min_quantity"),

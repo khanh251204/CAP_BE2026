@@ -57,6 +57,7 @@ def get_products_by_user_id(
 @router.post("/productsNew")
 def create_product(
     data: dict,
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     return ProductController.create_product(
