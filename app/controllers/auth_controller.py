@@ -47,20 +47,13 @@ def update_profile_controller(
         data=request
     )
 
-# SET SESSION COOKIE
+# SET SESSION COOKIE (Hỗ trợ cả HttpOnly Cookie và JSON Response cho Mobile)
 def set_session_cookie(
     response: Response,
     result: dict
 ):
-    access_token = result.pop(
-        "accessToken",
-        None
-    )
-
-    refresh_token = result.pop(
-        "refreshToken",
-        None
-    )
+    access_token = result.get("accessToken")
+    refresh_token = result.get("refreshToken")
 
     if access_token:
         set_access_cookie(
@@ -84,7 +77,6 @@ def register_controller(
         data=request
     )
 
-
 # SEND OTP
 def send_otp_controller(
     request: SendOTPRequest,
@@ -106,17 +98,11 @@ def verify_otp_controller(
         data=request
     )
 
-    if result.get(
-        "accessToken"
-    ):
+    if result.get("accessToken"):
         set_session_cookie(
             response=response,
             result=result
         )
-
-        return {
-            "success": True
-        }
 
     return result
 
@@ -153,8 +139,13 @@ def login_controller(
         result=result
     )
 
+    # Trả về accessToken, expiresIn, user cho Mobile Client
     return {
-        "success": True
+        "success": True,
+        "accessToken": result.get("accessToken"),
+        "expiresIn": result.get("expiresIn"),
+        "tokenType": result.get("tokenType", "bearer"),
+        "user": result.get("user")
     }
 
 # GOOGLE LOGIN
@@ -174,7 +165,11 @@ def google_login_controller(
     )
 
     return {
-        "success": True
+        "success": True,
+        "accessToken": result.get("accessToken"),
+        "expiresIn": result.get("expiresIn"),
+        "tokenType": result.get("tokenType", "bearer"),
+        "user": result.get("user")
     }
 
 # REFRESH TOKEN
@@ -200,7 +195,10 @@ def refresh_token_controller(
     )
 
     return {
-        "success": True
+        "success": True,
+        "accessToken": result.get("accessToken"),
+        "expiresIn": result.get("expiresIn"),
+        "tokenType": result.get("tokenType", "bearer")
     }
 
 # LOGOUT
@@ -215,19 +213,16 @@ def logout_controller(
                 db=db,
                 token=token
             )
-
     except HTTPException:
-        # Refresh token hết hạn / đã revoke
-        # vẫn cho phép logout
         db.rollback()
-
     finally:
         delete_auth_cookies(
             response=response
         )
 
     return {
-        "success": True
+        "success": True,
+        "message": "Đăng xuất thành công"
     }
 
 # CURRENT USER

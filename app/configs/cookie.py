@@ -89,7 +89,7 @@ def set_refresh_cookie(
             * 60
             * 60
         ),
-        path="/api/auth"
+        path="/api/v1"
     )
 
 
@@ -112,7 +112,7 @@ def delete_refresh_cookie(
 ):
     response.delete_cookie(
         key=JWT_COOKIE_NAME,
-        path="/api/auth",
+        path="/api/v1",
         httponly=JWT_COOKIE_HTTPONLY,
         secure=JWT_COOKIE_SECURE,
         samesite=JWT_COOKIE_SAMESITE

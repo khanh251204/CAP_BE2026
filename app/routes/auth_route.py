@@ -44,7 +44,7 @@ from app.controllers.auth_controller import (
 )
 
 router = APIRouter(
-    prefix="/api/auth",
+    prefix="/api/v1",
     tags=["Authentication"]
 )
 
@@ -147,7 +147,7 @@ def google_callback(
         # Construct the redirect URI dynamically to match the current domain (e.g. cloudflare tunnel)
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         host = request.headers.get("x-forwarded-host", request.url.netloc)
-        redirect_uri = f"{scheme}://{host}/api/auth/google/callback"
+        redirect_uri = f"{scheme}://{host}/api/v1/google/callback"
 
         parts = state.split("|")
         local_redirect = parts[0]
