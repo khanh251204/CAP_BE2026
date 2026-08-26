@@ -49,7 +49,7 @@ def get_transaction_by_id(
     return TransactionController.get_transaction_by_id(
         db=db,
         user_id=user_id,
-        transaction_id=transaction_id
+        transaction_id=transaction_id                                               
     )
 
 @transaction_router.post("/transaction")
