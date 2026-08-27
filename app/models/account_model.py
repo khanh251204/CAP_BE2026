@@ -21,7 +21,8 @@ class Account(Base):
         Enum (
             "CASH",
             "BANK",
-            "E-WALLET"
+            "E-WALLET",
+            "null"
         ),
         nullable=False
     )

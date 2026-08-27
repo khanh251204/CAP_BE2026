@@ -6,16 +6,14 @@ from app.controllers.transaction_controller import (
     TransactionController
 )
 from app.schemas.transaction_schema import TransactionCreateRequest
+from app.schemas.transaction_schema import TransactionUpdateRequest
 from app.configs.jwt import get_current_user_id
 
 
-transaction_router = APIRouter(
-    prefix="/api/transactions",
-    tags=["Transactions"]
-)
+transaction_router = APIRouter()
 
 
-@transaction_router.get("")
+@transaction_router.get("/transactions")
 def get_transactions(
     page: int = Query(
         default=1,
@@ -40,7 +38,7 @@ def get_transactions(
     )
 
 
-@transaction_router.get("/{transaction_id}")
+@transaction_router.get("/transaction/{transaction_id}")
 def get_transaction_by_id(
     transaction_id: int,
 
@@ -55,7 +53,7 @@ def get_transaction_by_id(
         transaction_id=transaction_id
     )
 
-@transaction_router.post("/")
+@transaction_router.post("/transaction")
 def save_transaction(
     request: TransactionCreateRequest,
     db: Session = Depends(get_db),
@@ -101,3 +99,31 @@ def save_transaction(
         return {"success": False, "message": f"Thiếu thông tin: {str(ve)}"}
     except Exception as e:
         return {"success": False, "message": f"Lưu database thất bại: {str(e)}"}
+
+
+@transaction_router.put("/transaction/{transaction_id}")
+def update_transaction(
+    transaction_id: int,
+    request: TransactionUpdateRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return TransactionController.update_transaction(
+        db=db,
+        user_id=user_id,
+        transaction_id=transaction_id,
+        data=request.model_dump(exclude_none=True)
+    )
+
+
+@transaction_router.delete("/transaction/{transaction_id}")
+def delete_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return TransactionController.delete_transaction(
+        db=db,
+        user_id=user_id,
+        transaction_id=transaction_id
+    )

@@ -66,7 +66,8 @@ class TransactionRepository:
                 joinedload(Transaction.inventory_transaction),
             )
             .filter(
-                Transaction.user_id == user_id
+                Transaction.user_id == user_id,
+                
             )
         )
 
@@ -108,7 +109,8 @@ class TransactionRepository:
             )
             .filter(
                 Transaction.transaction_id == transaction_id,
-                Transaction.user_id == user_id
+                Transaction.user_id == user_id,
+                
             )
             .first()
         )

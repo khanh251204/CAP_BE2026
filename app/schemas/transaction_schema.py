@@ -1,5 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
+from decimal import Decimal
+from datetime import datetime
 
 class TransactionCreateRequest(BaseModel):
     
@@ -19,3 +21,29 @@ class TransactionCreateRequest(BaseModel):
     supplier: Optional[str] = None
     date: Optional[str] = None
     payment: Optional[str] = None
+
+
+class TransactionDetailUpdate(BaseModel):
+    product: str
+    quantity: Decimal
+    unit: str
+    unit_price: Decimal
+
+
+class TransactionUpdateRequest(BaseModel):
+    intent_id: Optional[int] = None
+    intent: Optional[str] = None
+
+    payment_status: Optional[str] = None
+    account_id: Optional[int] = None
+
+    customer: Optional[str] = None
+    supplier: Optional[str] = None
+
+    product: Optional[str] = None
+    quantity: Optional[Decimal] = None
+    unit: Optional[str] = None
+    unit_price: Optional[Decimal] = None
+
+    input_text: Optional[str] = None
+    transaction_date: Optional[datetime] = None

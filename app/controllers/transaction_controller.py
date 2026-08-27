@@ -1,6 +1,7 @@
 from app.services.transaction_service import (
     TransactionService
 )
+from sqlalchemy.orm import Session
 
 
 class TransactionController:
@@ -50,6 +51,34 @@ class TransactionController:
             user_id=user_id,
             transaction_id=transaction_id
         )
+
+    @staticmethod
+    def update_transaction(
+        db,
+        user_id: int,
+        transaction_id: int,
+        data: dict
+    ):
+        return TransactionService.update_transaction(
+            db=db,
+            user_id=user_id,
+            transaction_id=transaction_id,
+            data=data
+        )
+
+
+    @staticmethod
+    def delete_transaction(
+        db: Session,
+        user_id: int,
+        transaction_id: int
+    ):
+        return TransactionService.delete_transaction(
+            db=db,
+            user_id=user_id,
+            transaction_id=transaction_id
+        )
+
 
 
     
