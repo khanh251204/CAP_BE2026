@@ -10,6 +10,7 @@ from app.configs.jwt import get_current_user_id
 
 router = APIRouter()
 
+
 # ============================================================
 # AGENT
 # ============================================================
@@ -21,7 +22,7 @@ agent = Agent()
 # AGENT CONTEXT
 # ============================================================
 
-# Táº¡m thá»i lÆ°u context theo user
+# Tạm thời lưu context theo user
 agent_contexts: dict[int, AgentContext] = {}
 
 
@@ -43,7 +44,6 @@ async def agent_chat(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-
     # ========================================================
     # Validate text
     # ========================================================
@@ -52,7 +52,7 @@ async def agent_chat(
         return {
             "success": False,
             "status": "error",
-            "message": "Ná»™i dung khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng."
+            "message": "Nội dung không được để trống."
         }
 
     # ========================================================

@@ -11,7 +11,10 @@ from pydantic import (
 )
 
 
+# ============================================================
 # CREATE SUPPLIER
+# ============================================================
+
 class CreateSupplierRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
@@ -55,10 +58,7 @@ class CreateSupplierRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_string_to_none(
-        cls,
-        value
-    ):
+    def empty_string_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -72,10 +72,7 @@ class CreateSupplierRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_email_to_none(
-        cls,
-        value
-    ):
+    def empty_email_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -84,25 +81,23 @@ class CreateSupplierRequest(BaseModel):
 
         return value
 
-    @field_validator(
-        "name"
-    )
+    @field_validator("name")
     @classmethod
-    def validate_name(
-        cls,
-        value: str
-    ):
+    def validate_name(cls, value: str):
         value = value.strip()
 
         if len(value) < 2:
             raise ValueError(
-                "TÃªn nhÃ  cung cáº¥p pháº£i cÃ³ Ã­t nháº¥t 2 kÃ½ tá»±"
+                "Tên nhà cung cấp phải có ít nhất 2 ký tự"
             )
 
         return value
 
 
+# ============================================================
 # UPDATE SUPPLIER
+# ============================================================
+
 class UpdateSupplierRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
@@ -147,10 +142,7 @@ class UpdateSupplierRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_string_to_none(
-        cls,
-        value
-    ):
+    def empty_string_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -164,10 +156,7 @@ class UpdateSupplierRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_email_to_none(
-        cls,
-        value
-    ):
+    def empty_email_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -176,14 +165,9 @@ class UpdateSupplierRequest(BaseModel):
 
         return value
 
-    @field_validator(
-        "name"
-    )
+    @field_validator("name")
     @classmethod
-    def validate_name(
-        cls,
-        value
-    ):
+    def validate_name(cls, value):
         if value is None:
             return value
 
@@ -191,26 +175,25 @@ class UpdateSupplierRequest(BaseModel):
 
         if len(value) < 2:
             raise ValueError(
-                "TÃªn nhÃ  cung cáº¥p pháº£i cÃ³ Ã­t nháº¥t 2 kÃ½ tá»±"
+                "Tên nhà cung cấp phải có ít nhất 2 ký tự"
             )
 
         return value
 
-    @model_validator(
-        mode="after"
-    )
-    def validate_update_data(
-        self
-    ):
+    @model_validator(mode="after")
+    def validate_update_data(self):
         if not self.model_fields_set:
             raise ValueError(
-                "KhÃ´ng cÃ³ dá»¯ liá»‡u cáº§n cáº­p nháº­t"
+                "Không có dữ liệu cần cập nhật"
             )
 
         return self
 
 
+# ============================================================
 # SUPPLIER RESPONSE
+# ============================================================
+
 class SupplierResponse(BaseModel):
     supplierId: int
 
@@ -233,7 +216,10 @@ class SupplierResponse(BaseModel):
     updatedAt: Optional[datetime] = None
 
 
+# ============================================================
 # SUPPLIER LIST ITEM
+# ============================================================
+
 class SupplierListItemResponse(BaseModel):
     supplierId: int
 
@@ -248,7 +234,10 @@ class SupplierListItemResponse(BaseModel):
     totalDebt: float = 0
 
 
+# ============================================================
 # SUPPLIER SUMMARY
+# ============================================================
+
 class SupplierSummaryResponse(BaseModel):
     totalSuppliers: int = 0
 

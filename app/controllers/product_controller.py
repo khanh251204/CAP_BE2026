@@ -17,7 +17,7 @@ class ProductController:
         if not data:
             return {
                 "success": False,
-                "message": "KhÃ´ng tÃ¬m tháº¥y Product"
+                "message": "Không tìm thấy Product"
             }
 
         return {
@@ -64,7 +64,7 @@ class ProductController:
 
         return {
             "success": True,
-            "message": "Táº¡o Product thÃ nh cÃ´ng",
+            "message": "Tạo Product thành công",
             "data": product
         }
 
@@ -84,12 +84,12 @@ class ProductController:
         if not product:
             return {
                 "success": False,
-                "message": "KhÃ´ng tÃ¬m tháº¥y Product"
+                "message": "Không tìm thấy Product"
             }
 
         return {
             "success": True,
-            "message": "Cáº­p nháº­t Product thÃ nh cÃ´ng",
+            "message": "Cập nhật Product thành công",
             "data": product
         }
 
@@ -107,10 +107,10 @@ class ProductController:
         if not product:
             return {
                 "success": False,
-                "message": "KhÃ´ng tÃ¬m tháº¥y Product"
+                "message": "Không tìm thấy Product"
             }
 
         return {
             "success": True,
-            "message": "XÃ³a Product thÃ nh cÃ´ng"
+            "message": "Xóa Product thành công"
         }

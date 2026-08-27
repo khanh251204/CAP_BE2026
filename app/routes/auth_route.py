@@ -4,8 +4,11 @@
     Cookie,
     Depends,
     Response,
-    status
+    status,
+    Request
 )
+
+from fastapi.responses import RedirectResponse
 
 from sqlalchemy.orm import Session
 
@@ -132,8 +135,7 @@ def google_login_route(
     )
 
 
-from fastapi.responses import RedirectResponse
-from fastapi import Request
+
 from app.services.google_auth_service import exchange_code_for_id_token
 from app.services.auth_service import google_login
 

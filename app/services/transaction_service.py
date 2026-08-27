@@ -1,8 +1,15 @@
 ﻿from math import ceil
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc
+from datetime import datetime, timedelta
+from decimal import Decimal
+import unicodedata
 
-# IMPORT CÃC MODELS
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+# ==========================================================
+# IMPORT MODELS
+# ==========================================================
+
 from app.models.transaction_model import Transaction
 from app.models.transactionDetail_model import TransactionDetail
 from app.models.customer_model import Customer
@@ -12,21 +19,22 @@ from app.models.intent_model import Intent
 from app.models.inventory_model import InventoryTransaction
 from app.models.debt_model import Debt
 
-from app.models.intent_model import Intent
-from datetime import datetime, timedelta
-import unicodedata
-
+# ==========================================================
 # IMPORT REPOSITORIES
+# ==========================================================
+
 from app.repositories.transaction_repository import TransactionRepository
 from app.repositories.product_repository import (
     get_product_by_name,
     create_product
 )
-from decimal import Decimal
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
+
 
 class TransactionService:
+
+    # ==========================================================
+    # SAVE GROQ TRANSACTION
+    # ==========================================================
 
     @staticmethod
     def save_groq_transaction(
@@ -36,31 +44,60 @@ class TransactionService:
         groq_result: dict
     ):
 
+        # ==========================================================
+        # 1. LẤY KẾT QUẢ GROQ
+        # ==========================================================
 
-        # ==========================================================
-        # 1. Láº¤Y Káº¾T QUáº¢ GROQ
-        # ==========================================================
         def remove_accents(text: str) -> str:
             text = unicodedata.normalize("NFD", text)
+
             return "".join(
-                c for c in text
+                c
+                for c in text
                 if unicodedata.category(c) != "Mn"
+            )
+
+        analysis = groq_result.get(
+            "transaction_analysis",
+            {}
         )
 
-        analysis = groq_result.get("transaction_analysis", {})
-        entities = analysis.get("entities", {})
+        entities = analysis.get(
+            "entities",
+            {}
+        )
 
         groq_intent = (
-            analysis.get("intent", "")
+            analysis.get(
+                "intent",
+                ""
+            )
             .lower()
             .strip()
         )
 
         if not groq_intent:
-            raise ValueError("KhÃ´ng xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c intent")
+            raise ValueError(
+                "Không xác định được intent"
+            )
 
-        groq_intent = remove_accents(groq_intent)
-        groq_intent = groq_intent.replace(" ", "_")
+        # Chuyển intent tiếng Việt về dạng không dấu
+        # Ví dụ:
+        # "bán hàng" -> "ban_hang"
+        # "nhập hàng" -> "nhap_hang"
+
+        groq_intent = remove_accents(
+            groq_intent
+        )
+
+        groq_intent = groq_intent.replace(
+            " ",
+            "_"
+        )
+
+        # ==========================================================
+        # TÌM INTENT TRONG DATABASE
+        # ==========================================================
 
         db_intent = (
             db.query(Intent)
@@ -72,13 +109,13 @@ class TransactionService:
 
         if not db_intent:
             raise ValueError(
-                f"Intent '{groq_intent}' khÃ´ng tá»“n táº¡i trong database"
+                f"Intent '{groq_intent}' không tồn tại trong database"
             )
 
         intent_id = db_intent.intent_id
 
         # ==========================================================
-        # 2. Láº¤Y ENTITIES
+        # 2. LẤY ENTITIES
         # ==========================================================
 
         product_name = entities.get("product")
@@ -87,52 +124,69 @@ class TransactionService:
         unit = entities.get("unit")
 
         payment_method = entities.get("payment")
-        customer_name = entities.get("customer")
-        supplier_name = entities.get("supplier")
 
-        nlp_date = entities.get("date")
+        customer_name = entities.get(
+            "customer"
+        )
+
+        supplier_name = entities.get(
+            "supplier"
+        )
+
+        nlp_date = entities.get(
+            "date"
+        )
 
         # ==========================================================
-        # 3. Xá»¬ LÃ NGÃ€Y
+        # 3. XỬ LÝ NGÀY
         # ==========================================================
 
         transaction_date = datetime.now()
 
         if nlp_date:
 
-            date_text = str(nlp_date).lower().strip()
+            date_text = (
+                str(nlp_date)
+                .lower()
+                .strip()
+            )
 
-            if "hÃ´m qua" in date_text:
+            if "hôm qua" in date_text:
 
                 transaction_date = (
-                    datetime.now() - timedelta(days=1)
+                    datetime.now()
+                    - timedelta(days=1)
                 )
 
-            elif "hÃ´m kia" in date_text:
+            elif "hôm kia" in date_text:
 
                 transaction_date = (
-                    datetime.now() - timedelta(days=2)
+                    datetime.now()
+                    - timedelta(days=2)
                 )
 
-            elif "ngÃ y mai" in date_text:
+            elif "ngày mai" in date_text:
 
                 transaction_date = (
-                    datetime.now() + timedelta(days=1)
+                    datetime.now()
+                    + timedelta(days=1)
                 )
 
             else:
 
                 try:
 
-                    transaction_date = datetime.fromisoformat(
-                        date_text[:10]
+                    transaction_date = (
+                        datetime.fromisoformat(
+                            date_text[:10]
+                        )
                     )
 
                 except Exception:
                     pass
 
         # ==========================================================
-        # 4. XÃC Äá»ŠNH LOáº I INTENT
+        # 4. XÁC ĐỊNH LOẠI INTENT
         # ==========================================================
 
         SALES_INTENTS = {
@@ -151,27 +205,26 @@ class TransactionService:
 
         MONEY_OUT_INTENTS = {
             "chi_tien",
-            "hÃ ng_há»ng",
+            "hang_hong",
             "hoan_tien"
         }
 
-        MONEY_OUT_DEBT_INTENTS ={
+        MONEY_OUT_DEBT_INTENTS = {
             "tra_no_phai_tra",
             "tra_no_nha_cung_cap"
         }
 
         RECEIVABLE_DEBT_INTENTS = {
             "ghi_no_phai_thu",
-            "ghi_no_khach_hang",
-
+            "ghi_no_khach_hang"
         }
 
         PAYABLE_DEBT_INTENTS = {
             "ghi_no_phai_tra",
             "ghi_no_nha_cung_cap"
-
         }
-        TRANFER_INTENTS= {
+
+        TRANSFER_INTENTS = {
             "chuyen_tien"
         }
 
@@ -183,162 +236,187 @@ class TransactionService:
 
             if not product_name:
                 raise ValueError(
-                    "BÃ¡n hÃ ng pháº£i cÃ³ product"
+                    "Bán hàng phải có product"
                 )
 
             if not quantity:
                 raise ValueError(
-                    "BÃ¡n hÃ ng pháº£i cÃ³ quantity"
+                    "Bán hàng phải có quantity"
                 )
 
             if not price:
                 raise ValueError(
-                    "BÃ¡n hÃ ng pháº£i cÃ³ price"
+                    "Bán hàng phải có price"
                 )
+
             if not unit:
                 raise ValueError(
-                    "Nháº­p hÃ ng pháº£i cÃ³ unit"
+                    "Bán hàng phải có unit"
                 )
 
         elif groq_intent in PURCHASE_INTENTS:
 
             if not product_name:
                 raise ValueError(
-                    "Nháº­p hÃ ng pháº£i cÃ³ product"
+                    "Nhập hàng phải có product"
                 )
 
             if not quantity:
                 raise ValueError(
-                    "Nháº­p hÃ ng pháº£i cÃ³ quantity"
+                    "Nhập hàng phải có quantity"
                 )
 
             if not price:
                 raise ValueError(
-                    "Nháº­p hÃ ng pháº£i cÃ³ price"
+                    "Nhập hàng phải có price"
                 )
+
             if not unit:
                 raise ValueError(
-                    "Nháº­p hÃ ng pháº£i cÃ³ unit"
+                    "Nhập hàng phải có unit"
                 )
 
         elif groq_intent in MONEY_IN_INTENTS:
 
             if not customer_name:
                 raise ValueError(
-                    "Thu tiá»n pháº£i cÃ³ khÃ¡ch hÃ ng"
+                    "Thu tiền phải có khách hàng"
                 )
+
             if not price:
                 raise ValueError(
-                    "Thu tiá»n pháº£i cÃ³ amount"
+                    "Thu tiền phải có amount"
                 )
 
         elif groq_intent in MONEY_OUT_INTENTS:
 
             if not price:
                 raise ValueError(
-                    "Chi tiá»n pháº£i cÃ³ amount"
+                    "Chi tiền phải có amount"
                 )
 
         elif groq_intent in MONEY_OUT_DEBT_INTENTS:
 
             if not supplier_name:
                 raise ValueError(
-                    "Pháº£i cÃ³ nhÃ  cung cáº¥p"
+                    "Phải có nhà cung cấp"
                 )
 
             if not price:
                 raise ValueError(
-                    "Pháº£i cÃ³ giÃ¡ tiá»n"
+                    "Phải có giá tiền"
                 )
 
         elif groq_intent in RECEIVABLE_DEBT_INTENTS:
 
             if not price:
                 raise ValueError(
-                    "Ghi ná»£ pháº£i thu pháº£i cÃ³ amount"
+                    "Ghi nợ phải thu phải có amount"
                 )
-
 
             if not customer_name:
                 raise ValueError(
-                    "Ghi ná»£ pháº£i thu pháº£i cÃ³ customer"
+                    "Ghi nợ phải thu phải có customer"
                 )
 
         elif groq_intent in PAYABLE_DEBT_INTENTS:
 
             if not price:
                 raise ValueError(
-                    "Ghi ná»£ pháº£i tráº£ pháº£i cÃ³ amount"
+                    "Ghi nợ phải trả phải có amount"
                 )
 
             if not supplier_name:
                 raise ValueError(
-                    "Ghi ná»£ pháº£i tráº£ pháº£i cÃ³ supplier"
+                    "Ghi nợ phải trả phải có supplier"
                 )
 
-
-
         # ==========================================================
-        # 6. TÃNH TIá»€N
+        # 6. TÍNH TIỀN
         # ==========================================================
 
-        total_amount = Decimal(str(price or 0))
+        total_amount = Decimal(
+            str(price or 0)
+        )
 
-
-
-        qty = Decimal(str(quantity or 1))
+        qty = Decimal(
+            str(quantity or 1)
+        )
 
         if qty <= 0:
-            raise ValueError("Quantity pháº£i lá»›n hÆ¡n 0")
+            raise ValueError(
+                "Quantity phải lớn hơn 0"
+            )
 
         unit_price = (
             total_amount / qty
         )
 
         # ==========================================================
-        # 7. Xá»¬ LÃ ACCOUNT
+        # 7. XỬ LÝ ACCOUNT
         # ==========================================================
 
         db_account = None
+
         account_id = None
 
-        # Ghi ná»£ â†’ chÆ°a thanh toÃ¡n â†’ khÃ´ng gáº¯n tÃ i khoáº£n
+        # ==========================================================
+        # GHI NỢ
+        # Chưa thanh toán -> không gắn tài khoản
+        # ==========================================================
+
         if groq_intent in [
             "ghi_no_phai_thu",
             "ghi_no_khach_hang",
             "ghi_no_phai_tra",
             "ghi_no_nha_cung_cap"
         ]:
+
             account_id = None
 
         else:
-            # CÃ³ thanh toÃ¡n â†’ xÃ¡c Ä‘á»‹nh tÃ i khoáº£n
+
+            # ======================================================
+            # CÓ THANH TOÁN -> XÁC ĐỊNH TÀI KHOẢN
+            # ======================================================
+
             if payment_method:
 
                 payment_lower = (
                     str(payment_method)
-            .lower()
+                    .lower()
                     .strip()
                 )
 
-                if "tiá»n máº·t" in payment_lower:
+                # Tiền mặt
+                if "tiền mặt" in payment_lower:
+
                     acc_type = "CASH"
 
+                # Chuyển khoản / ngân hàng
                 elif (
-                    "chuyá»ƒn khoáº£n" in payment_lower
-                    or "ngÃ¢n hÃ ng" in payment_lower
+                    "chuyển khoản" in payment_lower
+                    or "ngân hàng" in payment_lower
                 ):
+
                     acc_type = "BANK"
 
+                # Ví điện tử
                 elif (
                     "momo" in payment_lower
-                    or "vÃ­" in payment_lower
+                    or "ví" in payment_lower
                     or "zalopay" in payment_lower
                 ):
+
                     acc_type = "E-WALLET"
 
                 else:
+
                     acc_type = "CASH"
+
+                # ==================================================
+                # TÌM ACCOUNT
+                # ==================================================
 
                 db_account = (
                     db.query(Account)
@@ -349,18 +427,28 @@ class TransactionService:
                     .first()
                 )
 
+                # ==================================================
+                # NẾU CHƯA CÓ -> TẠO ACCOUNT
+                # ==================================================
+
                 if not db_account:
+
                     db_account = Account(
                         user_id=user_id,
-                        name=f"TÃ i khoáº£n {acc_type}",
+                        name=f"Tài khoản {acc_type}",
                         type=acc_type,
                         balance=0
                     )
 
-                    db.add(db_account)
+                    db.add(
+                        db_account
+                    )
+
                     db.flush()
 
-                account_id = db_account.account_id
+                account_id = (
+                    db_account.account_id
+                )
 
         # ==========================================================
         # 8. CUSTOMER
@@ -388,10 +476,15 @@ class TransactionService:
                     name=customer_name
                 )
 
-                db.add(db_customer)
+                db.add(
+                    db_customer
+                )
+
                 db.flush()
 
-            customer_id = db_customer.customer_id
+            customer_id = (
+                db_customer.customer_id
+            )
 
         # ==========================================================
         # 9. SUPPLIER
@@ -419,23 +512,35 @@ class TransactionService:
                     name=supplier_name
                 )
 
-                db.add(db_supplier)
+                db.add(
+                    db_supplier
+                )
+
                 db.flush()
 
-            supplier_id = db_supplier.supplier_id
+            supplier_id = (
+                db_supplier.supplier_id
+            )
 
         # ==========================================================
         # 10. PAYMENT STATUS
         # ==========================================================
 
+        unpaid_intents = [
+            "ghi_no_phai_thu",
+            "ghi_no_khach_hang",
+            "ghi_no_phai_tra",
+            "ghi_no_nha_cung_cap"
+        ]
+
         payment_status = (
-            "ChÆ°a thanh toÃ¡n"
-            if groq_intent in ["ghi_no_phai_thu", "ghi_no_khach_hang", "ghi_no_phai_tra", "ghi_no_nha_cung_cap"]
-        else "ÄÃ£ thanh toÃ¡n"
-)
+            "Chưa thanh toán"
+            if groq_intent in unpaid_intents
+            else "Đã thanh toán"
+        )
 
         # ==========================================================
-        # 11. Táº O TRANSACTION
+        # 11. TẠO TRANSACTION
         # ==========================================================
 
         new_transaction = Transaction(
@@ -464,10 +569,14 @@ class TransactionService:
             transaction_date=transaction_date
         )
 
-        db.add(new_transaction)
+        db.add(
+            new_transaction
+        )
 
-        # QUAN TRá»ŒNG:
-        # láº¥y transaction_id trÆ°á»›c khi táº¡o cÃ¡c báº£ng phá»¥
+        # ==========================================================
+        # QUAN TRỌNG
+        # Lấy transaction_id trước khi tạo bảng phụ
+        # ==========================================================
 
         db.flush()
 
@@ -485,6 +594,10 @@ class TransactionService:
                 name=product_name
             )
 
+            # ======================================================
+            # PRODUCT CHƯA TỒN TẠI
+            # ======================================================
+
             if not product:
 
                 product = create_product(
@@ -495,16 +608,27 @@ class TransactionService:
                     price=unit_price
                 )
 
+            # ======================================================
+            # PRODUCT ĐÃ TỒN TẠI
+            # ======================================================
+
             else:
 
-                product.unit_price = unit_price
+                product.unit_price = (
+                    unit_price
+                )
 
                 if unit:
-                    product.default_unit = unit
+
+                    product.default_unit = (
+                        unit
+                    )
 
                 db.flush()
 
-        # Chá»‰ táº¡o TransactionDetail náº¿u cÃ³ product
+        # ==========================================================
+        # CHỈ TẠO TRANSACTION DETAIL NẾU CÓ PRODUCT
+        # ==========================================================
 
         if product:
 
@@ -514,7 +638,9 @@ class TransactionService:
                     new_transaction.transaction_id
                 ),
 
-                product_id=product.product_id,
+                product_id=(
+                    product.product_id
+                ),
 
                 quantity=qty,
 
@@ -525,7 +651,9 @@ class TransactionService:
                 subtotal=total_amount
             )
 
-            db.add(detail)
+            db.add(
+                detail
+            )
 
             db.flush()
 
@@ -535,85 +663,123 @@ class TransactionService:
 
         if db_account:
 
-            # BÃN HÃ€NG + ÄÃƒ THANH TOÃN
-            if (
-                groq_intent == "ban_hang"
-            ):
+            # ======================================================
+            # BÁN HÀNG + ĐÃ THANH TOÁN
+            # ======================================================
 
-                db_account.balance += total_amount
+            if groq_intent == "ban_hang":
 
-            # THU TIá»€N
+                db_account.balance += (
+                    total_amount
+                )
+
+            # ======================================================
+            # THU TIỀN
+            # ======================================================
+
             elif groq_intent == "thu_tien":
 
-                db_account.balance += total_amount
+                db_account.balance += (
+                    total_amount
+                )
 
-            # THU Ná»¢
+            # ======================================================
+            # THU NỢ
+            # ======================================================
+
             elif groq_intent == "thu_no_phai_thu":
 
-                db_account.balance += total_amount
+                db_account.balance += (
+                    total_amount
+                )
+
             elif groq_intent == "thu_no_khach_hang":
 
-                db_account.balance += total_amount
+                db_account.balance += (
+                    total_amount
+                )
 
-            # NHáº¬P HÃ€NG + ÄÃƒ THANH TOÃN
-            elif (
-                groq_intent == "nhap_hang"
-            ):
+            # ======================================================
+            # NHẬP HÀNG + ĐÃ THANH TOÁN
+            # ======================================================
 
-                db_account.balance -= total_amount
+            elif groq_intent == "nhap_hang":
 
-            # CHI TIá»€N
+                db_account.balance -= (
+                    total_amount
+                )
+
+            # ======================================================
+            # CHI TIỀN
+            # ======================================================
+
             elif groq_intent == "chi_tien":
 
-                db_account.balance -= total_amount
+                db_account.balance -= (
+                    total_amount
+                )
 
-            # TRáº¢ Ná»¢
+            # ======================================================
+            # TRẢ NỢ
+            # ======================================================
+
             elif groq_intent == "tra_no_phai_tra":
 
-                db_account.balance -= total_amount
+                db_account.balance -= (
+                    total_amount
+                )
 
             elif groq_intent == "tra_no_nha_cung_cap":
 
-                db_account.balance -= total_amount
+                db_account.balance -= (
+                    total_amount
+                )
+
+            # ======================================================
+            # HOÀN TIỀN
+            # ======================================================
 
             elif groq_intent == "hoan_tien":
 
-                db_account.balance -= total_amount
+                db_account.balance -= (
+                    total_amount
+                )
+
+            # ======================================================
+            # HÀNG HỎNG
+            # ======================================================
 
             elif groq_intent == "hang_hong":
 
-                db_account.balance -= total_amount
-
-            elif groq_intent == "kiem_kho":
-
-                db_account = total_amount
-
-            elif groq_intent == "bao_cao":
-
-                db_account = total_amount
-            elif groq_intent == "chuyen_tien":
-
-                db_account = total_amount
-
-
+                db_account.balance -= (
+                    total_amount
+                )
 
         # ==========================================================
         # 14. INVENTORY TRANSACTION
         # ==========================================================
+
         inventory = None
+
         if product:
 
-            # -----------------------------
-            # BÃN HÃ€NG â†’ XUáº¤T KHO
-            # -----------------------------
+            # ======================================================
+            # LẤY TỒN KHO GẦN NHẤT
+            # ======================================================
+
             last_inventory = (
-                db.query(InventoryTransaction)
+                db.query(
+                    InventoryTransaction
+                )
                 .filter(
                     InventoryTransaction.user_id == user_id,
-                    InventoryTransaction.product_id == product.product_id
+                    InventoryTransaction.product_id
+                    == product.product_id
                 )
                 .order_by(
-                    InventoryTransaction.inventory_transaction_id.desc()
+                    InventoryTransaction
+                    .inventory_transaction_id
+                    .desc()
                 )
                 .first()
             )
@@ -623,51 +789,89 @@ class TransactionService:
                 if last_inventory
                 else 0
             )
-            print("QUANTITY BEFORE:", quantity_before)
 
-            if groq_intent in ["ban_hang","ghi_no_phai_thu","ghi_no_khach_hang"]:
+            print(
+                "QUANTITY BEFORE:",
+                quantity_before
+            )
 
-                # quantity_before = current_quantity
-                quantity_after = quantity_before - qty
+            # ======================================================
+            # BÁN HÀNG / GHI NỢ PHẢI THU
+            # -> XUẤT KHO
+            # ======================================================
 
-                if quantity_after < 0:
-                    raise ValueError(
-                        f"Sáº£n pháº©m '{product.name}' khÃ´ng Ä‘á»§ tá»“n kho"
+            if groq_intent in [
+                "ban_hang",
+                "ghi_no_phai_thu",
+                "ghi_no_khach_hang"
+            ]:
+
+                quantity_after = (
+                    quantity_before - qty
                 )
 
-            # product.quantity = quantity_after
+                if quantity_after < 0:
 
+                    raise ValueError(
+                        f"Sản phẩm '{product.name}' "
+                        "không đủ tồn kho"
+                    )
 
                 inventory = InventoryTransaction(
 
                     user_id=user_id,
-                    product_id=product.product_id,
+
+                    product_id=(
+                        product.product_id
+                    ),
+
                     transaction_id=(
                         new_transaction.transaction_id
                     ),
+
                     type="OUT",
+
                     quantity=qty,
+
                     unit=unit,
-                    quantity_before=quantity_before,
-                    quantity_after=quantity_after,
-                    note="Xuáº¥t kho do bÃ¡n hÃ ng"
+
+                    quantity_before=(
+                        quantity_before
+                    ),
+
+                    quantity_after=(
+                        quantity_after
+                    ),
+
+                    note="Xuất kho do bán hàng"
                 )
 
-                db.add(inventory)
+                db.add(
+                    inventory
+                )
 
-            # -----------------------------
-            # NHáº¬P HÃ€NG â†’ NHáº¬P KHO
-            # -----------------------------
+            # ======================================================
+            # NHẬP HÀNG / GHI NỢ PHẢI TRẢ
+            # -> NHẬP KHO
+            # ======================================================
 
-            elif groq_intent in [ "nhap_hang", "ghi_no_phai_tra", "ghi_no_nha_cung_cap"]:
-                # quantity_before = current_quantity
-                quantity_after = quantity_before + qty
-                # product.quantity = quantity_after
+            elif groq_intent in [
+                "nhap_hang",
+                "ghi_no_phai_tra",
+                "ghi_no_nha_cung_cap"
+            ]:
+
+                quantity_after = (
+                    quantity_before + qty
+                )
 
                 inventory = InventoryTransaction(
+
                     user_id=user_id,
 
-                    product_id=product.product_id,
+                    product_id=(
+                        product.product_id
+                    ),
 
                     transaction_id=(
                         new_transaction.transaction_id
@@ -679,36 +883,40 @@ class TransactionService:
 
                     unit=unit,
 
-                    quantity_before=quantity_before,
+                    quantity_before=(
+                        quantity_before
+                    ),
 
-                    quantity_after=quantity_after,
+                    quantity_after=(
+                        quantity_after
+                    ),
 
-                    note="Nháº­p kho tá»« giao dá»‹ch nháº­p hÃ ng"
+                    note="Nhập kho từ giao dịch nhập hàng"
                 )
 
-                db.add(inventory)
+                db.add(
+                    inventory
+                )
 
         db.flush()
 
         # ==========================================================
-        # 15. Táº O DEBT
+        # 15. TẠO DEBT
         # ==========================================================
 
         debt = None
 
-        # -----------------------------
-        # BÃN HÃ€NG CHÆ¯A THANH TOÃN
-        # â†’ KHÃCH Ná»¢ MÃŒNH
-        # -----------------------------
+        # ==========================================================
+        # BÁN HÀNG CHƯA THANH TOÁN
+        # -> KHÁCH NỢ MÌNH
+        # ==========================================================
 
-        if (
-            groq_intent == "ghi_no_khach_hang"
-        ):
+        if groq_intent == "ghi_no_khach_hang":
 
             if not customer_id:
 
                 raise ValueError(
-                    "pháº£i cÃ³ customer"
+                    "Phải có customer"
                 )
 
             debt = Debt(
@@ -716,31 +924,41 @@ class TransactionService:
                 transaction_id=(
                     new_transaction.transaction_id
                 ),
+
                 user_id=user_id,
+
                 customer_id=customer_id,
+
                 supplier_id=None,
+
                 direction="RECEIVABLE",
-                original_amount=total_amount,
-                remaining_amount=total_amount,
+
+                original_amount=(
+                    total_amount
+                ),
+
+                remaining_amount=(
+                    total_amount
+                ),
+
                 status="UNPAID"
             )
 
-            db.add(debt)
+            db.add(
+                debt
+            )
 
-        # -----------------------------
-        # NHáº¬P HÃ€NG CHÆ¯A THANH TOÃN
-        # â†’ MÃŒNH Ná»¢ NHÃ€ CUNG Cáº¤P
-        # -----------------------------
+        # ==========================================================
+        # NHẬP HÀNG CHƯA THANH TOÁN
+        # -> MÌNH NỢ NHÀ CUNG CẤP
+        # ==========================================================
 
-        elif (
-            groq_intent == "ghi_no_nha_cung_cap"
-
-        ):
+        elif groq_intent == "ghi_no_nha_cung_cap":
 
             if not supplier_id:
 
                 raise ValueError(
-                    "pháº£i cÃ³ supplier"
+                    "Phải có supplier"
                 )
 
             debt = Debt(
@@ -757,18 +975,24 @@ class TransactionService:
 
                 direction="PAYABLE",
 
-                original_amount=total_amount,
+                original_amount=(
+                    total_amount
+                ),
 
-                remaining_amount=total_amount,
+                remaining_amount=(
+                    total_amount
+                ),
 
                 status="UNPAID"
             )
 
-            db.add(debt)
+            db.add(
+                debt
+            )
 
-        # -----------------------------
-        # GHI Ná»¢ PHáº¢I THU
-        # -----------------------------
+        # ==========================================================
+        # GHI NỢ PHẢI THU
+        # ==========================================================
 
         elif groq_intent == "ghi_no_phai_thu":
 
@@ -786,18 +1010,24 @@ class TransactionService:
 
                 direction="RECEIVABLE",
 
-                original_amount=total_amount,
+                original_amount=(
+                    total_amount
+                ),
 
-                remaining_amount=total_amount,
+                remaining_amount=(
+                    total_amount
+                ),
 
                 status="UNPAID"
             )
 
-            db.add(debt)
+            db.add(
+                debt
+            )
 
-        # -----------------------------
-        # GHI Ná»¢ PHáº¢I TRáº¢
-        # -----------------------------
+        # ==========================================================
+        # GHI NỢ PHẢI TRẢ
+        # ==========================================================
 
         elif groq_intent == "ghi_no_phai_tra":
 
@@ -815,24 +1045,32 @@ class TransactionService:
 
                 direction="PAYABLE",
 
-                original_amount=total_amount,
+                original_amount=(
+                    total_amount
+                ),
 
-                remaining_amount=total_amount,
+                remaining_amount=(
+                    total_amount
+                ),
 
                 status="UNPAID"
             )
 
-            db.add(debt)
+            db.add(
+                debt
+            )
 
         db.flush()
 
         # ==========================================================
-        # 16. COMMIT TOÃ€N Bá»˜
+        # 16. COMMIT TOÀN BỘ
         # ==========================================================
 
         db.commit()
 
-        db.refresh(new_transaction)
+        db.refresh(
+            new_transaction
+        )
 
         # ==========================================================
         # 17. RETURN
@@ -843,6 +1081,7 @@ class TransactionService:
             "transaction_id": (
                 new_transaction.transaction_id
             ),
+
             "user_id": user_id,
 
             "intent_id": intent_id,
@@ -859,11 +1098,10 @@ class TransactionService:
                 else None
             ),
 
-            "inventory_transaction_id":(
+            "inventory_transaction_id": (
                 inventory.inventory_transaction_id
                 if inventory
                 else None
-
             ),
 
             "debt_id": (
@@ -872,17 +1110,23 @@ class TransactionService:
                 else None
             ),
 
-            "quantity": qty
+            "quantity": (
+                qty
                 if product
-                else None,
+                else None
+            ),
 
-            "unit": unit
+            "unit": (
+                unit
                 if product
-                else None,
+                else None
+            ),
 
-            "unit_price": unit_price
+            "unit_price": (
+                unit_price
                 if product
-                else None,
+                else None
+            ),
 
             "total_amount": total_amount,
 
@@ -897,7 +1141,9 @@ class TransactionService:
                 ""
             ),
 
-            "transaction_date": transaction_date,
+            "transaction_date": (
+                transaction_date
+            ),
 
             "created_at": (
                 new_transaction.created_at.isoformat()
@@ -912,7 +1158,10 @@ class TransactionService:
             )
         }
 
-    # list
+    # ==========================================================
+    # GET TRANSACTIONS
+    # ==========================================================
+
     @staticmethod
     def get_transactions(
         db: Session,
@@ -930,7 +1179,9 @@ class TransactionService:
             )
         )
 
-        total_pages = ceil(total / limit)
+        total_pages = (
+            ceil(total / limit)
+        )
 
         data = []
 
@@ -938,57 +1189,105 @@ class TransactionService:
 
             details = []
 
-            for detail in transaction.transaction_detail:
+            for detail in (
+                transaction.transaction_detail
+            ):
 
                 details.append({
-                    "detail_id": detail.detail_id,
-                    "quantity": float(detail.quantity),
+
+                    "detail_id": (
+                        detail.detail_id
+                    ),
+
+                    "quantity": float(
+                        detail.quantity
+                    ),
+
                     "unit": detail.unit,
-                    "unit_price": float(detail.unit_price),
-                    "subtotal": float(detail.subtotal),
-                    "product_id": detail.product_id,
+
+                    "unit_price": float(
+                        detail.unit_price
+                    ),
+
+                    "subtotal": float(
+                        detail.subtotal
+                    ),
+
+                    "product_id": (
+                        detail.product_id
+                    ),
+
                     "product": (
+
                         {
-                            "name": detail.product.name,
-                            "image": detail.product.img
+                            "name": (
+                                detail.product.name
+                            ),
+                            "image": (
+                                detail.product.img
+                            )
                         }
+
                         if detail.product
+
                         else None
                     )
                 })
 
             data.append({
-                "transaction_id": transaction.transaction_id,
+
+                "transaction_id": (
+                    transaction.transaction_id
+                ),
+
                 "intent": (
+
                     transaction.intent.name_intent
+
                     if transaction.intent
+
                     else None
                 ),
-                "account": (
-                    {
 
-                        "name": transaction.account.name,
-                        "type": transaction.account.type,
+                "account": (
+
+                    {
+                        "name": (
+                            transaction.account.name
+                        ),
+                        "type": (
+                            transaction.account.type
+                        )
                     }
+
                     if transaction.account
+
                     else None
                 ),
 
                 "customer": (
-                    {
 
-                        "name": transaction.customer.name,
+                    {
+                        "name": (
+                            transaction.customer.name
+                        )
                     }
+
                     if transaction.customer
+
                     else None
                 ),
 
                 "supplier": (
-                    {
 
-                        "name": transaction.supplier.name,
+                    {
+                        "name": (
+                            transaction.supplier.name
+                        )
                     }
+
                     if transaction.supplier
+
                     else None
                 ),
 
@@ -996,15 +1295,24 @@ class TransactionService:
                     transaction.total_amount
                 ),
 
-                "payment_status": transaction.payment_status,
+                "payment_status": (
+                    transaction.payment_status
+                ),
 
-                "input_method": transaction.input_method,
+                "input_method": (
+                    transaction.input_method
+                ),
 
-                "input_text": transaction.input_text,
+                "input_text": (
+                    transaction.input_text
+                ),
 
                 "transaction_date": (
+
                     transaction.transaction_date.isoformat()
+
                     if transaction.transaction_date
+
                     else None
                 ),
 
@@ -1012,14 +1320,21 @@ class TransactionService:
             })
 
         return {
+
             "items": data,
+
             "page": page,
+
             "limit": limit,
+
             "total": total,
+
             "total_pages": total_pages
         }
 
-
+    # ==========================================================
+    # GET TRANSACTION BY ID
+    # ==========================================================
 
     @staticmethod
     def get_transaction_by_id(
@@ -1037,66 +1352,115 @@ class TransactionService:
         )
 
         if not transaction:
+
             raise ValueError(
-            "KhÃ´ng tÃ¬m tháº¥y giao dá»‹ch"
+                "Không tìm thấy giao dịch"
             )
 
         details = []
 
-        for detail in transaction.transaction_detail:
+        for detail in (
+            transaction.transaction_detail
+        ):
 
             details.append({
-                "detail_id": detail.detail_id,
-                "product_id": detail.product_id,
-                "quantity": float(detail.quantity),
+
+                "detail_id": (
+                    detail.detail_id
+                ),
+
+                "product_id": (
+                    detail.product_id
+                ),
+
+                "quantity": float(
+                    detail.quantity
+                ),
+
                 "unit": detail.unit,
-                "unit_price": float(detail.unit_price),
-                "subtotal": float(detail.subtotal),
+
+                "unit_price": float(
+                    detail.unit_price
+                ),
+
+                "subtotal": float(
+                    detail.subtotal
+                ),
 
                 "product": (
+
                     {
-                        "name": detail.product.name,
-                        "image": detail.product.img
+                        "name": (
+                            detail.product.name
+                        ),
+                        "image": (
+                            detail.product.img
+                        )
                     }
+
                     if detail.product
+
                     else None
                 )
             })
 
         return {
-            "transaction_id": transaction.transaction_id,
+
+            "transaction_id": (
+                transaction.transaction_id
+            ),
 
             "intent": (
+
                 transaction.intent.name_intent
+
                 if transaction.intent
+
                 else None
             ),
 
             "account": (
+
                 {
-                    "account_id": transaction.account.account_id,
-                    "name": transaction.account.name,
-                    "type": transaction.account.type
+                    "account_id": (
+                        transaction.account.account_id
+                    ),
+                    "name": (
+                        transaction.account.name
+                    ),
+                    "type": (
+                        transaction.account.type
+                    )
                 }
+
                 if transaction.account
+
                 else None
             ),
 
             "customer": (
-                {
 
-                    "name": transaction.customer.name
+                {
+                    "name": (
+                        transaction.customer.name
+                    )
                 }
+
                 if transaction.customer
+
                 else None
             ),
 
             "supplier": (
-                {
 
-                    "name": transaction.supplier.name
+                {
+                    "name": (
+                        transaction.supplier.name
+                    )
                 }
+
                 if transaction.supplier
+
                 else None
             ),
 
@@ -1104,27 +1468,42 @@ class TransactionService:
                 transaction.total_amount
             ),
 
-            "payment_status": transaction.payment_status,
+            "payment_status": (
+                transaction.payment_status
+            ),
 
-            "input_method": transaction.input_method,
+            "input_method": (
+                transaction.input_method
+            ),
 
-            "input_text": transaction.input_text,
+            "input_text": (
+                transaction.input_text
+            ),
 
             "transaction_date": (
+
                 transaction.transaction_date.isoformat()
+
                 if transaction.transaction_date
+
                 else None
             ),
 
             "created_at": (
+
                 transaction.created_at.isoformat()
+
                 if transaction.created_at
+
                 else None
             ),
 
             "updated_at": (
+
                 transaction.updated_at.isoformat()
+
                 if transaction.updated_at
+
                 else None
             ),
 

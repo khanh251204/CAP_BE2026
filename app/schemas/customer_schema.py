@@ -11,7 +11,10 @@ from pydantic import (
 )
 
 
+# ============================================================
 # CREATE CUSTOMER
+# ============================================================
+
 class CreateCustomerRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
@@ -43,10 +46,7 @@ class CreateCustomerRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_string_to_none(
-        cls,
-        value
-    ):
+    def empty_string_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -60,10 +60,7 @@ class CreateCustomerRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_email_to_none(
-        cls,
-        value
-    ):
+    def empty_email_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -72,25 +69,23 @@ class CreateCustomerRequest(BaseModel):
 
         return value
 
-    @field_validator(
-        "name"
-    )
+    @field_validator("name")
     @classmethod
-    def validate_name(
-        cls,
-        value: str
-    ):
+    def validate_name(cls, value: str):
         value = value.strip()
 
         if len(value) < 2:
             raise ValueError(
-                "TÃªn khÃ¡ch hÃ ng pháº£i cÃ³ Ã­t nháº¥t 2 kÃ½ tá»±"
+                "Tên khách hàng phải có ít nhất 2 ký tự"
             )
 
         return value
 
 
+# ============================================================
 # UPDATE CUSTOMER
+# ============================================================
+
 class UpdateCustomerRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid"
@@ -123,10 +118,7 @@ class UpdateCustomerRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_string_to_none(
-        cls,
-        value
-    ):
+    def empty_string_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -140,10 +132,7 @@ class UpdateCustomerRequest(BaseModel):
         mode="before"
     )
     @classmethod
-    def empty_email_to_none(
-        cls,
-        value
-    ):
+    def empty_email_to_none(cls, value):
         if isinstance(value, str):
             value = value.strip()
 
@@ -152,14 +141,9 @@ class UpdateCustomerRequest(BaseModel):
 
         return value
 
-    @field_validator(
-        "name"
-    )
+    @field_validator("name")
     @classmethod
-    def validate_name(
-        cls,
-        value
-    ):
+    def validate_name(cls, value):
         if value is None:
             return value
 
@@ -167,26 +151,25 @@ class UpdateCustomerRequest(BaseModel):
 
         if len(value) < 2:
             raise ValueError(
-                "TÃªn khÃ¡ch hÃ ng pháº£i cÃ³ Ã­t nháº¥t 2 kÃ½ tá»±"
+                "Tên khách hàng phải có ít nhất 2 ký tự"
             )
 
         return value
 
-    @model_validator(
-        mode="after"
-    )
-    def validate_update_data(
-        self
-    ):
+    @model_validator(mode="after")
+    def validate_update_data(self):
         if not self.model_fields_set:
             raise ValueError(
-                "KhÃ´ng cÃ³ dá»¯ liá»‡u cáº§n cáº­p nháº­t"
+                "Không có dữ liệu cần cập nhật"
             )
 
         return self
 
 
+# ============================================================
 # CUSTOMER RESPONSE
+# ============================================================
+
 class CustomerResponse(BaseModel):
     customerId: int
 
@@ -205,7 +188,10 @@ class CustomerResponse(BaseModel):
     updatedAt: Optional[datetime] = None
 
 
+# ============================================================
 # CUSTOMER LIST ITEM
+# ============================================================
+
 class CustomerListItemResponse(BaseModel):
     customerId: int
 
@@ -218,7 +204,10 @@ class CustomerListItemResponse(BaseModel):
     totalDebt: float = 0
 
 
+# ============================================================
 # CUSTOMER SUMMARY
+# ============================================================
+
 class CustomerSummaryResponse(BaseModel):
     totalCustomers: int = 0
 

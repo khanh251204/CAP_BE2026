@@ -1,4 +1,4 @@
-﻿import os
+import os
 import hmac
 import hashlib
 import secrets
@@ -28,6 +28,10 @@ from app.services.email_service import (
 load_dotenv()
 
 
+# ============================================================
+# OTP CONFIGURATION
+# ============================================================
+
 OTP_EXPIRE_MINUTES = int(
     os.getenv(
         "OTP_EXPIRE_MINUTES",
@@ -48,7 +52,7 @@ JWT_SECRET_KEY = os.getenv(
 
 if not JWT_SECRET_KEY:
     raise RuntimeError(
-        "JWT_SECRET_KEY chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh"
+        "JWT_SECRET_KEY chưa được cấu hình"
     )
 
 
@@ -61,9 +65,17 @@ ALLOWED_PURPOSES = {
 }
 
 
+# ============================================================
+# GENERATE OTP
+# ============================================================
+
 def _generate_otp() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
+
+# ============================================================
+# HASH OTP
+# ============================================================
 
 def _hash_otp(
     email: str,
@@ -81,6 +93,10 @@ def _hash_otp(
         hashlib.sha256
     ).hexdigest()
 
+
+# ============================================================
+# CHECK RESEND COOLDOWN
+# ============================================================
 
 def _check_cooldown(
     db: Session,
@@ -114,11 +130,15 @@ def _check_cooldown(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
-                "message": "Vui lÃ²ng chá» trÆ°á»›c khi gá»­i láº¡i OTP",
+                "message": "Vui lòng chờ trước khi gửi lại OTP",
                 "resendAfter": remaining
             }
         )
 
+
+# ============================================================
+# SEND OTP
+# ============================================================
 
 def send_otp(
     db: Session,
@@ -129,7 +149,7 @@ def send_otp(
 
     if purpose not in ALLOWED_PURPOSES:
         raise ValueError(
-            "OTP purpose khÃ´ng há»£p lá»‡"
+            "OTP purpose không hợp lệ"
         )
 
     email = user.email.strip().lower()
@@ -140,20 +160,24 @@ def send_otp(
         purpose
     )
 
+    # Vô hiệu hóa các OTP cũ
     invalidate_old_otps(
         db,
         email=email,
         purpose=purpose
     )
 
+    # Tạo OTP mới
     code = _generate_otp()
 
+    # Hash OTP trước khi lưu vào database
     otp_hash = _hash_otp(
         email,
         purpose,
         code
     )
 
+    # Thời gian hết hạn OTP
     expires_at = (
         datetime.utcnow()
         + timedelta(
@@ -170,6 +194,7 @@ def send_otp(
         expires_at=expires_at
     )
 
+    # Gửi OTP qua email
     send_otp_email(
         to_email=email,
         otp_code=code,
@@ -187,6 +212,10 @@ def send_otp(
     }
 
 
+# ============================================================
+# VERIFY OTP
+# ============================================================
+
 def verify_otp(
     db: Session,
     *,
@@ -197,11 +226,12 @@ def verify_otp(
 
     if purpose not in ALLOWED_PURPOSES:
         raise ValueError(
-            "OTP purpose khÃ´ng há»£p lá»‡"
+            "OTP purpose không hợp lệ"
         )
 
     email = user.email.strip().lower()
 
+    # Lấy OTP còn hiệu lực mới nhất
     otp = get_latest_valid_otp(
         db,
         email=email,
@@ -213,35 +243,49 @@ def verify_otp(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "MÃ£ OTP khÃ´ng há»£p lá»‡ "
-                "hoáº·c Ä‘Ã£ háº¿t háº¡n"
+                "Mã OTP không hợp lệ "
+                "hoặc đã hết hạn"
             )
         )
 
+    # Kiểm tra OTP có thuộc đúng tài khoản hay không
     if (
         otp.user_id is not None
         and otp.user_id != user.user_id
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="MÃ£ OTP khÃ´ng há»£p lá»‡"
+            detail="Mã OTP không hợp lệ"
         )
 
+    # Hash OTP người dùng nhập vào
     incoming_hash = _hash_otp(
         email,
         purpose,
         code
     )
 
+    # So sánh hash an toàn
     if not hmac.compare_digest(
         incoming_hash,
         otp.otp_hash
     ):
+        otp.attempts += 1
+        if otp.attempts >= 5:
+            otp.is_used = True
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã OTP đã bị vô hiệu hóa do nhập sai quá 5 lần. Vui lòng gửi lại mã mới."
+            )
+        db.commit()
+        remaining = 5 - otp.attempts
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="MÃ£ OTP khÃ´ng chÃ­nh xÃ¡c"
+            detail=f"Mã OTP không chính xác. Bạn còn {remaining} lần thử."
         )
 
+    # Đánh dấu OTP đã được sử dụng
     mark_otp_used(
         db,
         otp

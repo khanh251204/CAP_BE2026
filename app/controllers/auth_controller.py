@@ -35,7 +35,11 @@ from app.services.auth_service import (
     update_profile
 )
 
+
+# ============================================================
 # UPDATE PROFILE
+# ============================================================
+
 def update_profile_controller(
     request: UpdateProfileRequest,
     payload: dict,
@@ -47,7 +51,12 @@ def update_profile_controller(
         data=request
     )
 
-# SET SESSION COOKIE (Há»— trá»£ cáº£ HttpOnly Cookie vÃ  JSON Response cho Mobile)
+
+# ============================================================
+# SET SESSION COOKIE
+# Hỗ trợ cả HttpOnly Cookie và JSON Response cho Mobile
+# ============================================================
+
 def set_session_cookie(
     response: Response,
     result: dict
@@ -67,7 +76,11 @@ def set_session_cookie(
             token=refresh_token
         )
 
+
+# ============================================================
 # REGISTER
+# ============================================================
+
 def register_controller(
     request: RegisterRequest,
     db: Session
@@ -77,7 +90,11 @@ def register_controller(
         data=request
     )
 
+
+# ============================================================
 # SEND OTP
+# ============================================================
+
 def send_otp_controller(
     request: SendOTPRequest,
     db: Session
@@ -87,7 +104,11 @@ def send_otp_controller(
         data=request
     )
 
+
+# ============================================================
 # VERIFY OTP
+# ============================================================
+
 def verify_otp_controller(
     request: VerifyOTPRequest,
     response: Response,
@@ -106,7 +127,11 @@ def verify_otp_controller(
 
     return result
 
+
+# ============================================================
 # RESET PASSWORD
+# ============================================================
+
 def reset_password_controller(
     request: ResetPasswordRequest,
     response: Response,
@@ -123,7 +148,11 @@ def reset_password_controller(
 
     return result
 
+
+# ============================================================
 # LOGIN
+# ============================================================
+
 def login_controller(
     request: LoginRequest,
     response: Response,
@@ -139,7 +168,7 @@ def login_controller(
         result=result
     )
 
-    # Tráº£ vá» accessToken, refreshToken, expiresIn, user cho Mobile Client
+    # Trả về accessToken, refreshToken, expiresIn và user cho Mobile Client
     return {
         "success": True,
         "accessToken": result.get("accessToken"),
@@ -149,7 +178,11 @@ def login_controller(
         "user": result.get("user")
     }
 
+
+# ============================================================
 # GOOGLE LOGIN
+# ============================================================
+
 def google_login_controller(
     request: GoogleLoginRequest,
     response: Response,
@@ -174,7 +207,11 @@ def google_login_controller(
         "user": result.get("user")
     }
 
+
+# ============================================================
 # REFRESH TOKEN
+# ============================================================
+
 def refresh_token_controller(
     token: str | None,
     response: Response,
@@ -183,7 +220,7 @@ def refresh_token_controller(
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token khÃ´ng tá»“n táº¡i"
+            detail="Refresh token không tồn tại"
         )
 
     result = refresh_access_token(
@@ -204,7 +241,11 @@ def refresh_token_controller(
         "tokenType": result.get("tokenType", "bearer")
     }
 
+
+# ============================================================
 # LOGOUT
+# ============================================================
+
 def logout_controller(
     token: str | None,
     response: Response,
@@ -216,8 +257,10 @@ def logout_controller(
                 db=db,
                 token=token
             )
+
     except HTTPException:
         db.rollback()
+
     finally:
         delete_auth_cookies(
             response=response
@@ -225,10 +268,14 @@ def logout_controller(
 
     return {
         "success": True,
-        "message": "ÄÄƒng xuáº¥t thÃ nh cÃ´ng"
+        "message": "Đăng xuất thành công"
     }
 
+
+# ============================================================
 # CURRENT USER
+# ============================================================
+
 def me_controller(
     payload: dict,
     db: Session

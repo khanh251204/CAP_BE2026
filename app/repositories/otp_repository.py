@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -14,12 +14,6 @@ def create_otp(
     purpose: str,
     expires_at: datetime
 ) -> OTPCode:
-    """
-    Táº¡o OTP má»›i.
-
-    KhÃ´ng commit táº¡i Repository.
-    Service sáº½ quáº£n lÃ½ transaction.
-    """
 
     otp = OTPCode(
         user_id=user_id,
@@ -27,7 +21,8 @@ def create_otp(
         otp_hash=otp_hash,
         purpose=purpose,
         expires_at=expires_at,
-        is_used=False
+        is_used=False,
+        created_at=datetime.utcnow()
     )
 
     db.add(otp)
@@ -42,9 +37,6 @@ def get_latest_otp(
     email: str,
     purpose: str
 ) -> OTPCode | None:
-    """
-    Láº¥y OTP má»›i nháº¥t theo email + purpose.
-    """
 
     return (
         db.query(OTPCode)
@@ -67,13 +59,6 @@ def get_latest_valid_otp(
     purpose: str,
     now: datetime
 ) -> OTPCode | None:
-    """
-    Láº¥y OTP má»›i nháº¥t:
-    - Ä‘Ãºng email
-    - Ä‘Ãºng purpose
-    - chÆ°a sá»­ dá»¥ng
-    - chÆ°a háº¿t háº¡n
-    """
 
     return (
         db.query(OTPCode)
@@ -95,9 +80,6 @@ def mark_otp_used(
     db: Session,
     otp: OTPCode
 ) -> OTPCode:
-    """
-    ÄÃ¡nh dáº¥u OTP Ä‘Ã£ sá»­ dá»¥ng.
-    """
 
     otp.is_used = True
 
@@ -112,12 +94,6 @@ def invalidate_old_otps(
     email: str,
     purpose: str
 ) -> int:
-    """
-    VÃ´ hiá»‡u hÃ³a táº¥t cáº£ OTP cÅ© chÆ°a sá»­ dá»¥ng
-    trÆ°á»›c khi táº¡o OTP má»›i.
-
-    Tráº£ vá» sá»‘ báº£n ghi bá»‹ update.
-    """
 
     updated_rows = (
         db.query(OTPCode)

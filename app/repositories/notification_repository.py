@@ -11,14 +11,14 @@ class NotificationRepository:
     def get_all(user_id: str):
         str_user_id = str(user_id)
 
-        # ThÃ´ng bÃ¡o cÃ¡ nhÃ¢n
+        # Thông báo cá nhân
         personal_docs = (
             db.collection("notifications")
             .where("userId", "==", str_user_id)
             .stream()
         )
 
-        # ThÃ´ng bÃ¡o cho táº¥t cáº£
+        # Thông báo cho tất cả
         global_docs = (
             db.collection("notifications")
             .where("userId", "==", "ALL")
@@ -35,7 +35,7 @@ class NotificationRepository:
 
             data["id"] = doc.id
 
-            # Äáº£m báº£o luÃ´n cÃ³ isRead
+            # Đảm bảo luôn có isRead
             data["isRead"] = bool(
                 data.get("isRead", False)
             )
@@ -113,7 +113,7 @@ class NotificationRepository:
 
             "userId": target_user,
 
-            # Notification cÃ¡ nhÃ¢n
+            # Notification cá nhân
             "isRead": False,
 
             # Notification ALL
@@ -166,7 +166,7 @@ class NotificationRepository:
         str_user_id = str(user_id)
 
         # =================================================
-        # Láº¤Y DOCUMENT
+        # LẤY DOCUMENT
         # =================================================
         doc_ref = (
             db.collection("notifications")
@@ -176,18 +176,18 @@ class NotificationRepository:
         doc = doc_ref.get()
 
         # =================================================
-        # KHÃ”NG TÃŒM THáº¤Y
+        # KHÔNG TÌM THẤY
         # =================================================
         if not doc.exists:
             return {
                 "success": False,
-                "message": "KhÃ´ng tÃ¬m tháº¥y thÃ´ng bÃ¡o"
+                "message": "Không tìm thấy thông báo"
             }
 
         data = doc.to_dict() or {}
 
         # =================================================
-        # THÃ”NG BÃO ALL
+        # THÔNG BÁO ALL
         # =================================================
         if str(data.get("userId")) == "ALL":
 
@@ -204,7 +204,7 @@ class NotificationRepository:
                 for uid in read_by
             ]
 
-            # ChÆ°a Ä‘á»c
+            # Chưa đọc
             if str_user_id not in read_by:
                 read_by.append(str_user_id)
 
@@ -212,7 +212,7 @@ class NotificationRepository:
                     "readByUsers": read_by
                 })
 
-            # ÄÃ£ Ä‘á»c rá»“i cÅ©ng SUCCESS
+            # Đã đọc rồi cũng SUCCESS
             return {
                 "success": True,
                 "id": notification_id,
@@ -220,20 +220,22 @@ class NotificationRepository:
             }
 
         # =================================================
-        # THÃ”NG BÃO CÃ NHÃ‚N
+        # THÔNG BÁO CÁ NHÂN
         # =================================================
         notification_user_id = str(
             data.get("userId")
         )
 
-        # KhÃ´ng thuá»™c user hiá»‡n táº¡i
+        # Không thuộc user hiện tại
         if notification_user_id != str_user_id:
             return {
                 "success": False,
-                "message": "Báº¡n khÃ´ng cÃ³ quyá»n Ä‘á»c thÃ´ng bÃ¡o nÃ y"
+                "message": (
+                    "Bạn không có quyền đọc thông báo này"
+                )
             }
 
-        # ÄÃ£ Ä‘á»c rá»“i â†’ váº«n SUCCESS
+        # Đã đọc rồi → vẫn SUCCESS
         if data.get("isRead") is True:
             return {
                 "success": True,
@@ -241,7 +243,7 @@ class NotificationRepository:
                 "isRead": True
             }
 
-        # ChÆ°a Ä‘á»c â†’ Ä‘Ã¡nh dáº¥u Ä‘á»c
+        # Chưa đọc → đánh dấu đọc
         doc_ref.update({
             "isRead": True
         })

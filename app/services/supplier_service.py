@@ -34,7 +34,7 @@ def get_current_user_id(
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Báº¡n chÆ°a Ä‘Äƒng nháº­p"
+            detail="Bạn chưa đăng nhập"
         )
 
     try:
@@ -48,7 +48,7 @@ def get_current_user_id(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token khÃ´ng há»£p lá»‡"
+            detail="Token không hợp lệ"
         )
 
 
@@ -88,10 +88,10 @@ def supplier_to_list_item(
         "phoneNumber": supplier.phone_number,
         "productGroup": supplier.product_group,
 
-        # TODO: tÃ­nh tá»« giao dá»‹ch nháº­p hÃ ng
+        # TODO: tính từ giao dịch nhập hàng
         "purchaseCount": 0,
 
-        # TODO: tÃ­nh tá»« Debt
+        # TODO: tính từ Debt
         "totalDebt": 0
     }
 
@@ -131,7 +131,7 @@ def create_supplier_service(
 
         return {
             "success": True,
-            "message": "ThÃªm nhÃ  cung cáº¥p thÃ nh cÃ´ng",
+            "message": "Thêm nhà cung cấp thành công",
             "supplier": supplier_to_dict(
                 supplier
             )
@@ -146,7 +146,7 @@ def create_supplier_service(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="KhÃ´ng thá»ƒ thÃªm nhÃ  cung cáº¥p"
+            detail="Không thể thêm nhà cung cấp"
         )
 
     except Exception:
@@ -154,7 +154,7 @@ def create_supplier_service(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="KhÃ´ng thá»ƒ thÃªm nhÃ  cung cáº¥p"
+            detail="Không thể thêm nhà cung cấp"
         )
 
 
@@ -173,7 +173,7 @@ def get_suppliers_service(
     if page < 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="page pháº£i lá»›n hÆ¡n hoáº·c báº±ng 1"
+            detail="page phải lớn hơn hoặc bằng 1"
         )
 
     if (
@@ -182,7 +182,7 @@ def get_suppliers_service(
     ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="limit pháº£i tá»« 1 Ä‘áº¿n 100"
+            detail="limit phải từ 1 đến 100"
         )
 
     offset = (
@@ -236,10 +236,10 @@ def get_supplier_summary_service(
     return {
         "totalSuppliers": total_suppliers,
 
-        # TODO: tÃ­nh tá»« Debt
+        # TODO: tính từ Debt
         "suppliersWithDebt": 0,
 
-        # TODO: tÃ­nh tá»« Debt
+        # TODO: tính từ Debt
         "totalDebt": 0
     }
 
@@ -263,7 +263,7 @@ def get_supplier_detail_service(
     if not supplier:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="KhÃ´ng tÃ¬m tháº¥y nhÃ  cung cáº¥p"
+            detail="Không tìm thấy nhà cung cấp"
         )
 
     result = supplier_to_dict(
@@ -271,13 +271,13 @@ def get_supplier_detail_service(
     )
 
     result["stats"] = {
-        # TODO: tÃ­nh tá»« giao dá»‹ch nháº­p hÃ ng
+        # TODO: tính từ giao dịch nhập hàng
         "purchaseCount": 0,
 
-        # TODO: tÃ­nh tá»« giao dá»‹ch nháº­p hÃ ng
+        # TODO: tính từ giao dịch nhập hàng
         "totalPurchase": 0,
 
-        # TODO: tÃ­nh tá»« Debt
+        # TODO: tính từ Debt
         "totalDebt": 0
     }
 
@@ -307,7 +307,7 @@ def update_supplier_service(
         if not supplier:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="KhÃ´ng tÃ¬m tháº¥y nhÃ  cung cáº¥p"
+                detail="Không tìm thấy nhà cung cấp"
             )
 
         request_data = data.model_dump(
@@ -359,7 +359,7 @@ def update_supplier_service(
 
         return {
             "success": True,
-            "message": "Cáº­p nháº­t nhÃ  cung cáº¥p thÃ nh cÃ´ng",
+            "message": "Cập nhật nhà cung cấp thành công",
             "supplier": supplier_to_dict(
                 supplier
             )
@@ -374,7 +374,7 @@ def update_supplier_service(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="KhÃ´ng thá»ƒ cáº­p nháº­t nhÃ  cung cáº¥p"
+            detail="Không thể cập nhật nhà cung cấp"
         )
 
     except Exception:
@@ -382,7 +382,7 @@ def update_supplier_service(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="KhÃ´ng thá»ƒ cáº­p nháº­t nhÃ  cung cáº¥p"
+            detail="Không thể cập nhật nhà cung cấp"
         )
 
 
@@ -406,7 +406,7 @@ def delete_supplier_service(
         if not supplier:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="KhÃ´ng tÃ¬m tháº¥y nhÃ  cung cáº¥p"
+                detail="Không tìm thấy nhà cung cấp"
             )
 
         delete_supplier(
@@ -418,7 +418,7 @@ def delete_supplier_service(
 
         return {
             "success": True,
-            "message": "XÃ³a nhÃ  cung cáº¥p thÃ nh cÃ´ng"
+            "message": "Xóa nhà cung cấp thành công"
         }
 
     except HTTPException:
@@ -431,8 +431,8 @@ def delete_supplier_service(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "KhÃ´ng thá»ƒ xÃ³a nhÃ  cung cáº¥p "
-                "vÃ¬ Ä‘ang cÃ³ dá»¯ liá»‡u liÃªn quan"
+                "Không thể xóa nhà cung cấp "
+                "vì đang có dữ liệu liên quan"
             )
         )
 
@@ -441,5 +441,5 @@ def delete_supplier_service(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="KhÃ´ng thá»ƒ xÃ³a nhÃ  cung cáº¥p"
+            detail="Không thể xóa nhà cung cấp"
         )

@@ -12,7 +12,6 @@ from app.configs.database import Base
 from sqlalchemy.orm import relationship
 
 
-
 class Debt(Base):
     __tablename__ = "Debt"
 
@@ -70,30 +69,34 @@ class Debt(Base):
     )
 
     created_at = Column(
-            DateTime,
-            default=datetime.now,
-            nullable=True
-        )
+        DateTime,
+        default=datetime.now,
+        nullable=True
+    )
 
     updated_at = Column(
-            DateTime,
-            default=datetime.now,
-            onupdate=datetime.now, # Tá»± Ä‘á»™ng cáº­p nháº­t láº¡i giá» khi cÃ³ chá»‰nh sá»­a
-            nullable=True
-        )
+        DateTime,
+        default=datetime.now,
+        onupdate=datetime.now,  # Tự động cập nhật lại giờ khi có chỉnh sửa
+        nullable=True
+    )
+
     user = relationship(
         "User",
         back_populates="debt"
-     )
+    )
+
     transactions = relationship(
         "Transaction",
         back_populates="debt"
-     )
+    )
+
     customer = relationship(
         "Customer",
         back_populates="debt"
-     )
+    )
+
     supplier = relationship(
         "Supplier",
         back_populates="debt"
-     )
+    )

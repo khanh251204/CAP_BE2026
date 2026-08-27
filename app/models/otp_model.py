@@ -1,4 +1,4 @@
-﻿from sqlalchemy import (
+from sqlalchemy import (
     Column,
     Integer,
     String,
@@ -50,6 +50,12 @@ class OTPCode(Base):
         Boolean,
         nullable=False,
         default=False
+    )
+
+    attempts = Column(
+        Integer,
+        nullable=False,
+        default=0
     )
 
     created_at = Column(

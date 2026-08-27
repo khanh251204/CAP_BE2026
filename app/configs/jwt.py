@@ -62,7 +62,7 @@ PASSWORD_RESET_EXPIRE_MINUTES = int(
 
 if not SECRET_KEY:
     raise RuntimeError(
-        "JWT_SECRET_KEY chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh trong .env"
+        "JWT_SECRET_KEY chưa được cấu hình trong .env"
     )
 
 
@@ -71,7 +71,10 @@ bearer_scheme = HTTPBearer(
 )
 
 
+# ============================================================
 # PASSWORD FINGERPRINT
+# ============================================================
+
 def create_password_fingerprint(
     password_hash: str
 ) -> str:
@@ -82,7 +85,10 @@ def create_password_fingerprint(
     ).hexdigest()
 
 
+# ============================================================
 # ACCESS TOKEN
+# ============================================================
+
 def create_access_token(
     data: dict
 ) -> str:
@@ -109,7 +115,10 @@ def create_access_token(
     )
 
 
+# ============================================================
 # DECODE ACCESS TOKEN
+# ============================================================
+
 def decode_access_token(
     token: str
 ) -> dict:
@@ -128,13 +137,13 @@ def decode_access_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token khÃ´ng há»£p lá»‡"
+                detail="Token không hợp lệ"
             )
 
         if not payload.get("sub"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token khÃ´ng há»£p lá»‡"
+                detail="Token không hợp lệ"
             )
 
         return payload
@@ -142,17 +151,20 @@ def decode_access_token(
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token Ä‘Ã£ háº¿t háº¡n"
+            detail="Token đã hết hạn"
         )
 
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token khÃ´ng há»£p lá»‡"
+            detail="Token không hợp lệ"
         )
 
 
+# ============================================================
 # PASSWORD RESET TOKEN
+# ============================================================
+
 def create_reset_token(
     user_id: int,
     email: str,
@@ -192,7 +204,10 @@ def create_reset_token(
     )
 
 
+# ============================================================
 # DECODE RESET TOKEN
+# ============================================================
+
 def decode_reset_token(
     token: str
 ) -> dict:
@@ -211,19 +226,19 @@ def decode_reset_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token khÃ´ng há»£p lá»‡"
+                detail="Reset token không hợp lệ"
             )
 
         if not payload.get("sub"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token khÃ´ng há»£p lá»‡"
+                detail="Reset token không hợp lệ"
             )
 
         if not payload.get("email"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token khÃ´ng há»£p lá»‡"
+                detail="Reset token không hợp lệ"
             )
 
         if not payload.get(
@@ -231,7 +246,7 @@ def decode_reset_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token khÃ´ng há»£p lá»‡"
+                detail="Reset token không hợp lệ"
             )
 
         return payload
@@ -239,28 +254,32 @@ def decode_reset_token(
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Reset token Ä‘Ã£ háº¿t háº¡n"
+            detail="Reset token đã hết hạn"
         )
 
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Reset token khÃ´ng há»£p lá»‡"
+            detail="Reset token không hợp lệ"
         )
 
 
+# ============================================================
 # AUTHENTICATION
+# ============================================================
+
 def authenticate_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(
         bearer_scheme
     )
 ):
+    # Ưu tiên lấy Access Token từ HttpOnly Cookie
     token = request.cookies.get(
         JWT_ACCESS_COOKIE_NAME
     )
 
-    # Fallback Bearer Token
+    # Fallback sang Bearer Token
     if (
         not token
         and credentials
@@ -270,7 +289,7 @@ def authenticate_user(
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Báº¡n chÆ°a Ä‘Äƒng nháº­p"
+            detail="Bạn chưa đăng nhập"
         )
 
     return decode_access_token(
@@ -278,7 +297,10 @@ def authenticate_user(
     )
 
 
+# ============================================================
 # AUTHORIZATION
+# ============================================================
+
 def authorize_roles(
     *roles
 ):
@@ -293,13 +315,17 @@ def authorize_roles(
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p"
+                detail="Bạn không có quyền truy cập"
             )
 
         return user
 
     return wrapper
 
+
+# ============================================================
+# GET CURRENT USER ID
+# ============================================================
 
 def get_current_user_id(
     payload: dict = Depends(authenticate_user)

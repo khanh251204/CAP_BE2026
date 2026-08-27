@@ -18,10 +18,15 @@ load_dotenv()
 GOOGLE_WEB_CLIENT_ID = os.getenv(
     "GOOGLE_WEB_CLIENT_ID"
 )
+
 GOOGLE_CLIENT_SECRET = os.getenv(
     "GOOGLE_CLIENT_SECRET"
 )
 
+
+# ============================================================
+# EXCHANGE AUTHORIZATION CODE
+# ============================================================
 
 def exchange_code_for_id_token(
     code: str,
@@ -29,18 +34,21 @@ def exchange_code_for_id_token(
     code_verifier: str | None = None,
 ) -> str:
     """
-    Trao Ä‘á»•i Authorization Code láº¥y ID Token.
+    Trao đổi Authorization Code để lấy ID Token.
     """
+
     if not GOOGLE_WEB_CLIENT_ID:
         raise RuntimeError(
-            "ChÆ°a cáº¥u hÃ¬nh GOOGLE_WEB_CLIENT_ID"
+            "Chưa cấu hình GOOGLE_WEB_CLIENT_ID"
         )
+
     if not GOOGLE_CLIENT_SECRET:
         raise RuntimeError(
-            "ChÆ°a cáº¥u hÃ¬nh GOOGLE_CLIENT_SECRET"
+            "Chưa cấu hình GOOGLE_CLIENT_SECRET"
         )
 
     url = "https://oauth2.googleapis.com/token"
+
     payload = {
         "code": code,
         "client_id": GOOGLE_WEB_CLIENT_ID,
@@ -48,59 +56,79 @@ def exchange_code_for_id_token(
         "redirect_uri": redirect_uri,
         "grant_type": "authorization_code",
     }
+
     if code_verifier:
         payload["code_verifier"] = code_verifier
 
     try:
-        response = requests_lib.post(url, data=payload, timeout=10)
+        response = requests_lib.post(
+            url,
+            data=payload,
+            timeout=10
+        )
+
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="KhÃ´ng thá»ƒ káº¿t ná»‘i Ä‘áº¿n mÃ¡y chá»§ Google OAuth",
+            detail=(
+                "Không thể kết nối đến máy chủ "
+                "Google OAuth"
+            ),
         ) from exc
 
     if response.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Lá»—i khi trao Ä‘á»•i mÃ£ Google: {response.text}",
+            detail=(
+                f"Lỗi khi trao đổi mã Google: "
+                f"{response.text}"
+            ),
         )
 
     data = response.json()
-    id_token_val = data.get("id_token")
+
+    id_token_val = data.get(
+        "id_token"
+    )
+
     if not id_token_val:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google khÃ´ng tráº£ vá» ID Token",
+            detail="Google không trả về ID Token",
         )
 
     return id_token_val
 
 
+# ============================================================
+# VERIFY GOOGLE ID TOKEN
+# ============================================================
+
 def verify_google_id_token(
     token: str,
 ) -> dict:
     """
-    XÃ¡c thá»±c Google ID Token.
+    Xác thực Google ID Token.
 
-    Kiá»ƒm tra:
-    - Chá»¯ kÃ½ Google
-    - Thá»i háº¡n token
+    Kiểm tra:
+    - Chữ ký Google
+    - Thời hạn token
     - Audience
     - Issuer
     - Google user ID
     - Email
-    - Email Ä‘Ã£ Ä‘Æ°á»£c xÃ¡c thá»±c
+    - Email đã được xác thực
     """
 
     if not GOOGLE_WEB_CLIENT_ID:
         raise RuntimeError(
-            "ChÆ°a cáº¥u hÃ¬nh GOOGLE_WEB_CLIENT_ID"
+            "Chưa cấu hình GOOGLE_WEB_CLIENT_ID"
         )
 
     if not token or not token.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google ID Token khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng",
+            detail="Google ID Token không được để trống",
         )
 
     try:
@@ -112,13 +140,26 @@ def verify_google_id_token(
         )
 
     except ValueError as exc:
-        print("GOOGLE TOKEN VERIFICATION ERROR DETAILS:", str(exc))
+        print(
+            "GOOGLE TOKEN VERIFICATION ERROR DETAILS:",
+            str(exc)
+        )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Google ID Token khÃ´ng há»£p lá»‡: {str(exc)}",
+            detail=(
+                "Google ID Token không hợp lệ: "
+                f"{str(exc)}"
+            ),
         ) from exc
 
-    issuer = payload.get("iss")
+    # ========================================================
+    # CHECK ISSUER
+    # ========================================================
+
+    issuer = payload.get(
+        "iss"
+    )
 
     if issuer not in {
         "accounts.google.com",
@@ -126,39 +167,72 @@ def verify_google_id_token(
     }:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google ID Token khÃ´ng há»£p lá»‡",
+            detail="Google ID Token không hợp lệ",
         )
 
-    google_id = payload.get("sub")
-    email = payload.get("email")
+    # ========================================================
+    # GET GOOGLE DATA
+    # ========================================================
+
+    google_id = payload.get(
+        "sub"
+    )
+
+    email = payload.get(
+        "email"
+    )
+
     email_verified = payload.get(
         "email_verified"
     )
 
+    # ========================================================
+    # CHECK GOOGLE USER ID
+    # ========================================================
+
     if not google_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google ID Token thiáº¿u user id",
+            detail="Google ID Token thiếu user ID",
         )
+
+    # ========================================================
+    # CHECK EMAIL
+    # ========================================================
 
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google ID Token thiáº¿u email",
+            detail="Google ID Token thiếu email",
         )
+
+    # ========================================================
+    # CHECK EMAIL VERIFIED
+    # ========================================================
 
     if email_verified is not True:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email Google chÆ°a Ä‘Æ°á»£c xÃ¡c thá»±c",
+            detail="Email Google chưa được xác thực",
         )
+
+    # ========================================================
+    # RETURN GOOGLE USER DATA
+    # ========================================================
 
     return {
         "googleId": google_id,
-        "email": email.strip().lower(),
+
+        "email": (
+            email.strip().lower()
+        ),
+
         "fullName": (
             payload.get("name")
             or email.split("@")[0]
         ),
-        "picture": payload.get("picture"),
+
+        "picture": payload.get(
+            "picture"
+        ),
     }

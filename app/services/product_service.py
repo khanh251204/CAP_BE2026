@@ -4,31 +4,38 @@ from app.models.product_model import Product
 
 class ProductService:
 
-    # Láº¥y 1 product
+    # Lấy 1 product
     @staticmethod
     def get_product_by_id(product_id: int, db: Session):
         return db.query(Product).filter(
             Product.product_id == product_id
         ).first()
 
-    # Láº¥y táº¥t cáº£ product
+    # Lấy tất cả product
     @staticmethod
     def get_all_products(db: Session):
         return db.query(Product).filter(
             Product.is_active == True
         ).all()
 
-    # Láº¥y product theo user
+    # Lấy product theo user
     @staticmethod
-    def get_products_by_user_id(user_id: int, db: Session):
+    def get_products_by_user_id(
+        user_id: int,
+        db: Session
+    ):
         return db.query(Product).filter(
             Product.user_id == user_id,
             Product.is_active == True
         ).all()
 
-    # XÃ¡c nháº­n / nháº­p tay Product
+    # Xác nhận / nhập tay Product
     @staticmethod
-    def create_product(data: dict, db: Session, user_id: int ):
+    def create_product(
+        data: dict,
+        db: Session,
+        user_id: int
+    ):
 
         product = Product(
             user_id=user_id,
@@ -44,7 +51,7 @@ class ProductService:
 
         return product
 
-    # Sá»­a Product
+    # Sửa Product
     @staticmethod
     def update_product(
         product_id: int,
@@ -74,7 +81,7 @@ class ProductService:
 
         return product
 
-    # XÃ³a má»m
+    # Xóa mềm
     @staticmethod
     def delete_product(
         product_id: int,
@@ -95,7 +102,6 @@ class ProductService:
         db.refresh(product)
 
         return product
-
 
     @staticmethod
     def search_products_by_name(

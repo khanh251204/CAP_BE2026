@@ -10,6 +10,7 @@ from datetime import (
 )
 
 from dotenv import load_dotenv
+
 from fastapi import (
     HTTPException,
     status
@@ -35,7 +36,11 @@ from app.repositories.refresh_token_repository import (
     revoke_refresh_token
 )
 
+
+# ============================================================
 # ENV
+# ============================================================
+
 load_dotenv()
 
 
@@ -46,22 +51,30 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(
     )
 )
 
+
+# ============================================================
 # HASH REFRESH TOKEN
+# ============================================================
+
 def hash_refresh_token(
     token: str
 ) -> str:
     """
-    Hash refresh token báº±ng SHA256.
+    Hash refresh token bằng SHA256.
 
-    Database chá»‰ lÆ°u hash,
-    khÃ´ng lÆ°u token plaintext.
+    Database chỉ lưu hash,
+    không lưu token plaintext.
     """
 
     return hashlib.sha256(
         token.encode("utf-8")
     ).hexdigest()
 
+
+# ============================================================
 # CREATE REFRESH TOKEN
+# ============================================================
+
 def create_refresh_token(
     db: Session,
     *,
@@ -70,9 +83,9 @@ def create_refresh_token(
     role: str
 ) -> str:
     """
-    Táº¡o JWT Refresh Token vÃ  lÆ°u hash vÃ o DB.
+    Tạo JWT Refresh Token và lưu hash vào DB.
 
-    Refresh token chá»©a:
+    Refresh token chứa:
     - sub
     - email
     - role
@@ -80,15 +93,15 @@ def create_refresh_token(
     - type=refresh
     - exp
 
-    KhÃ´ng commit táº¡i Ä‘Ã¢y.
+    Không commit tại đây.
     """
 
-    # ID duy nháº¥t cho refresh token
+    # ID duy nhất cho refresh token
     jti = str(
         uuid.uuid4()
     )
 
-    # Thá»i gian hiá»‡n táº¡i UTC
+    # Thời gian hiện tại UTC
     now = datetime.now(
         timezone.utc
     )
@@ -130,7 +143,7 @@ def create_refresh_token(
     )
 
     # SAVE DATABASE
-    # MySQL DATETIME thÆ°á»ng lÆ°u dáº¡ng naive datetime
+    # MySQL DATETIME thường lưu dạng naive datetime
     expires_at_db = (
         expires_at_utc.replace(
             tzinfo=None
@@ -151,12 +164,16 @@ def create_refresh_token(
 
     return refresh_token
 
+
+# ============================================================
 # DECODE REFRESH TOKEN
+# ============================================================
+
 def decode_refresh_token(
     token: str
 ) -> dict:
     """
-    Decode vÃ  kiá»ƒm tra chá»¯ kÃ½ JWT Refresh Token.
+    Decode và kiểm tra chữ ký JWT Refresh Token.
     """
 
     try:
@@ -176,20 +193,20 @@ def decode_refresh_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token khÃ´ng há»£p lá»‡"
+                detail="Refresh token không hợp lệ"
             )
 
         # REQUIRED CLAIMS
         if not payload.get("sub"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token khÃ´ng há»£p lá»‡"
+                detail="Refresh token không hợp lệ"
             )
 
         if not payload.get("jti"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token khÃ´ng há»£p lá»‡"
+                detail="Refresh token không hợp lệ"
             )
 
         return payload
@@ -198,24 +215,28 @@ def decode_refresh_token(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token Ä‘Ã£ háº¿t háº¡n"
+            detail="Refresh token đã hết hạn"
         )
 
     except JWTError:
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token khÃ´ng há»£p lá»‡"
+            detail="Refresh token không hợp lệ"
         )
 
+
+# ============================================================
 # VALIDATE REFRESH TOKEN
+# ============================================================
+
 def validate_refresh_token(
     db: Session,
     *,
     token: str
 ):
     """
-    Kiá»ƒm tra Refresh Token á»Ÿ cáº£:
+    Kiểm tra Refresh Token ở cả:
 
     1. JWT
     2. Database
@@ -249,7 +270,7 @@ def validate_refresh_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token khÃ´ng há»£p lá»‡"
+            detail="Refresh token không hợp lệ"
         )
 
     # DATABASE TOKEN
@@ -267,8 +288,8 @@ def validate_refresh_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=(
-                "Refresh token khÃ´ng tá»“n táº¡i, "
-                "Ä‘Ã£ háº¿t háº¡n hoáº·c Ä‘Ã£ bá»‹ thu há»“i"
+                "Refresh token không tồn tại, "
+                "đã hết hạn hoặc đã bị thu hồi"
             )
         )
 
@@ -279,7 +300,7 @@ def validate_refresh_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token khÃ´ng há»£p lá»‡"
+            detail="Refresh token không hợp lệ"
         )
 
     # CHECK TOKEN HASH
@@ -295,7 +316,7 @@ def validate_refresh_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token khÃ´ng há»£p lá»‡"
+            detail="Refresh token không hợp lệ"
         )
 
     return (
@@ -303,7 +324,11 @@ def validate_refresh_token(
         token_record
     )
 
+
+# ============================================================
 # ROTATE REFRESH TOKEN
+# ============================================================
+
 def rotate_refresh_token(
     db: Session,
     *,
@@ -312,13 +337,13 @@ def rotate_refresh_token(
     """
     Refresh Token Rotation.
 
-    Token cÅ©:
+    Token cũ:
         is_revoked = True
 
-    Sau Ä‘Ã³:
-        táº¡o refresh token má»›i.
+    Sau đó:
+        tạo refresh token mới.
 
-    KhÃ´ng commit táº¡i Ä‘Ã¢y.
+    Không commit tại đây.
     """
 
     # VALIDATE OLD TOKEN
@@ -376,18 +401,22 @@ def rotate_refresh_token(
         )
     }
 
+
+# ============================================================
 # REVOKE TOKEN / LOGOUT
+# ============================================================
+
 def revoke_refresh_token_value(
     db: Session,
     *,
     token: str
 ):
     """
-    Revoke má»™t Refresh Token.
+    Thu hồi một Refresh Token.
 
-    DÃ¹ng cho logout.
+    Dùng cho logout.
 
-    KhÃ´ng commit táº¡i Ä‘Ã¢y.
+    Không commit tại đây.
     """
 
     payload, token_record = (

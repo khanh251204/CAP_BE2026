@@ -5,7 +5,7 @@
 
 class TransactionController:
 
-    # lÆ°u
+    # Lưu giao dịch
     @staticmethod
     def save_groq_transaction(
         db,
@@ -13,7 +13,7 @@ class TransactionController:
         account_id: int | None,
         groq_result: dict
     ):
-        # Gá»i tháº³ng xuá»‘ng Service Ä‘á»ƒ xá»­ lÃ½ logic
+        # Gọi thẳng xuống Service để xử lý logic
         return TransactionService.save_groq_transaction(
             db=db,
             user_id=user_id,
@@ -22,7 +22,7 @@ class TransactionController:
         )
 
 
-    # list
+    # Danh sách giao dịch
     @staticmethod
     def get_transactions(
         db,
@@ -38,6 +38,8 @@ class TransactionController:
             limit=limit
         )
 
+
+    # Lấy giao dịch theo ID
     @staticmethod
     def get_transaction_by_id(
         db,

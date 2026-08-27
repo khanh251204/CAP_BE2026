@@ -26,7 +26,7 @@ engine = create_engine(
 Base = declarative_base()
 
 
-# Session Ä‘á»ƒ Repository sá»­ dá»¥ng
+# Session để Repository sử dụng
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
@@ -36,20 +36,22 @@ SessionLocal = sessionmaker(
 
 def auth_db():
     """
-    Kiá»ƒm tra káº¿t ná»‘i Database
+    Kiểm tra kết nối Database
     """
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            print("âœ… Káº¿t ná»‘i Database thÃ nh cÃ´ng!")
+            print("✅ Kết nối Database thành công!")
 
     except Exception as err:
-        print(f"âŒ Lá»—i Database: {err}")
+        print(f"❌ Lỗi Database: {err}")
 
 
 def get_db():
     db = SessionLocal()
+
     try:
         yield db
+
     finally:
         db.close()

@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 # ==========================================
-# GET Táº¤T Cáº¢ PRODUCT
+# GET TẤT CẢ PRODUCT
 # ==========================================
 
 @router.get("/products")
@@ -51,7 +51,7 @@ def get_products_by_user_id(
 
 
 # ==========================================
-# XÃC NHáº¬N / NHáº¬P TAY PRODUCT
+# XÁC NHẬN / NHẬP TAY PRODUCT
 # ==========================================
 
 @router.post("/productsNew")
@@ -67,7 +67,7 @@ def create_product(
 
 
 # ==========================================
-# Sá»¬A PRODUCT
+# SỬA PRODUCT
 # ==========================================
 
 @router.put("/products/{product_id}")
@@ -84,7 +84,7 @@ def update_product(
 
 
 # ==========================================
-# XÃ“A Má»€M PRODUCT
+# XÓA MỀM PRODUCT
 # ==========================================
 
 @router.delete("/products/{product_id}")
