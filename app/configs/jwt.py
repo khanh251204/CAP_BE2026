@@ -1,4 +1,4 @@
-from datetime import (
+﻿from datetime import (
     datetime,
     timedelta,
     timezone
@@ -62,7 +62,7 @@ PASSWORD_RESET_EXPIRE_MINUTES = int(
 
 if not SECRET_KEY:
     raise RuntimeError(
-        "JWT_SECRET_KEY chưa được cấu hình trong .env"
+        "JWT_SECRET_KEY chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh trong .env"
     )
 
 
@@ -128,13 +128,13 @@ def decode_access_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token không hợp lệ"
+                detail="Token khÃ´ng há»£p lá»‡"
             )
 
         if not payload.get("sub"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token không hợp lệ"
+                detail="Token khÃ´ng há»£p lá»‡"
             )
 
         return payload
@@ -142,13 +142,13 @@ def decode_access_token(
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token đã hết hạn"
+            detail="Token Ä‘Ã£ háº¿t háº¡n"
         )
 
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ"
+            detail="Token khÃ´ng há»£p lá»‡"
         )
 
 
@@ -211,19 +211,19 @@ def decode_reset_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token không hợp lệ"
+                detail="Reset token khÃ´ng há»£p lá»‡"
             )
 
         if not payload.get("sub"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token không hợp lệ"
+                detail="Reset token khÃ´ng há»£p lá»‡"
             )
 
         if not payload.get("email"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token không hợp lệ"
+                detail="Reset token khÃ´ng há»£p lá»‡"
             )
 
         if not payload.get(
@@ -231,7 +231,7 @@ def decode_reset_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Reset token không hợp lệ"
+                detail="Reset token khÃ´ng há»£p lá»‡"
             )
 
         return payload
@@ -239,13 +239,13 @@ def decode_reset_token(
     except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Reset token đã hết hạn"
+            detail="Reset token Ä‘Ã£ háº¿t háº¡n"
         )
 
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Reset token không hợp lệ"
+            detail="Reset token khÃ´ng há»£p lá»‡"
         )
 
 
@@ -270,7 +270,7 @@ def authenticate_user(
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Bạn chưa đăng nhập"
+            detail="Báº¡n chÆ°a Ä‘Äƒng nháº­p"
         )
 
     return decode_access_token(
@@ -293,9 +293,15 @@ def authorize_roles(
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bạn không có quyền truy cập"
+                detail="Báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p"
             )
 
         return user
 
     return wrapper
+
+
+def get_current_user_id(
+    payload: dict = Depends(authenticate_user)
+) -> int:
+    return int(payload["sub"])

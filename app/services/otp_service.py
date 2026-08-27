@@ -1,4 +1,4 @@
-import os
+﻿import os
 import hmac
 import hashlib
 import secrets
@@ -48,7 +48,7 @@ JWT_SECRET_KEY = os.getenv(
 
 if not JWT_SECRET_KEY:
     raise RuntimeError(
-        "JWT_SECRET_KEY chưa được cấu hình"
+        "JWT_SECRET_KEY chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh"
     )
 
 
@@ -114,7 +114,7 @@ def _check_cooldown(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
-                "message": "Vui lòng chờ trước khi gửi lại OTP",
+                "message": "Vui lÃ²ng chá» trÆ°á»›c khi gá»­i láº¡i OTP",
                 "resendAfter": remaining
             }
         )
@@ -129,7 +129,7 @@ def send_otp(
 
     if purpose not in ALLOWED_PURPOSES:
         raise ValueError(
-            "OTP purpose không hợp lệ"
+            "OTP purpose khÃ´ng há»£p lá»‡"
         )
 
     email = user.email.strip().lower()
@@ -197,7 +197,7 @@ def verify_otp(
 
     if purpose not in ALLOWED_PURPOSES:
         raise ValueError(
-            "OTP purpose không hợp lệ"
+            "OTP purpose khÃ´ng há»£p lá»‡"
         )
 
     email = user.email.strip().lower()
@@ -213,8 +213,8 @@ def verify_otp(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Mã OTP không hợp lệ "
-                "hoặc đã hết hạn"
+                "MÃ£ OTP khÃ´ng há»£p lá»‡ "
+                "hoáº·c Ä‘Ã£ háº¿t háº¡n"
             )
         )
 
@@ -224,7 +224,7 @@ def verify_otp(
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mã OTP không hợp lệ"
+            detail="MÃ£ OTP khÃ´ng há»£p lá»‡"
         )
 
     incoming_hash = _hash_otp(
@@ -239,7 +239,7 @@ def verify_otp(
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mã OTP không chính xác"
+            detail="MÃ£ OTP khÃ´ng chÃ­nh xÃ¡c"
         )
 
     mark_otp_used(

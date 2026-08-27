@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 from app.configs.firebase import db
 
 
@@ -11,14 +11,14 @@ class NotificationRepository:
     def get_all(user_id: str):
         str_user_id = str(user_id)
 
-        # Thông báo cá nhân
+        # ThÃ´ng bÃ¡o cÃ¡ nhÃ¢n
         personal_docs = (
             db.collection("notifications")
             .where("userId", "==", str_user_id)
             .stream()
         )
 
-        # Thông báo cho tất cả
+        # ThÃ´ng bÃ¡o cho táº¥t cáº£
         global_docs = (
             db.collection("notifications")
             .where("userId", "==", "ALL")
@@ -35,7 +35,7 @@ class NotificationRepository:
 
             data["id"] = doc.id
 
-            # Đảm bảo luôn có isRead
+            # Äáº£m báº£o luÃ´n cÃ³ isRead
             data["isRead"] = bool(
                 data.get("isRead", False)
             )
@@ -113,7 +113,7 @@ class NotificationRepository:
 
             "userId": target_user,
 
-            # Notification cá nhân
+            # Notification cÃ¡ nhÃ¢n
             "isRead": False,
 
             # Notification ALL
@@ -166,7 +166,7 @@ class NotificationRepository:
         str_user_id = str(user_id)
 
         # =================================================
-        # LẤY DOCUMENT
+        # Láº¤Y DOCUMENT
         # =================================================
         doc_ref = (
             db.collection("notifications")
@@ -176,18 +176,18 @@ class NotificationRepository:
         doc = doc_ref.get()
 
         # =================================================
-        # KHÔNG TÌM THẤY
+        # KHÃ”NG TÃŒM THáº¤Y
         # =================================================
         if not doc.exists:
             return {
                 "success": False,
-                "message": "Không tìm thấy thông báo"
+                "message": "KhÃ´ng tÃ¬m tháº¥y thÃ´ng bÃ¡o"
             }
 
         data = doc.to_dict() or {}
 
         # =================================================
-        # THÔNG BÁO ALL
+        # THÃ”NG BÃO ALL
         # =================================================
         if str(data.get("userId")) == "ALL":
 
@@ -204,7 +204,7 @@ class NotificationRepository:
                 for uid in read_by
             ]
 
-            # Chưa đọc
+            # ChÆ°a Ä‘á»c
             if str_user_id not in read_by:
                 read_by.append(str_user_id)
 
@@ -212,7 +212,7 @@ class NotificationRepository:
                     "readByUsers": read_by
                 })
 
-            # Đã đọc rồi cũng SUCCESS
+            # ÄÃ£ Ä‘á»c rá»“i cÅ©ng SUCCESS
             return {
                 "success": True,
                 "id": notification_id,
@@ -220,20 +220,20 @@ class NotificationRepository:
             }
 
         # =================================================
-        # THÔNG BÁO CÁ NHÂN
+        # THÃ”NG BÃO CÃ NHÃ‚N
         # =================================================
         notification_user_id = str(
             data.get("userId")
         )
 
-        # Không thuộc user hiện tại
+        # KhÃ´ng thuá»™c user hiá»‡n táº¡i
         if notification_user_id != str_user_id:
             return {
                 "success": False,
-                "message": "Bạn không có quyền đọc thông báo này"
+                "message": "Báº¡n khÃ´ng cÃ³ quyá»n Ä‘á»c thÃ´ng bÃ¡o nÃ y"
             }
 
-        # Đã đọc rồi → vẫn SUCCESS
+        # ÄÃ£ Ä‘á»c rá»“i â†’ váº«n SUCCESS
         if data.get("isRead") is True:
             return {
                 "success": True,
@@ -241,7 +241,7 @@ class NotificationRepository:
                 "isRead": True
             }
 
-        # Chưa đọc → đánh dấu đọc
+        # ChÆ°a Ä‘á»c â†’ Ä‘Ã¡nh dáº¥u Ä‘á»c
         doc_ref.update({
             "isRead": True
         })

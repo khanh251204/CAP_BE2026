@@ -1,4 +1,4 @@
-from fastapi import (
+﻿from fastapi import (
     APIRouter,
     Body,
     Cookie,
@@ -103,7 +103,7 @@ def reset_password(
         response=response,
         db=db
     )
-    
+
 # LOGIN
 @router.post("/login")
 def login(

@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+﻿from typing import Literal, Optional
 
 from pydantic import (
     BaseModel,
@@ -118,7 +118,7 @@ class RegisterRequest(BaseModel):
                 or not self.storeName.strip()
             ):
                 raise ValueError(
-                    "Tên cửa hàng/doanh nghiệp là bắt buộc"
+                    "TÃªn cá»­a hÃ ng/doanh nghiá»‡p lÃ  báº¯t buá»™c"
                 )
 
             if (
@@ -126,7 +126,7 @@ class RegisterRequest(BaseModel):
                 or not self.businessField.strip()
             ):
                 raise ValueError(
-                    "Lĩnh vực kinh doanh là bắt buộc"
+                    "LÄ©nh vá»±c kinh doanh lÃ  báº¯t buá»™c"
                 )
 
         return self

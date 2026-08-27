@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+﻿from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from dotenv import load_dotenv
 import os
@@ -14,8 +14,8 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={
         "ssl": {
-            "ca": "core/ca.pem",
-            "check_hostname": True
+            "check_hostname": False,
+            "cert_reqs": 0
         }
     },
     pool_pre_ping=True
@@ -26,7 +26,7 @@ engine = create_engine(
 Base = declarative_base()
 
 
-# Session để Repository sử dụng
+# Session Ä‘á»ƒ Repository sá»­ dá»¥ng
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
@@ -36,15 +36,15 @@ SessionLocal = sessionmaker(
 
 def auth_db():
     """
-    Kiểm tra kết nối Database
+    Kiá»ƒm tra káº¿t ná»‘i Database
     """
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            print("✅ Kết nối Database thành công!")
+            print("âœ… Káº¿t ná»‘i Database thÃ nh cÃ´ng!")
 
     except Exception as err:
-        print(f"❌ Lỗi Database: {err}")
+        print(f"âŒ Lá»—i Database: {err}")
 
 
 def get_db():

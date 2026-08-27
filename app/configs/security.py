@@ -1,15 +1,15 @@
-import bcrypt
+﻿import bcrypt
 
 def get_password_hash(password: str) -> str:
     """
-    Mã hóa mật khẩu - Tương tự bcrypt.hash()
+    MÃ£ hÃ³a máº­t kháº©u - TÆ°Æ¡ng tá»± bcrypt.hash()
     """
-    # Chuyển password sang dạng bytes
+    # Chuyá»ƒn password sang dáº¡ng bytes
     pwd_bytes = password.encode('utf-8')
-    # Tạo salt và hash
+    # Táº¡o salt vÃ  hash
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(pwd_bytes, salt)
-    # Trả về dạng string để lưu vào DB
+    # Tráº£ vá» dáº¡ng string Ä‘á»ƒ lÆ°u vÃ o DB
     return hashed_password.decode('utf-8')
 
 def verify_password(

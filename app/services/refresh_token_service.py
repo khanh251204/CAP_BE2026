@@ -1,4 +1,4 @@
-import os
+﻿import os
 import hmac
 import hashlib
 import uuid
@@ -51,10 +51,10 @@ def hash_refresh_token(
     token: str
 ) -> str:
     """
-    Hash refresh token bằng SHA256.
+    Hash refresh token báº±ng SHA256.
 
-    Database chỉ lưu hash,
-    không lưu token plaintext.
+    Database chá»‰ lÆ°u hash,
+    khÃ´ng lÆ°u token plaintext.
     """
 
     return hashlib.sha256(
@@ -70,9 +70,9 @@ def create_refresh_token(
     role: str
 ) -> str:
     """
-    Tạo JWT Refresh Token và lưu hash vào DB.
+    Táº¡o JWT Refresh Token vÃ  lÆ°u hash vÃ o DB.
 
-    Refresh token chứa:
+    Refresh token chá»©a:
     - sub
     - email
     - role
@@ -80,15 +80,15 @@ def create_refresh_token(
     - type=refresh
     - exp
 
-    Không commit tại đây.
+    KhÃ´ng commit táº¡i Ä‘Ã¢y.
     """
 
-    # ID duy nhất cho refresh token
+    # ID duy nháº¥t cho refresh token
     jti = str(
         uuid.uuid4()
     )
 
-    # Thời gian hiện tại UTC
+    # Thá»i gian hiá»‡n táº¡i UTC
     now = datetime.now(
         timezone.utc
     )
@@ -130,7 +130,7 @@ def create_refresh_token(
     )
 
     # SAVE DATABASE
-    # MySQL DATETIME thường lưu dạng naive datetime
+    # MySQL DATETIME thÆ°á»ng lÆ°u dáº¡ng naive datetime
     expires_at_db = (
         expires_at_utc.replace(
             tzinfo=None
@@ -156,7 +156,7 @@ def decode_refresh_token(
     token: str
 ) -> dict:
     """
-    Decode và kiểm tra chữ ký JWT Refresh Token.
+    Decode vÃ  kiá»ƒm tra chá»¯ kÃ½ JWT Refresh Token.
     """
 
     try:
@@ -176,20 +176,20 @@ def decode_refresh_token(
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token không hợp lệ"
+                detail="Refresh token khÃ´ng há»£p lá»‡"
             )
 
         # REQUIRED CLAIMS
         if not payload.get("sub"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token không hợp lệ"
+                detail="Refresh token khÃ´ng há»£p lá»‡"
             )
 
         if not payload.get("jti"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token không hợp lệ"
+                detail="Refresh token khÃ´ng há»£p lá»‡"
             )
 
         return payload
@@ -198,14 +198,14 @@ def decode_refresh_token(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token đã hết hạn"
+            detail="Refresh token Ä‘Ã£ háº¿t háº¡n"
         )
 
     except JWTError:
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token không hợp lệ"
+            detail="Refresh token khÃ´ng há»£p lá»‡"
         )
 
 # VALIDATE REFRESH TOKEN
@@ -215,7 +215,7 @@ def validate_refresh_token(
     token: str
 ):
     """
-    Kiểm tra Refresh Token ở cả:
+    Kiá»ƒm tra Refresh Token á»Ÿ cáº£:
 
     1. JWT
     2. Database
@@ -249,7 +249,7 @@ def validate_refresh_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token không hợp lệ"
+            detail="Refresh token khÃ´ng há»£p lá»‡"
         )
 
     # DATABASE TOKEN
@@ -267,8 +267,8 @@ def validate_refresh_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=(
-                "Refresh token không tồn tại, "
-                "đã hết hạn hoặc đã bị thu hồi"
+                "Refresh token khÃ´ng tá»“n táº¡i, "
+                "Ä‘Ã£ háº¿t háº¡n hoáº·c Ä‘Ã£ bá»‹ thu há»“i"
             )
         )
 
@@ -279,7 +279,7 @@ def validate_refresh_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token không hợp lệ"
+            detail="Refresh token khÃ´ng há»£p lá»‡"
         )
 
     # CHECK TOKEN HASH
@@ -295,7 +295,7 @@ def validate_refresh_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token không hợp lệ"
+            detail="Refresh token khÃ´ng há»£p lá»‡"
         )
 
     return (
@@ -312,13 +312,13 @@ def rotate_refresh_token(
     """
     Refresh Token Rotation.
 
-    Token cũ:
+    Token cÅ©:
         is_revoked = True
 
-    Sau đó:
-        tạo refresh token mới.
+    Sau Ä‘Ã³:
+        táº¡o refresh token má»›i.
 
-    Không commit tại đây.
+    KhÃ´ng commit táº¡i Ä‘Ã¢y.
     """
 
     # VALIDATE OLD TOKEN
@@ -383,11 +383,11 @@ def revoke_refresh_token_value(
     token: str
 ):
     """
-    Revoke một Refresh Token.
+    Revoke má»™t Refresh Token.
 
-    Dùng cho logout.
+    DÃ¹ng cho logout.
 
-    Không commit tại đây.
+    KhÃ´ng commit táº¡i Ä‘Ã¢y.
     """
 
     payload, token_record = (

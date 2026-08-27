@@ -1,4 +1,4 @@
-from typing import Optional
+﻿from typing import Optional
 
 from fastapi import (
     HTTPException,
@@ -34,7 +34,7 @@ def get_current_user_id(
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Bạn chưa đăng nhập"
+            detail="Báº¡n chÆ°a Ä‘Äƒng nháº­p"
         )
 
     try:
@@ -48,7 +48,7 @@ def get_current_user_id(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ"
+            detail="Token khÃ´ng há»£p lá»‡"
         )
 
 
@@ -85,10 +85,10 @@ def customer_to_list_item(
         "name": customer.name,
         "phoneNumber": customer.phone_number,
 
-        # TODO: lấy từ Transaction
+        # TODO: láº¥y tá»« Transaction
         "transactionCount": 0,
 
-        # TODO: lấy từ Debt
+        # TODO: láº¥y tá»« Debt
         "totalDebt": 0
     }
 
@@ -126,7 +126,7 @@ def create_customer_service(
 
         return {
             "success": True,
-            "message": "Thêm khách hàng thành công",
+            "message": "ThÃªm khÃ¡ch hÃ ng thÃ nh cÃ´ng",
             "customer": customer_to_dict(
                 customer
             )
@@ -141,7 +141,7 @@ def create_customer_service(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Không thể thêm khách hàng"
+            detail="KhÃ´ng thá»ƒ thÃªm khÃ¡ch hÃ ng"
         )
 
     except Exception:
@@ -149,7 +149,7 @@ def create_customer_service(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể thêm khách hàng"
+            detail="KhÃ´ng thá»ƒ thÃªm khÃ¡ch hÃ ng"
         )
 
 
@@ -168,7 +168,7 @@ def get_customers_service(
     if page < 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="page phải lớn hơn hoặc bằng 1"
+            detail="page pháº£i lá»›n hÆ¡n hoáº·c báº±ng 1"
         )
 
     if (
@@ -177,7 +177,7 @@ def get_customers_service(
     ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="limit phải từ 1 đến 100"
+            detail="limit pháº£i tá»« 1 Ä‘áº¿n 100"
         )
 
     offset = (
@@ -231,10 +231,10 @@ def get_customer_summary_service(
     return {
         "totalCustomers": total_customers,
 
-        # TODO: lấy từ Debt
+        # TODO: láº¥y tá»« Debt
         "customersWithDebt": 0,
 
-        # TODO: lấy từ Debt
+        # TODO: láº¥y tá»« Debt
         "totalDebt": 0
     }
 
@@ -258,7 +258,7 @@ def get_customer_detail_service(
     if not customer:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy khách hàng"
+            detail="KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng"
         )
 
     result = customer_to_dict(
@@ -266,13 +266,13 @@ def get_customer_detail_service(
     )
 
     result["stats"] = {
-        # TODO: lấy từ Transaction
+        # TODO: láº¥y tá»« Transaction
         "transactionCount": 0,
 
-        # TODO: lấy từ Transaction
+        # TODO: láº¥y tá»« Transaction
         "totalPurchase": 0,
 
-        # TODO: lấy từ Debt
+        # TODO: láº¥y tá»« Debt
         "totalDebt": 0
     }
 
@@ -302,7 +302,7 @@ def update_customer_service(
         if not customer:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy khách hàng"
+                detail="KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng"
             )
 
         request_data = data.model_dump(
@@ -353,7 +353,7 @@ def update_customer_service(
 
         return {
             "success": True,
-            "message": "Cập nhật khách hàng thành công",
+            "message": "Cáº­p nháº­t khÃ¡ch hÃ ng thÃ nh cÃ´ng",
             "customer": customer_to_dict(
                 customer
             )
@@ -368,7 +368,7 @@ def update_customer_service(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Không thể cập nhật khách hàng"
+            detail="KhÃ´ng thá»ƒ cáº­p nháº­t khÃ¡ch hÃ ng"
         )
 
     except Exception:
@@ -376,7 +376,7 @@ def update_customer_service(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể cập nhật khách hàng"
+            detail="KhÃ´ng thá»ƒ cáº­p nháº­t khÃ¡ch hÃ ng"
         )
 
 
@@ -400,7 +400,7 @@ def delete_customer_service(
         if not customer:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy khách hàng"
+                detail="KhÃ´ng tÃ¬m tháº¥y khÃ¡ch hÃ ng"
             )
 
         delete_customer(
@@ -412,7 +412,7 @@ def delete_customer_service(
 
         return {
             "success": True,
-            "message": "Xóa khách hàng thành công"
+            "message": "XÃ³a khÃ¡ch hÃ ng thÃ nh cÃ´ng"
         }
 
     except HTTPException:
@@ -425,8 +425,8 @@ def delete_customer_service(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Không thể xóa khách hàng "
-                "vì đang có dữ liệu liên quan"
+                "KhÃ´ng thá»ƒ xÃ³a khÃ¡ch hÃ ng "
+                "vÃ¬ Ä‘ang cÃ³ dá»¯ liá»‡u liÃªn quan"
             )
         )
 
@@ -435,5 +435,5 @@ def delete_customer_service(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể xóa khách hàng"
+            detail="KhÃ´ng thá»ƒ xÃ³a khÃ¡ch hÃ ng"
         )

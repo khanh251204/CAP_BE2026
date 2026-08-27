@@ -1,4 +1,4 @@
-import os
+﻿import os
 import smtplib
 import ssl
 
@@ -52,7 +52,7 @@ SMTP_FROM_NAME = os.getenv(
 
 def validate_smtp_config():
     """
-    Kiểm tra cấu hình SMTP trước khi gửi mail.
+    Kiá»ƒm tra cáº¥u hÃ¬nh SMTP trÆ°á»›c khi gá»­i mail.
     """
 
     missing_configs = []
@@ -79,7 +79,7 @@ def validate_smtp_config():
 
     if missing_configs:
         raise RuntimeError(
-            "Thiếu cấu hình SMTP trong .env: "
+            "Thiáº¿u cáº¥u hÃ¬nh SMTP trong .env: "
             + ", ".join(
                 missing_configs
             )
@@ -98,11 +98,11 @@ def send_email(
     html_content: str | None = None
 ):
     """
-    Hàm gửi email dùng chung.
+    HÃ m gá»­i email dÃ¹ng chung.
 
     - SMTP Gmail
     - STARTTLS
-    - Port mặc định 587
+    - Port máº·c Ä‘á»‹nh 587
     """
 
     validate_smtp_config()
@@ -120,12 +120,12 @@ def send_email(
 
     message["To"] = to_email
 
-    # Nội dung text fallback
+    # Ná»™i dung text fallback
     message.set_content(
         text_content
     )
 
-    # Nội dung HTML
+    # Ná»™i dung HTML
     if html_content:
         message.add_alternative(
             html_content,
@@ -143,7 +143,7 @@ def send_email(
             timeout=15
         ) as smtp:
 
-            # Kết nối TLS
+            # Káº¿t ná»‘i TLS
             smtp.ehlo()
 
             smtp.starttls(
@@ -167,8 +167,8 @@ def send_email(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
-                "Không thể xác thực tài khoản "
-                "SMTP gửi email"
+                "KhÃ´ng thá»ƒ xÃ¡c thá»±c tÃ i khoáº£n "
+                "SMTP gá»­i email"
             )
         )
 
@@ -176,8 +176,8 @@ def send_email(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
-                "Không thể gửi email. "
-                "Vui lòng thử lại sau."
+                "KhÃ´ng thá»ƒ gá»­i email. "
+                "Vui lÃ²ng thá»­ láº¡i sau."
             )
         )
 
@@ -185,8 +185,8 @@ def send_email(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
-                "Không thể kết nối đến "
-                "máy chủ email"
+                "KhÃ´ng thá»ƒ káº¿t ná»‘i Ä‘áº¿n "
+                "mÃ¡y chá»§ email"
             )
         )
 
@@ -203,7 +203,7 @@ def send_otp_email(
     purpose: str
 ):
     """
-    Gửi OTP cho:
+    Gá»­i OTP cho:
     - verify_email
     - forgot_password
     """
@@ -211,32 +211,32 @@ def send_otp_email(
     if purpose == "verify_email":
 
         subject = (
-            "Xác thực email - VoiceCashBook"
+            "XÃ¡c thá»±c email - VoiceCashBook"
         )
 
-        title = "Xác thực email"
+        title = "XÃ¡c thá»±c email"
 
         description = (
-            "Bạn đang đăng ký tài khoản "
+            "Báº¡n Ä‘ang Ä‘Äƒng kÃ½ tÃ i khoáº£n "
             "VoiceCashBook."
         )
 
     elif purpose == "forgot_password":
 
         subject = (
-            "Khôi phục mật khẩu - VoiceCashBook"
+            "KhÃ´i phá»¥c máº­t kháº©u - VoiceCashBook"
         )
 
-        title = "Khôi phục mật khẩu"
+        title = "KhÃ´i phá»¥c máº­t kháº©u"
 
         description = (
-            "Bạn đã yêu cầu đặt lại "
-            "mật khẩu VoiceCashBook."
+            "Báº¡n Ä‘Ã£ yÃªu cáº§u Ä‘áº·t láº¡i "
+            "máº­t kháº©u VoiceCashBook."
         )
 
     else:
         raise ValueError(
-            "OTP purpose không hợp lệ"
+            "OTP purpose khÃ´ng há»£p lá»‡"
         )
 
     # =====================================================
@@ -248,16 +248,16 @@ def send_otp_email(
 
 {description}
 
-Mã OTP của bạn là:
+MÃ£ OTP cá»§a báº¡n lÃ :
 
 {otp_code}
 
-Mã OTP có hiệu lực trong {expire_minutes} phút.
+MÃ£ OTP cÃ³ hiá»‡u lá»±c trong {expire_minutes} phÃºt.
 
-Không chia sẻ mã này cho bất kỳ ai.
+KhÃ´ng chia sáº» mÃ£ nÃ y cho báº¥t ká»³ ai.
 
-Nếu bạn không thực hiện yêu cầu này,
-vui lòng bỏ qua email.
+Náº¿u báº¡n khÃ´ng thá»±c hiá»‡n yÃªu cáº§u nÃ y,
+vui lÃ²ng bá» qua email.
 
 VoiceCashBook
 """.strip()
@@ -308,7 +308,7 @@ VoiceCashBook
                 font-size: 14px;
                 color: #6b7280;
             ">
-                Quản lý tài chính bằng giọng nói
+                Quáº£n lÃ½ tÃ i chÃ­nh báº±ng giá»ng nÃ³i
             </div>
 
         </div>
@@ -336,7 +336,7 @@ VoiceCashBook
             color: #4b5563;
             font-size: 15px;
         ">
-            Mã OTP của bạn:
+            MÃ£ OTP cá»§a báº¡n:
         </p>
 
 
@@ -366,8 +366,8 @@ VoiceCashBook
             font-size: 14px;
             line-height: 1.6;
         ">
-            Mã OTP có hiệu lực trong
-            <strong>{expire_minutes} phút</strong>.
+            MÃ£ OTP cÃ³ hiá»‡u lá»±c trong
+            <strong>{expire_minutes} phÃºt</strong>.
         </p>
 
 
@@ -376,8 +376,8 @@ VoiceCashBook
             font-size: 14px;
             line-height: 1.6;
         ">
-            Không chia sẻ mã OTP này
-            cho bất kỳ ai.
+            KhÃ´ng chia sáº» mÃ£ OTP nÃ y
+            cho báº¥t ká»³ ai.
         </p>
 
 
@@ -393,8 +393,8 @@ VoiceCashBook
             font-size: 12px;
             line-height: 1.6;
         ">
-            Nếu bạn không thực hiện
-            yêu cầu này, vui lòng bỏ qua email.
+            Náº¿u báº¡n khÃ´ng thá»±c hiá»‡n
+            yÃªu cáº§u nÃ y, vui lÃ²ng bá» qua email.
         </p>
 
     </div>

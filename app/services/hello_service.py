@@ -1,4 +1,4 @@
-class HelloService:
+﻿class HelloService:
     @staticmethod
     def get_message():
         return {

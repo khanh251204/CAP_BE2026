@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -14,17 +14,17 @@ def create_refresh_token(
     expires_at: datetime
 ) -> RefreshToken:
     """
-    Lưu refresh token vào database.
+    LÆ°u refresh token vÃ o database.
 
-    Database chỉ lưu:
+    Database chá»‰ lÆ°u:
     - user_id
     - jti
     - token_hash
     - expires_at
 
-    Không lưu refresh token plaintext.
+    KhÃ´ng lÆ°u refresh token plaintext.
 
-    Repository không commit.
+    Repository khÃ´ng commit.
     """
 
     refresh_token = RefreshToken(
@@ -47,7 +47,7 @@ def get_refresh_token_by_jti(
     jti: str
 ) -> RefreshToken | None:
     """
-    Tìm refresh token theo JWT ID.
+    TÃ¬m refresh token theo JWT ID.
     """
 
     return (
@@ -66,11 +66,11 @@ def get_active_refresh_token_by_jti(
     now: datetime
 ) -> RefreshToken | None:
     """
-    Lấy refresh token còn hiệu lực:
+    Láº¥y refresh token cÃ²n hiá»‡u lá»±c:
 
-    - đúng jti
-    - chưa bị revoke
-    - chưa hết hạn
+    - Ä‘Ãºng jti
+    - chÆ°a bá»‹ revoke
+    - chÆ°a háº¿t háº¡n
     """
 
     return (
@@ -90,9 +90,9 @@ def revoke_refresh_token(
     revoked_at: datetime
 ) -> RefreshToken:
     """
-    Vô hiệu hóa một refresh token.
+    VÃ´ hiá»‡u hÃ³a má»™t refresh token.
 
-    Dùng cho:
+    DÃ¹ng cho:
     - logout
     - refresh token rotation
     """
@@ -113,11 +113,11 @@ def revoke_all_user_refresh_tokens(
     revoked_at: datetime
 ) -> int:
     """
-    Revoke toàn bộ refresh token đang hoạt động của user.
+    Revoke toÃ n bá»™ refresh token Ä‘ang hoáº¡t Ä‘á»™ng cá»§a user.
 
-    Sau này dùng cho:
+    Sau nÃ y dÃ¹ng cho:
     - logout all devices
-    - đổi password
+    - Ä‘á»•i password
     - security incident
     """
 

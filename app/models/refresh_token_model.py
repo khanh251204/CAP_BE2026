@@ -1,4 +1,4 @@
-from sqlalchemy import (
+﻿from sqlalchemy import (
     Column,
     Integer,
     String,
@@ -25,7 +25,7 @@ class RefreshToken(Base):
         index=True
     )
 
-    # JWT ID - định danh duy nhất của refresh token
+    # JWT ID - Ä‘á»‹nh danh duy nháº¥t cá»§a refresh token
     jti = Column(
         String(255),
         nullable=False,
@@ -33,7 +33,7 @@ class RefreshToken(Base):
         index=True
     )
 
-    # SHA256 của refresh token
+    # SHA256 cá»§a refresh token
     token_hash = Column(
         String(255),
         nullable=False

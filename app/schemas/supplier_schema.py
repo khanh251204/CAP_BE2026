@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Optional
 
 from pydantic import (
@@ -96,7 +96,7 @@ class CreateSupplierRequest(BaseModel):
 
         if len(value) < 2:
             raise ValueError(
-                "Tên nhà cung cấp phải có ít nhất 2 ký tự"
+                "TÃªn nhÃ  cung cáº¥p pháº£i cÃ³ Ã­t nháº¥t 2 kÃ½ tá»±"
             )
 
         return value
@@ -191,7 +191,7 @@ class UpdateSupplierRequest(BaseModel):
 
         if len(value) < 2:
             raise ValueError(
-                "Tên nhà cung cấp phải có ít nhất 2 ký tự"
+                "TÃªn nhÃ  cung cáº¥p pháº£i cÃ³ Ã­t nháº¥t 2 kÃ½ tá»±"
             )
 
         return value
@@ -204,7 +204,7 @@ class UpdateSupplierRequest(BaseModel):
     ):
         if not self.model_fields_set:
             raise ValueError(
-                "Không có dữ liệu cần cập nhật"
+                "KhÃ´ng cÃ³ dá»¯ liá»‡u cáº§n cáº­p nháº­t"
             )
 
         return self

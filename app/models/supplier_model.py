@@ -1,13 +1,15 @@
-from sqlalchemy import (
+﻿from sqlalchemy import (
     Column,
-    DateTime,
     Integer,
     String,
+    ForeignKey,
+    DateTime,
     Text,
     func
 )
 
 from app.configs.database import Base
+from sqlalchemy.orm import relationship
 
 
 class Supplier(Base):
@@ -16,11 +18,13 @@ class Supplier(Base):
     supplier_id = Column(
         Integer,
         primary_key=True,
-        autoincrement=True
+        autoincrement=True,
+        index=True
     )
 
     user_id = Column(
         Integer,
+        ForeignKey("User.user_id"),
         nullable=False,
         index=True
     )
@@ -62,13 +66,28 @@ class Supplier(Base):
 
     created_at = Column(
         DateTime,
-        nullable=True,
+        nullable=False,
         server_default=func.now()
     )
 
     updated_at = Column(
         DateTime,
-        nullable=True,
+        nullable=False,
         server_default=func.now(),
         onupdate=func.now()
+    )
+
+    transactions = relationship(
+        "Transaction",
+        back_populates="supplier"
+    )
+
+    user = relationship(
+        "User",
+        back_populates="supplier"
+    )
+
+    debt = relationship(
+        "Debt",
+        back_populates="supplier"
     )

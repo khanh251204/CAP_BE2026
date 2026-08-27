@@ -1,4 +1,4 @@
-import re
+﻿import re
 
 from datetime import datetime
 
@@ -84,7 +84,7 @@ def validate_password_strength(
     if len(password) < 8:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Mật khẩu phải có ít nhất 8 ký tự"
+            detail="Máº­t kháº©u pháº£i cÃ³ Ã­t nháº¥t 8 kÃ½ tá»±"
         )
 
     if not re.search(
@@ -93,7 +93,7 @@ def validate_password_strength(
     ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Mật khẩu phải có ít nhất 1 chữ hoa"
+            detail="Máº­t kháº©u pháº£i cÃ³ Ã­t nháº¥t 1 chá»¯ hoa"
         )
 
     if not re.search(
@@ -102,7 +102,7 @@ def validate_password_strength(
     ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Mật khẩu phải có ít nhất 1 chữ thường"
+            detail="Máº­t kháº©u pháº£i cÃ³ Ã­t nháº¥t 1 chá»¯ thÆ°á»ng"
         )
 
     if not re.search(
@@ -111,7 +111,7 @@ def validate_password_strength(
     ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Mật khẩu phải có ít nhất 1 chữ số"
+            detail="Máº­t kháº©u pháº£i cÃ³ Ã­t nháº¥t 1 chá»¯ sá»‘"
         )
 
 
@@ -221,7 +221,7 @@ def register_user(
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email đã được đăng ký"
+            detail="Email Ä‘Ã£ Ä‘Æ°á»£c Ä‘Äƒng kÃ½"
         )
 
     store_name = None
@@ -273,11 +273,11 @@ def register_user(
             user
         )
 
-        # NOTIFICATION        
+        # NOTIFICATION
         NotificationController.create_notification({
             "userId": str(user.user_id),
-            "title": "Đăng ký thành công 🎉",
-            "description": "Chào mừng bạn đến với VoiceCashBook!",
+            "title": "ÄÄƒng kÃ½ thÃ nh cÃ´ng ðŸŽ‰",
+            "description": "ChÃ o má»«ng báº¡n Ä‘áº¿n vá»›i VoiceCashBook!",
             "icon": "check",
             "iconColor": "#FFFFFF",
             "borderColor": "#20D66B",
@@ -285,9 +285,9 @@ def register_user(
             "isRead": False
         })
 
-        
+
         # RESPONSE
-        # Không trả message    
+        # KhÃ´ng tráº£ message
         return {
             "success": True,
             "email": user.email,
@@ -301,7 +301,7 @@ def register_user(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email đã được đăng ký"
+            detail="Email Ä‘Ã£ Ä‘Æ°á»£c Ä‘Äƒng kÃ½"
         )
 
     except HTTPException:
@@ -315,13 +315,13 @@ def register_user(
         db.rollback()
 
         print(
-            "❌ REGISTER ERROR:",
+            "âŒ REGISTER ERROR:",
             str(e)
         )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể đăng ký tài khoản"
+            detail="KhÃ´ng thá»ƒ Ä‘Äƒng kÃ½ tÃ i khoáº£n"
         )
 
 # SEND OTP
@@ -344,19 +344,19 @@ def send_auth_otp(
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy tài khoản"
+                detail="KhÃ´ng tÃ¬m tháº¥y tÃ i khoáº£n"
             )
 
         if user.is_verified:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Email đã được xác thực"
+                detail="Email Ä‘Ã£ Ä‘Æ°á»£c xÃ¡c thá»±c"
             )
 
     # FORGOT PASSWORD
     if data.purpose == FORGOT_PASSWORD:
 
-        # Không làm lộ email có tồn tại hay không
+        # KhÃ´ng lÃ m lá»™ email cÃ³ tá»“n táº¡i hay khÃ´ng
         response = {
             "success": True,
             "otpExpiresIn": (
@@ -385,8 +385,8 @@ def send_auth_otp(
 
         db.commit()
 
-        
-        # FORGOT PASSWORD   
+
+        # FORGOT PASSWORD
         if data.purpose == FORGOT_PASSWORD:
 
             return {
@@ -394,8 +394,8 @@ def send_auth_otp(
                 **otp_info
             }
 
-        
-        # VERIFY EMAIL       
+
+        # VERIFY EMAIL
         return {
             "success": True,
             "email": user.email,
@@ -406,7 +406,7 @@ def send_auth_otp(
 
         db.rollback()
 
-        # Không làm lộ email khi forgot password
+        # KhÃ´ng lÃ m lá»™ email khi forgot password
         if (
             data.purpose == FORGOT_PASSWORD
             and exc.status_code
@@ -431,7 +431,7 @@ def send_auth_otp(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể gửi mã OTP"
+            detail="KhÃ´ng thá»ƒ gá»­i mÃ£ OTP"
         )
 
 # VERIFY OTP
@@ -455,12 +455,12 @@ def verify_auth_otp(
 
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mã OTP không hợp lệ hoặc đã hết hạn"
+                detail="MÃ£ OTP khÃ´ng há»£p lá»‡ hoáº·c Ä‘Ã£ háº¿t háº¡n"
             )
 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy tài khoản"
+            detail="KhÃ´ng tÃ¬m tháº¥y tÃ i khoáº£n"
         )
 
     # VERIFY EMAIL
@@ -470,7 +470,7 @@ def verify_auth_otp(
 
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Email đã được xác thực"
+                detail="Email Ä‘Ã£ Ä‘Æ°á»£c xÃ¡c thá»±c"
             )
 
     # FORGOT PASSWORD
@@ -483,7 +483,7 @@ def verify_auth_otp(
 
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mã OTP không hợp lệ hoặc đã hết hạn"
+                detail="MÃ£ OTP khÃ´ng há»£p lá»‡ hoáº·c Ä‘Ã£ háº¿t háº¡n"
             )
 
     try:
@@ -495,9 +495,9 @@ def verify_auth_otp(
             purpose=data.purpose
         )
 
-        
+
         # VERIFY EMAIL
-        
+
 
         if data.purpose == VERIFY_EMAIL:
 
@@ -507,7 +507,7 @@ def verify_auth_otp(
             )
 
             # Sau khi verify email
-            # cấp cả Access + Refresh Token
+            # cáº¥p cáº£ Access + Refresh Token
             session = create_session(
                 db,
                 user
@@ -527,8 +527,8 @@ def verify_auth_otp(
                 )
             }
 
-        
-        # FORGOT PASSWORD        
+
+        # FORGOT PASSWORD
         reset_token = create_reset_token(
             user_id=user.user_id,
             email=user.email,
@@ -559,7 +559,7 @@ def verify_auth_otp(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể xác thực OTP"
+            detail="KhÃ´ng thá»ƒ xÃ¡c thá»±c OTP"
         )
 
 
@@ -590,7 +590,7 @@ def reset_password(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Reset token không hợp lệ"
+            detail="Reset token khÃ´ng há»£p lá»‡"
         )
 
     user = get_user_by_id(
@@ -605,7 +605,7 @@ def reset_password(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Reset token không hợp lệ"
+            detail="Reset token khÃ´ng há»£p lá»‡"
         )
 
     token_email = normalize_email(
@@ -621,7 +621,7 @@ def reset_password(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Reset token không hợp lệ"
+            detail="Reset token khÃ´ng há»£p lá»‡"
         )
 
     fingerprint = create_password_fingerprint(
@@ -638,15 +638,15 @@ def reset_password(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=(
-                "Reset token không hợp lệ "
-                "hoặc đã được sử dụng"
+                "Reset token khÃ´ng há»£p lá»‡ "
+                "hoáº·c Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng"
             )
         )
 
     try:
 
-        
-        # UPDATE PASSWORD       
+
+        # UPDATE PASSWORD
         update_user_password(
             db=db,
             user=user,
@@ -655,7 +655,7 @@ def reset_password(
             )
         )
 
-        
+
         # REVOKE ALL REFRESH TOKENS
         revoke_all_user_refresh_tokens(
             db=db,
@@ -664,8 +664,8 @@ def reset_password(
         )
 
         db.commit()
-        
-        # RESPONSE        
+
+        # RESPONSE
         return {
             "success": True,
             "nextAction": "login"
@@ -683,7 +683,7 @@ def reset_password(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể đặt lại mật khẩu"
+            detail="KhÃ´ng thá»ƒ Ä‘áº·t láº¡i máº­t kháº©u"
         )
 
 # LOGIN
@@ -712,7 +712,7 @@ def login_user(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email hoặc mật khẩu không chính xác"
+            detail="Email hoáº·c máº­t kháº©u khÃ´ng chÃ­nh xÃ¡c"
         )
 
     # CHECK EMAIL
@@ -720,13 +720,13 @@ def login_user(
 
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản chưa được xác thực email"
+            detail="TÃ i khoáº£n chÆ°a Ä‘Æ°á»£c xÃ¡c thá»±c email"
         )
 
     try:
 
-        
-        # CREATE SESSION        
+
+        # CREATE SESSION
         session = create_session(
             db,
             user
@@ -738,14 +738,14 @@ def login_user(
             user
         )
 
-        
-        # NOTIFICATION    
+
+        # NOTIFICATION
         NotificationController.create_notification({
             "userId": str(user.user_id),
-            "title": "Đăng nhập thành công 👋",
+            "title": "ÄÄƒng nháº­p thÃ nh cÃ´ng ðŸ‘‹",
             "description": (
-                f"Chào mừng {user.full_name} "
-                "quay trở lại VoiceCashBook!"
+                f"ChÃ o má»«ng {user.full_name} "
+                "quay trá»Ÿ láº¡i VoiceCashBook!"
             ),
             "icon": "check",
             "iconColor": "#FFFFFF",
@@ -754,11 +754,11 @@ def login_user(
             "isRead": False
         })
 
-        
+
         # RESPONSE
-        # Không có message
+        # KhÃ´ng cÃ³ message
         #
-        # Vẫn trả:
+        # Váº«n tráº£:
         # - accessToken
         # - refreshToken
         # - expiresIn
@@ -783,13 +783,13 @@ def login_user(
         db.rollback()
 
         print(
-            "❌ Login error:",
+            "âŒ Login error:",
             e
         )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể đăng nhập"
+            detail="KhÃ´ng thá»ƒ Ä‘Äƒng nháº­p"
         )
 
 # GOOGLE LOGIN
@@ -815,7 +815,7 @@ def google_login(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Thiếu idToken hoặc thiếu thông tin "
+                "Thiáº¿u idToken hoáº·c thiáº¿u thÃ´ng tin "
                 "Authorization Code "
                 "(code, redirectUri)"
             )
@@ -836,14 +836,14 @@ def google_login(
 
     try:
 
-        
+
         # 1. FIND BY GOOGLE ID
         user = get_user_by_google_id(
             db,
             google_id
         )
 
-        
+
         # 2. GOOGLE ACCOUNT DOES NOT EXIST
         if not user:
 
@@ -871,8 +871,8 @@ def google_login(
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=(
-                            "Email này đã được liên kết "
-                            "với một tài khoản Google khác."
+                            "Email nÃ y Ä‘Ã£ Ä‘Æ°á»£c liÃªn káº¿t "
+                            "vá»›i má»™t tÃ i khoáº£n Google khÃ¡c."
                         )
                     )
 
@@ -899,10 +899,10 @@ def google_login(
                     is_verified=True
                 )
 
-        
+
         # 4. CREATE SESSION
-        # Quan trọng:
-        # Google Login cũng cấp:
+        # Quan trá»ng:
+        # Google Login cÅ©ng cáº¥p:
         # Access Token + Refresh Token
 
         session = create_session(
@@ -916,10 +916,10 @@ def google_login(
             user
         )
 
-        
+
         # RESPONSE
-        # Không có message
-        
+        # KhÃ´ng cÃ³ message
+
 
         return {
             "success": True,
@@ -942,8 +942,8 @@ def google_login(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Không thể liên kết "
-                "tài khoản Google."
+                "KhÃ´ng thá»ƒ liÃªn káº¿t "
+                "tÃ i khoáº£n Google."
             )
         )
 
@@ -954,8 +954,8 @@ def google_login(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
-                "Không thể đăng nhập "
-                "bằng Google."
+                "KhÃ´ng thá»ƒ Ä‘Äƒng nháº­p "
+                "báº±ng Google."
             )
         )
 
@@ -967,15 +967,15 @@ def refresh_access_token(
 ):
     try:
 
-        
+
         # ROTATE REFRESH TOKEN
         result = rotate_refresh_token(
             db=db,
             token=token
         )
 
-        
-        # FIND USER        
+
+        # FIND USER
         user = get_user_by_id(
             db,
             result["userId"]
@@ -984,32 +984,32 @@ def refresh_access_token(
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Người dùng không tồn tại"
+                detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i"
             )
 
-        
+
         # CHECK VERIFIED
         if not user.is_verified:
 
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tài khoản chưa được xác thực"
+                detail="TÃ i khoáº£n chÆ°a Ä‘Æ°á»£c xÃ¡c thá»±c"
             )
 
-        
-        # CREATE NEW ACCESS TOKEN        
+
+        # CREATE NEW ACCESS TOKEN
         access = create_access_session(
             user
         )
 
         db.commit()
 
-        
+
         # RESPONSE
         #
-        # Access Token mới
-        # Refresh Token mới
-        
+        # Access Token má»›i
+        # Refresh Token má»›i
+
 
         return {
             "success": True,
@@ -1031,7 +1031,7 @@ def refresh_access_token(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể làm mới phiên đăng nhập"
+            detail="KhÃ´ng thá»ƒ lÃ m má»›i phiÃªn Ä‘Äƒng nháº­p"
         )
 
 
@@ -1042,7 +1042,7 @@ def logout_user(
 ):
     try:
 
-        
+
         # REVOKE REFRESH TOKEN
         revoke_refresh_token_value(
             db=db,
@@ -1065,7 +1065,7 @@ def logout_user(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể đăng xuất"
+            detail="KhÃ´ng thá»ƒ Ä‘Äƒng xuáº¥t"
         )
 
 
@@ -1087,7 +1087,7 @@ def get_current_user(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ"
+            detail="Token khÃ´ng há»£p lá»‡"
         )
 
     user = get_user_by_id(
@@ -1099,7 +1099,7 @@ def get_current_user(
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Người dùng không tồn tại"
+            detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i"
         )
 
     return {
@@ -1130,14 +1130,14 @@ def update_profile(
 
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy người dùng"
+                detail="KhÃ´ng tÃ¬m tháº¥y ngÆ°á»i dÃ¹ng"
             )
 
         request_data = data.model_dump(
             exclude_unset=True
         )
 
-        
+
         # ACCOUNT TYPE
         account_type = request_data.get(
             "accountType",
@@ -1154,7 +1154,7 @@ def update_profile(
             user.business_type
         )
 
-        
+
         # BUSINESS ACCOUNT
         if account_type == "business":
 
@@ -1165,7 +1165,7 @@ def update_profile(
 
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Tên cửa hàng/doanh nghiệp là bắt buộc"
+                    detail="TÃªn cá»­a hÃ ng/doanh nghiá»‡p lÃ  báº¯t buá»™c"
                 )
 
             if (
@@ -1175,10 +1175,10 @@ def update_profile(
 
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Lĩnh vực kinh doanh là bắt buộc"
+                    detail="LÄ©nh vá»±c kinh doanh lÃ  báº¯t buá»™c"
                 )
 
-        
+
         # PERSONAL ACCOUNT
         if account_type == "personal":
 
@@ -1187,15 +1187,15 @@ def update_profile(
 
         updates = {}
 
-        
-        # FULL NAME       
+
+        # FULL NAME
         if "fullName" in request_data:
 
             updates["full_name"] = (
                 request_data["fullName"].strip()
             )
 
-        
+
         # PHONE
         if "phoneNumber" in request_data:
 
@@ -1209,7 +1209,7 @@ def update_profile(
                 else None
             )
 
-        
+
         # PROVINCE CODE
         if "provinceCode" in request_data:
 
@@ -1223,7 +1223,7 @@ def update_profile(
                 else None
             )
 
-        
+
         # PROVINCE
         if "province" in request_data:
 
@@ -1237,7 +1237,7 @@ def update_profile(
                 else None
             )
 
-        
+
         # WARD CODE
         if "wardCode" in request_data:
 
@@ -1251,7 +1251,7 @@ def update_profile(
                 else None
             )
 
-        
+
         # WARD
         if "ward" in request_data:
 
@@ -1265,8 +1265,8 @@ def update_profile(
                 else None
             )
 
-        
-        # ADDRESS        
+
+        # ADDRESS
         if "addressDetail" in request_data:
 
             addr_detail_val = request_data[
@@ -1279,7 +1279,7 @@ def update_profile(
                 else None
             )
 
-        
+
         # CLEAR WARD WHEN PROVINCE CHANGES
         if "provinceCode" in request_data:
 
@@ -1301,7 +1301,7 @@ def update_profile(
                     updates["ward_code"] = None
                     updates["ward_name"] = None
 
-        
+
         # ACCOUNT TYPE
         if "accountType" in request_data:
 
@@ -1309,7 +1309,7 @@ def update_profile(
                 account_type
             )
 
-        
+
         # BUSINESS DATA
         if account_type == "business":
 
@@ -1331,7 +1331,7 @@ def update_profile(
                     business_field.strip()
                 )
 
-        
+
         # PERSONAL DATA
         else:
 
@@ -1369,5 +1369,5 @@ def update_profile(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể cập nhật thông tin"
+            detail="KhÃ´ng thá»ƒ cáº­p nháº­t thÃ´ng tin"
         )

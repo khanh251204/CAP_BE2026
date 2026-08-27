@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -15,10 +15,10 @@ def create_otp(
     expires_at: datetime
 ) -> OTPCode:
     """
-    Tạo OTP mới.
+    Táº¡o OTP má»›i.
 
-    Không commit tại Repository.
-    Service sẽ quản lý transaction.
+    KhÃ´ng commit táº¡i Repository.
+    Service sáº½ quáº£n lÃ½ transaction.
     """
 
     otp = OTPCode(
@@ -43,7 +43,7 @@ def get_latest_otp(
     purpose: str
 ) -> OTPCode | None:
     """
-    Lấy OTP mới nhất theo email + purpose.
+    Láº¥y OTP má»›i nháº¥t theo email + purpose.
     """
 
     return (
@@ -68,11 +68,11 @@ def get_latest_valid_otp(
     now: datetime
 ) -> OTPCode | None:
     """
-    Lấy OTP mới nhất:
-    - đúng email
-    - đúng purpose
-    - chưa sử dụng
-    - chưa hết hạn
+    Láº¥y OTP má»›i nháº¥t:
+    - Ä‘Ãºng email
+    - Ä‘Ãºng purpose
+    - chÆ°a sá»­ dá»¥ng
+    - chÆ°a háº¿t háº¡n
     """
 
     return (
@@ -96,7 +96,7 @@ def mark_otp_used(
     otp: OTPCode
 ) -> OTPCode:
     """
-    Đánh dấu OTP đã sử dụng.
+    ÄÃ¡nh dáº¥u OTP Ä‘Ã£ sá»­ dá»¥ng.
     """
 
     otp.is_used = True
@@ -113,10 +113,10 @@ def invalidate_old_otps(
     purpose: str
 ) -> int:
     """
-    Vô hiệu hóa tất cả OTP cũ chưa sử dụng
-    trước khi tạo OTP mới.
+    VÃ´ hiá»‡u hÃ³a táº¥t cáº£ OTP cÅ© chÆ°a sá»­ dá»¥ng
+    trÆ°á»›c khi táº¡o OTP má»›i.
 
-    Trả về số bản ghi bị update.
+    Tráº£ vá» sá»‘ báº£n ghi bá»‹ update.
     """
 
     updated_rows = (

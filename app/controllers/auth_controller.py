@@ -1,4 +1,4 @@
-from fastapi import (
+﻿from fastapi import (
     HTTPException,
     Response,
     status
@@ -47,7 +47,7 @@ def update_profile_controller(
         data=request
     )
 
-# SET SESSION COOKIE (Hỗ trợ cả HttpOnly Cookie và JSON Response cho Mobile)
+# SET SESSION COOKIE (Há»— trá»£ cáº£ HttpOnly Cookie vÃ  JSON Response cho Mobile)
 def set_session_cookie(
     response: Response,
     result: dict
@@ -139,7 +139,7 @@ def login_controller(
         result=result
     )
 
-    # Trả về accessToken, refreshToken, expiresIn, user cho Mobile Client
+    # Tráº£ vá» accessToken, refreshToken, expiresIn, user cho Mobile Client
     return {
         "success": True,
         "accessToken": result.get("accessToken"),
@@ -183,7 +183,7 @@ def refresh_token_controller(
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token không tồn tại"
+            detail="Refresh token khÃ´ng tá»“n táº¡i"
         )
 
     result = refresh_access_token(
@@ -225,7 +225,7 @@ def logout_controller(
 
     return {
         "success": True,
-        "message": "Đăng xuất thành công"
+        "message": "ÄÄƒng xuáº¥t thÃ nh cÃ´ng"
     }
 
 # CURRENT USER

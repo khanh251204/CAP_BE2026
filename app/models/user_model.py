@@ -1,4 +1,4 @@
-from sqlalchemy import (
+﻿from sqlalchemy import (
     Column,
     Integer,
     String,
@@ -8,7 +8,7 @@ from sqlalchemy import (
 )
 
 from app.configs.database import Base
-
+from sqlalchemy.orm import relationship
 
 class User(Base):
     __tablename__ = "User"
@@ -41,7 +41,7 @@ class User(Base):
         nullable=True
     )
 
-    # province từ Frontend
+    # province tá»« Frontend
     region = Column(
         String(100),
         nullable=True
@@ -67,7 +67,7 @@ class User(Base):
         nullable=True
     )
 
-    # lĩnh vực kinh doanh
+    # lÄ©nh vá»±c kinh doanh
     business_type = Column(
         String(100),
         nullable=True
@@ -80,7 +80,7 @@ class User(Base):
         default="personal"
     )
 
-    # Chỉ dành cho business
+    # Chá»‰ dÃ nh cho business
     store_name = Column(
         String(255),
         nullable=True
@@ -112,4 +112,33 @@ class User(Base):
         DateTime,
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP")
+    )
+    transactions = relationship(
+            "Transaction",
+            back_populates="user"
+        )
+
+    customer = relationship(
+            "Customer",
+            back_populates="user"
+        )
+    supplier = relationship(
+            "Supplier",
+            back_populates="user"
+        )
+    account = relationship(
+        "Account",
+        back_populates="user"
+    )
+    product = relationship(
+        "Product",
+        back_populates="user"
+    )
+    inventory_transaction = relationship(
+        "InventoryTransaction",
+        back_populates="user"
+    )
+    debt = relationship(
+        "Debt",
+        back_populates="user"
     )

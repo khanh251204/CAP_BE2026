@@ -1,3 +1,3 @@
-class Roles:
+﻿class Roles:
     USER = "user"
     ADMIN = "admin"
