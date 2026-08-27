@@ -139,10 +139,11 @@ def login_controller(
         result=result
     )
 
-    # Trả về accessToken, expiresIn, user cho Mobile Client
+    # Trả về accessToken, refreshToken, expiresIn, user cho Mobile Client
     return {
         "success": True,
         "accessToken": result.get("accessToken"),
+        "refreshToken": result.get("refreshToken"),
         "expiresIn": result.get("expiresIn"),
         "tokenType": result.get("tokenType", "bearer"),
         "user": result.get("user")
@@ -167,6 +168,7 @@ def google_login_controller(
     return {
         "success": True,
         "accessToken": result.get("accessToken"),
+        "refreshToken": result.get("refreshToken"),
         "expiresIn": result.get("expiresIn"),
         "tokenType": result.get("tokenType", "bearer"),
         "user": result.get("user")
@@ -197,6 +199,7 @@ def refresh_token_controller(
     return {
         "success": True,
         "accessToken": result.get("accessToken"),
+        "refreshToken": result.get("refreshToken"),
         "expiresIn": result.get("expiresIn"),
         "tokenType": result.get("tokenType", "bearer")
     }

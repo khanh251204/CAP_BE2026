@@ -1,5 +1,6 @@
 from fastapi import (
     APIRouter,
+    Body,
     Cookie,
     Depends,
     Response,
@@ -27,7 +28,8 @@ from app.schemas.auth_schema import (
     VerifyOTPRequest,
     ResetPasswordRequest,
     GoogleLoginRequest,
-    UpdateProfileRequest
+    UpdateProfileRequest,
+    RefreshTokenRequest
 )
 
 from app.controllers.auth_controller import (
@@ -179,14 +181,19 @@ def google_callback(
 @router.post("/refresh-token")
 def refresh_token(
     response: Response,
+    request: RefreshTokenRequest | None = Body(default=None),
     refresh_token: str | None = Cookie(
         default=None,
         alias=JWT_COOKIE_NAME
     ),
     db: Session = Depends(get_db)
 ):
+    token = refresh_token
+    if request and request.refreshToken:
+        token = request.refreshToken
+
     return refresh_token_controller(
-        token=refresh_token,
+        token=token,
         response=response,
         db=db
     )
@@ -196,14 +203,19 @@ def refresh_token(
 @router.post("/logout")
 def logout(
     response: Response,
+    request: RefreshTokenRequest | None = Body(default=None),
     refresh_token: str | None = Cookie(
         default=None,
         alias=JWT_COOKIE_NAME
     ),
     db: Session = Depends(get_db)
 ):
+    token = refresh_token
+    if request and request.refreshToken:
+        token = request.refreshToken
+
     return logout_controller(
-        token=refresh_token,
+        token=token,
         response=response,
         db=db
     )

@@ -8,11 +8,6 @@ from pydantic import (
     model_validator
 )
 
-from typing import (
-    Literal,
-    Optional
-)
-
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -200,3 +195,10 @@ class GoogleLoginRequest(BaseModel):
     code: Optional[str] = Field(default=None)
     codeVerifier: Optional[str] = Field(default=None)
     redirectUri: Optional[str] = Field(default=None)
+
+
+# REFRESH TOKEN
+class RefreshTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refreshToken: Optional[str] = Field(default=None)

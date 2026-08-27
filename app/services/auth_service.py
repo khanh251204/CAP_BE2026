@@ -68,8 +68,8 @@ from app.services.refresh_token_service import (
     revoke_refresh_token_value
 )
 
-
 # HELPERS
+
 def normalize_email(
     email
 ) -> str:
@@ -143,10 +143,14 @@ def user_to_dict(user):
         )
     }
 
+# SESSION
+
 def create_session(
     db: Session,
     user
 ) -> dict:
+
+    # ACCESS TOKEN
     access_token = create_access_token({
         "sub": str(
             user.user_id
@@ -155,6 +159,7 @@ def create_session(
         "role": user.role
     })
 
+    # REFRESH TOKEN
     refresh_token = create_refresh_token(
         db=db,
         user_id=user.user_id,
@@ -162,6 +167,7 @@ def create_session(
         role=user.role
     )
 
+    # SESSION RESPONSE
     return {
         "accessToken": access_token,
         "refreshToken": refresh_token,
@@ -176,6 +182,7 @@ def create_session(
 def create_access_session(
     user
 ) -> dict:
+
     access_token = create_access_token({
         "sub": str(
             user.user_id
@@ -195,7 +202,6 @@ def create_access_session(
 
 
 # REGISTER
-# REGISTER
 def register_user(
     db: Session,
     data: RegisterRequest
@@ -208,6 +214,7 @@ def register_user(
         data.password
     )
 
+    # CHECK EMAIL
     if get_user_by_email(
         db,
         email
@@ -221,6 +228,7 @@ def register_user(
     business_type = None
 
     if data.accountType == "business":
+
         store_name = (
             data.storeName.strip()
             if data.storeName
@@ -234,9 +242,8 @@ def register_user(
         )
 
     try:
-        # ==============================
-        # TẠO USER
-        # ==============================
+
+        # CREATE USER
         user = create_user(
             db=db,
             full_name=data.fullName.strip(),
@@ -252,27 +259,21 @@ def register_user(
             is_verified=False
         )
 
-        # ==============================
-        # GỬI OTP
-        # ==============================
+        # SEND OTP
         otp_info = send_otp(
             db,
             user=user,
             purpose=VERIFY_EMAIL
         )
 
-        # ==============================
-        # LƯU USER
-        # ==============================
+        # COMMIT
         db.commit()
 
         db.refresh(
             user
         )
 
-        # ==============================
-        # 🔔 TẠO THÔNG BÁO
-        # ==============================
+        # NOTIFICATION        
         NotificationController.create_notification({
             "userId": str(user.user_id),
             "title": "Đăng ký thành công 🎉",
@@ -284,21 +285,18 @@ def register_user(
             "isRead": False
         })
 
-        # ==============================
+        
         # RESPONSE
-        # ==============================
+        # Không trả message    
         return {
             "success": True,
-            "message": (
-                "Đăng ký thành công. "
-                "Mã OTP đã được gửi đến email."
-            ),
             "email": user.email,
             "nextAction": "verify_email",
             **otp_info
         }
 
     except IntegrityError:
+
         db.rollback()
 
         raise HTTPException(
@@ -307,10 +305,13 @@ def register_user(
         )
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception as e:
+
         db.rollback()
 
         print(
@@ -322,6 +323,7 @@ def register_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng ký tài khoản"
         )
+
 # SEND OTP
 def send_auth_otp(
     db: Session,
@@ -338,6 +340,7 @@ def send_auth_otp(
 
     # VERIFY EMAIL
     if data.purpose == VERIFY_EMAIL:
+
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -352,12 +355,10 @@ def send_auth_otp(
 
     # FORGOT PASSWORD
     if data.purpose == FORGOT_PASSWORD:
+
+        # Không làm lộ email có tồn tại hay không
         response = {
             "success": True,
-            "message": (
-                "Nếu email tồn tại trong hệ thống, "
-                "mã OTP sẽ được gửi đến email."
-            ),
             "otpExpiresIn": (
                 OTP_EXPIRE_MINUTES
                 * 60
@@ -375,6 +376,7 @@ def send_auth_otp(
             return response
 
     try:
+
         otp_info = send_otp(
             db,
             user=user,
@@ -383,24 +385,25 @@ def send_auth_otp(
 
         db.commit()
 
+        
+        # FORGOT PASSWORD   
         if data.purpose == FORGOT_PASSWORD:
+
             return {
                 "success": True,
-                "message": (
-                    "Nếu email tồn tại trong hệ thống, "
-                    "mã OTP sẽ được gửi đến email."
-                ),
                 **otp_info
             }
 
+        
+        # VERIFY EMAIL       
         return {
             "success": True,
-            "message": "Mã OTP đã được gửi",
             "email": user.email,
             **otp_info
         }
 
     except HTTPException as exc:
+
         db.rollback()
 
         # Không làm lộ email khi forgot password
@@ -411,10 +414,6 @@ def send_auth_otp(
         ):
             return {
                 "success": True,
-                "message": (
-                    "Nếu email tồn tại trong hệ thống, "
-                    "mã OTP sẽ được gửi đến email."
-                ),
                 "otpExpiresIn": (
                     OTP_EXPIRE_MINUTES
                     * 60
@@ -427,13 +426,13 @@ def send_auth_otp(
         raise
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể gửi mã OTP"
         )
-
 
 # VERIFY OTP
 def verify_auth_otp(
@@ -449,8 +448,11 @@ def verify_auth_otp(
         email
     )
 
+    # USER NOT FOUND
     if not user:
+
         if data.purpose == FORGOT_PASSWORD:
+
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Mã OTP không hợp lệ hoặc đã hết hạn"
@@ -461,24 +463,31 @@ def verify_auth_otp(
             detail="Không tìm thấy tài khoản"
         )
 
+    # VERIFY EMAIL
     if data.purpose == VERIFY_EMAIL:
+
         if user.is_verified:
+
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Email đã được xác thực"
             )
 
+    # FORGOT PASSWORD
     if data.purpose == FORGOT_PASSWORD:
+
         if (
             not user.password_hash
             or not user.is_verified
         ):
+
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Mã OTP không hợp lệ hoặc đã hết hạn"
             )
 
     try:
+
         verify_otp(
             db,
             user=user,
@@ -486,13 +495,19 @@ def verify_auth_otp(
             purpose=data.purpose
         )
 
+        
         # VERIFY EMAIL
+        
+
         if data.purpose == VERIFY_EMAIL:
+
             verify_user(
                 db,
                 user
             )
 
+            # Sau khi verify email
+            # cấp cả Access + Refresh Token
             session = create_session(
                 db,
                 user
@@ -506,14 +521,14 @@ def verify_auth_otp(
 
             return {
                 "success": True,
-                "message": "Xác thực email thành công",
                 **session,
                 "user": user_to_dict(
                     user
                 )
             }
 
-        # FORGOT PASSWORD
+        
+        # FORGOT PASSWORD        
         reset_token = create_reset_token(
             user_id=user.user_id,
             email=user.email,
@@ -524,7 +539,6 @@ def verify_auth_otp(
 
         return {
             "success": True,
-            "message": "Xác thực OTP thành công",
             "resetToken": reset_token,
             "expiresIn": (
                 PASSWORD_RESET_EXPIRE_MINUTES
@@ -534,10 +548,13 @@ def verify_auth_otp(
         }
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(
@@ -560,6 +577,7 @@ def reset_password(
     )
 
     try:
+
         user_id = int(
             payload["sub"]
         )
@@ -569,6 +587,7 @@ def reset_password(
         TypeError,
         ValueError
     ):
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Reset token không hợp lệ"
@@ -583,6 +602,7 @@ def reset_password(
         not user
         or not user.password_hash
     ):
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Reset token không hợp lệ"
@@ -598,6 +618,7 @@ def reset_password(
     if token_email != normalize_email(
         user.email
     ):
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Reset token không hợp lệ"
@@ -613,6 +634,7 @@ def reset_password(
         )
         != fingerprint
     ):
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=(
@@ -622,6 +644,9 @@ def reset_password(
         )
 
     try:
+
+        
+        # UPDATE PASSWORD       
         update_user_password(
             db=db,
             user=user,
@@ -630,6 +655,8 @@ def reset_password(
             )
         )
 
+        
+        # REVOKE ALL REFRESH TOKENS
         revoke_all_user_refresh_tokens(
             db=db,
             user_id=user.user_id,
@@ -637,25 +664,27 @@ def reset_password(
         )
 
         db.commit()
-
+        
+        # RESPONSE        
         return {
             "success": True,
-            "message": "Đặt lại mật khẩu thành công",
             "nextAction": "login"
         }
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đặt lại mật khẩu"
         )
-
 
 # LOGIN
 def login_user(
@@ -671,7 +700,7 @@ def login_user(
         email
     )
 
-    # Kiểm tra tài khoản
+    # CHECK ACCOUNT
     if (
         not user
         or not user.password_hash
@@ -680,22 +709,24 @@ def login_user(
             user.password_hash
         )
     ):
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email hoặc mật khẩu không chính xác"
         )
 
-    # Kiểm tra email đã xác thực
+    # CHECK EMAIL
     if not user.is_verified:
+
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tài khoản chưa được xác thực email"
         )
 
     try:
-        # ================================
-        # TẠO SESSION
-        # ================================
+
+        
+        # CREATE SESSION        
         session = create_session(
             db,
             user
@@ -703,11 +734,12 @@ def login_user(
 
         db.commit()
 
-        db.refresh(user)
+        db.refresh(
+            user
+        )
 
-        # ================================
-        # 🔔 TẠO THÔNG BÁO ĐĂNG NHẬP
-        # ================================
+        
+        # NOTIFICATION    
         NotificationController.create_notification({
             "userId": str(user.user_id),
             "title": "Đăng nhập thành công 👋",
@@ -722,20 +754,32 @@ def login_user(
             "isRead": False
         })
 
-        # ================================
+        
         # RESPONSE
-        # ================================
+        # Không có message
+        #
+        # Vẫn trả:
+        # - accessToken
+        # - refreshToken
+        # - expiresIn
+        # - tokenType
+        # - user
         return {
             "success": True,
             **session,
-            "user": user_to_dict(user)
+            "user": user_to_dict(
+                user
+            )
         }
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception as e:
+
         db.rollback()
 
         print(
@@ -747,25 +791,37 @@ def login_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng nhập"
         )
+
 # GOOGLE LOGIN
 def google_login(
     db: Session,
     data: GoogleLoginRequest
 ):
+    # GOOGLE TOKEN
     if data.idToken:
+
         token_val = data.idToken
+
     elif data.code and data.redirectUri:
+
         token_val = exchange_code_for_id_token(
             code=data.code,
             code_verifier=data.codeVerifier,
             redirect_uri=data.redirectUri
         )
+
     else:
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Thiếu idToken hoặc thiếu thông tin Authorization Code (code, redirectUri)"
+            detail=(
+                "Thiếu idToken hoặc thiếu thông tin "
+                "Authorization Code "
+                "(code, redirectUri)"
+            )
         )
 
+    # VERIFY GOOGLE TOKEN
     google_data = verify_google_id_token(
         token_val
     )
@@ -779,33 +835,39 @@ def google_login(
     )
 
     try:
-        # 1. Tìm theo Google ID trước
+
+        
+        # 1. FIND BY GOOGLE ID
         user = get_user_by_google_id(
             db,
             google_id
         )
 
-        # 2. Chưa từng đăng nhập Google
+        
+        # 2. GOOGLE ACCOUNT DOES NOT EXIST
         if not user:
+
             existing_user = get_user_by_email(
                 db,
                 email
             )
 
             if existing_user:
-                # Email đã tồn tại và chưa liên kết Google
+                # Email exists but Google not linked
                 if not existing_user.google_id:
+
                     user = link_google_account(
                         db=db,
                         user=existing_user,
                         google_id=google_id
                     )
 
-                # Email này đã liên kết với Google account khác
+                # Email linked to another Google account
                 elif (
                     existing_user.google_id
                     != google_id
                 ):
+
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=(
@@ -815,10 +877,12 @@ def google_login(
                     )
 
                 else:
+
                     user = existing_user
 
+            # 3. CREATE NEW GOOGLE USER
             else:
-                # 3. User hoàn toàn mới
+
                 user = create_user(
                     db=db,
                     full_name=google_data[
@@ -835,7 +899,12 @@ def google_login(
                     is_verified=True
                 )
 
-        # 4. Tạo phiên VoiceCashBook
+        
+        # 4. CREATE SESSION
+        # Quan trọng:
+        # Google Login cũng cấp:
+        # Access Token + Refresh Token
+
         session = create_session(
             db,
             user
@@ -847,6 +916,11 @@ def google_login(
             user
         )
 
+        
+        # RESPONSE
+        # Không có message
+        
+
         return {
             "success": True,
             **session,
@@ -856,10 +930,13 @@ def google_login(
         }
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except IntegrityError:
+
         db.rollback()
 
         raise HTTPException(
@@ -871,6 +948,7 @@ def google_login(
         )
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(
@@ -881,17 +959,23 @@ def google_login(
             )
         )
 
+
 # REFRESH TOKEN
 def refresh_access_token(
     db: Session,
     token: str
 ):
     try:
+
+        
+        # ROTATE REFRESH TOKEN
         result = rotate_refresh_token(
             db=db,
             token=token
         )
 
+        
+        # FIND USER        
         user = get_user_by_id(
             db,
             result["userId"]
@@ -903,17 +987,29 @@ def refresh_access_token(
                 detail="Người dùng không tồn tại"
             )
 
+        
+        # CHECK VERIFIED
         if not user.is_verified:
+
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Tài khoản chưa được xác thực"
             )
 
+        
+        # CREATE NEW ACCESS TOKEN        
         access = create_access_session(
             user
         )
 
         db.commit()
+
+        
+        # RESPONSE
+        #
+        # Access Token mới
+        # Refresh Token mới
+        
 
         return {
             "success": True,
@@ -924,10 +1020,13 @@ def refresh_access_token(
         }
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(
@@ -935,12 +1034,16 @@ def refresh_access_token(
             detail="Không thể làm mới phiên đăng nhập"
         )
 
+
 # LOGOUT
 def logout_user(
     db: Session,
     token: str
 ):
     try:
+
+        
+        # REVOKE REFRESH TOKEN
         revoke_refresh_token_value(
             db=db,
             token=token
@@ -948,16 +1051,16 @@ def logout_user(
 
         db.commit()
 
-        return {
-            "success": True,
-            "message": "Đăng xuất thành công"
-        }
+        return {"success": True}
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(
@@ -965,12 +1068,14 @@ def logout_user(
             detail="Không thể đăng xuất"
         )
 
+
 # CURRENT USER
 def get_current_user(
     db: Session,
     payload: dict
 ):
     try:
+
         user_id = int(
             payload.get("sub")
         )
@@ -979,6 +1084,7 @@ def get_current_user(
         TypeError,
         ValueError
     ):
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token không hợp lệ"
@@ -990,6 +1096,7 @@ def get_current_user(
     )
 
     if not user:
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Người dùng không tồn tại"
@@ -1009,6 +1116,7 @@ def update_profile(
     data
 ):
     try:
+
         user_id = int(
             payload.get("sub")
         )
@@ -1019,6 +1127,7 @@ def update_profile(
         )
 
         if not user:
+
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Không tìm thấy người dùng"
@@ -1028,6 +1137,8 @@ def update_profile(
             exclude_unset=True
         )
 
+        
+        # ACCOUNT TYPE
         account_type = request_data.get(
             "accountType",
             user.account_type
@@ -1043,6 +1154,7 @@ def update_profile(
             user.business_type
         )
 
+        
         # BUSINESS ACCOUNT
         if account_type == "business":
 
@@ -1050,6 +1162,7 @@ def update_profile(
                 not store_name
                 or not store_name.strip()
             ):
+
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="Tên cửa hàng/doanh nghiệp là bắt buộc"
@@ -1059,24 +1172,33 @@ def update_profile(
                 not business_field
                 or not business_field.strip()
             ):
+
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="Lĩnh vực kinh doanh là bắt buộc"
                 )
 
+        
         # PERSONAL ACCOUNT
         if account_type == "personal":
+
             store_name = None
             business_field = None
 
         updates = {}
 
+        
+        # FULL NAME       
         if "fullName" in request_data:
+
             updates["full_name"] = (
                 request_data["fullName"].strip()
             )
 
+        
+        # PHONE
         if "phoneNumber" in request_data:
+
             phone_number = request_data[
                 "phoneNumber"
             ]
@@ -1087,46 +1209,115 @@ def update_profile(
                 else None
             )
 
+        
+        # PROVINCE CODE
         if "provinceCode" in request_data:
-            prov_code_val = request_data["provinceCode"]
-            updates["province_code"] = prov_code_val.strip() if prov_code_val else None
 
+            prov_code_val = request_data[
+                "provinceCode"
+            ]
+
+            updates["province_code"] = (
+                prov_code_val.strip()
+                if prov_code_val
+                else None
+            )
+
+        
+        # PROVINCE
         if "province" in request_data:
-            prov_val = request_data["province"]
-            updates["region"] = prov_val.strip() if prov_val else None
 
+            prov_val = request_data[
+                "province"
+            ]
+
+            updates["region"] = (
+                prov_val.strip()
+                if prov_val
+                else None
+            )
+
+        
+        # WARD CODE
         if "wardCode" in request_data:
-            ward_code_val = request_data["wardCode"]
-            updates["ward_code"] = ward_code_val.strip() if ward_code_val else None
 
+            ward_code_val = request_data[
+                "wardCode"
+            ]
+
+            updates["ward_code"] = (
+                ward_code_val.strip()
+                if ward_code_val
+                else None
+            )
+
+        
+        # WARD
         if "ward" in request_data:
-            ward_val = request_data["ward"]
-            updates["ward_name"] = ward_val.strip() if ward_val else None
 
+            ward_val = request_data[
+                "ward"
+            ]
+
+            updates["ward_name"] = (
+                ward_val.strip()
+                if ward_val
+                else None
+            )
+
+        
+        # ADDRESS        
         if "addressDetail" in request_data:
-            addr_detail_val = request_data["addressDetail"]
-            updates["address_detail"] = addr_detail_val.strip() if addr_detail_val else None
 
-        # Clear ward if province changed and new ward is not provided in request
+            addr_detail_val = request_data[
+                "addressDetail"
+            ]
+
+            updates["address_detail"] = (
+                addr_detail_val.strip()
+                if addr_detail_val
+                else None
+            )
+
+        
+        # CLEAR WARD WHEN PROVINCE CHANGES
         if "provinceCode" in request_data:
-            new_prov_code = request_data["provinceCode"]
-            current_prov_code = user.province_code
-            if new_prov_code != current_prov_code:
+
+            new_prov_code = request_data[
+                "provinceCode"
+            ]
+
+            current_prov_code = (
+                user.province_code
+            )
+
+            if (
+                new_prov_code
+                != current_prov_code
+            ):
+
                 if "wardCode" not in request_data:
+
                     updates["ward_code"] = None
                     updates["ward_name"] = None
 
+        
+        # ACCOUNT TYPE
         if "accountType" in request_data:
+
             updates["account_type"] = (
                 account_type
             )
 
+        
+        # BUSINESS DATA
         if account_type == "business":
 
             if (
                 "storeName" in request_data
                 or "accountType" in request_data
             ):
+
                 updates["store_name"] = (
                     store_name.strip()
                 )
@@ -1135,14 +1326,19 @@ def update_profile(
                 "businessField" in request_data
                 or "accountType" in request_data
             ):
+
                 updates["business_type"] = (
                     business_field.strip()
                 )
 
+        
+        # PERSONAL DATA
         else:
+
             updates["store_name"] = None
             updates["business_type"] = None
 
+        # UPDATE DATABASE
         update_user_profile(
             user=user,
             updates=updates
@@ -1156,17 +1352,19 @@ def update_profile(
 
         return {
             "success": True,
-            "message": "Cập nhật thông tin thành công",
             "user": user_to_dict(
                 user
             )
         }
 
     except HTTPException:
+
         db.rollback()
+
         raise
 
     except Exception:
+
         db.rollback()
 
         raise HTTPException(
