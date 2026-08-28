@@ -51,13 +51,7 @@ class Debt(Base):
         nullable=False
     )
 
-    original_amount = Column(
-        Numeric(15, 2),
-        nullable=False,
-        default=0
-    )
-
-    remaining_amount = Column(
+    total_debt = Column(
         Numeric(15, 2),
         nullable=False,
         default=0
