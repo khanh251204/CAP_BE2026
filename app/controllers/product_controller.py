@@ -6,6 +6,16 @@ from app.services.product_service import ProductService
 class ProductController:
 
     # ==========================================
+    # GET TẤT CẢ PRODUCT KÈM TỒN KHO - USER ĐĂNG NHẬP
+    # ==========================================
+    @staticmethod
+    def get_all_products_with_stock(user_id: int, db: Session):
+        data = ProductService.get_all_products_with_stock(user_id, db)
+        return {
+            "success": True,
+            "data": data
+        }
+    # ==========================================
     # TÌM KIẾM PRODUCT THEO TÊN - USER ĐĂNG NHẬP
     # ==========================================
     @staticmethod

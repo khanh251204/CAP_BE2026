@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -8,10 +9,19 @@ from app.configs.jwt import get_current_user_id
 
 router = APIRouter()
 
+# ==========================================
+# GET PRODUCTS WITH STOCK - THEO USER ĐĂNG NHẬP
+# ==========================================
+
+@router.get("/inventories")
+def get_products_with_stock(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    return ProductController.get_all_products_with_stock(user_id, db)
 
 # ==========================================
 # TÌM KIẾM PRODUCT - THEO USER ĐĂNG NHẬP
-# (Lưu ý: Khai báo TRƯỚC /product/{product_id})
 # ==========================================
 
 @router.get("/products/search")
@@ -43,7 +53,23 @@ def get_all_products(
 
 
 # ==========================================
+# GET PRODUCT THEO USER ĐĂNG NHẬP
+# ==========================================
+
+@router.get("/products/user")
+def get_products_by_user_id(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    return ProductController.get_products_by_user_id(
+        user_id,
+        db
+    )
+
+
+# ==========================================
 # GET PRODUCT THEO ID - THEO USER ĐĂNG NHẬP
+# (Lưu ý: Khai báo SAU các route /products/xxx tĩnh)
 # ==========================================
 
 @router.get("/product/{product_id}")
@@ -54,21 +80,6 @@ def get_product_by_id(
 ):
     return ProductController.get_product_by_id(
         product_id,
-        user_id,
-        db
-    )
-
-
-# ==========================================
-# GET PRODUCT THEO USER ĐĂNG NHẬP
-# ==========================================
-
-@router.get("/products/user")
-def get_products_by_user_id(
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
-    return ProductController.get_products_by_user_id(
         user_id,
         db
     )

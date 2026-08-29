@@ -5,6 +5,10 @@ from app.repositories import product_repository as repo
 class ProductService:
 
     @staticmethod
+    def get_all_products_with_stock(user_id: int, db: Session):
+        return repo.get_products_with_stock(db, user_id)
+
+    @staticmethod
     def get_product_by_id(product_id: int, user_id: int, db: Session):
         return repo.get_product_by_id(db, user_id, product_id)
 
