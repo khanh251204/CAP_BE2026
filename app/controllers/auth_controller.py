@@ -1,5 +1,6 @@
-﻿from fastapi import (
+from fastapi import (
     HTTPException,
+    Request,
     Response,
     status
 )
@@ -7,9 +8,12 @@
 from sqlalchemy.orm import Session
 
 from app.configs.cookie import (
+    JWT_RESET_COOKIE_NAME,
     set_access_cookie,
     set_refresh_cookie,
-    delete_auth_cookies
+    set_reset_cookie,
+    delete_auth_cookies,
+    delete_reset_cookie
 )
 
 from app.schemas.auth_schema import (
@@ -37,32 +41,20 @@ from app.services.auth_service import (
 
 
 # ============================================================
-# UPDATE PROFILE
-# ============================================================
-
-def update_profile_controller(
-    request: UpdateProfileRequest,
-    payload: dict,
-    db: Session
-):
-    return update_profile(
-        db=db,
-        payload=payload,
-        data=request
-    )
-
-
-# ============================================================
-# SET SESSION COOKIE
-# Hỗ trợ cả HttpOnly Cookie và JSON Response cho Mobile
+# SET AUTH COOKIES
 # ============================================================
 
 def set_session_cookie(
     response: Response,
     result: dict
 ):
-    access_token = result.get("accessToken")
-    refresh_token = result.get("refreshToken")
+    access_token = result.get(
+        "accessToken"
+    )
+
+    refresh_token = result.get(
+        "refreshToken"
+    )
 
     if access_token:
         set_access_cookie(
@@ -85,10 +77,14 @@ def register_controller(
     request: RegisterRequest,
     db: Session
 ):
-    return register_user(
+    register_user(
         db=db,
         data=request
     )
+
+    return {
+        "success": True
+    }
 
 
 # ============================================================
@@ -99,10 +95,14 @@ def send_otp_controller(
     request: SendOTPRequest,
     db: Session
 ):
-    return send_auth_otp(
+    send_auth_otp(
         db=db,
         data=request
     )
+
+    return {
+        "success": True
+    }
 
 
 # ============================================================
@@ -119,13 +119,41 @@ def verify_otp_controller(
         data=request
     )
 
-    if result.get("accessToken"):
-        set_session_cookie(
-            response=response,
-            result=result
-        )
+    # ========================================================
+    # FORGOT PASSWORD
+    # ========================================================
 
-    return result
+    if request.purpose == "forgot_password":
+
+        reset_token = result.get("resetToken")
+
+        if not reset_token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Không tạo được Reset Token"
+            )
+
+        set_reset_cookie(response=response, token=reset_token)
+
+        return {
+            "success": True,
+            "message": "Xác thực OTP thành công",
+            "nextAction": "reset_password",
+            "expiresIn": result.get("expiresIn")
+        }
+
+    # ========================================================
+    # VERIFY EMAIL
+    # ========================================================
+
+    set_session_cookie(
+        response=response,
+        result=result
+    )
+
+    return {
+        "success": True
+    }
 
 
 # ============================================================
@@ -135,18 +163,39 @@ def verify_otp_controller(
 def reset_password_controller(
     request: ResetPasswordRequest,
     response: Response,
+    http_request: Request,
     db: Session
 ):
-    result = reset_password(
+    reset_token = http_request.cookies.get(JWT_RESET_COOKIE_NAME)
+    if not reset_token:
+        reset_token = request.resetToken
+
+    if not reset_token or reset_token == "cookie":
+        reset_token = http_request.cookies.get(JWT_RESET_COOKIE_NAME)
+
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                "Reset token không tồn tại "
+                "hoặc đã hết hạn"
+            )
+        )
+
+    reset_password(
         db=db,
-        data=request
+        data=request,
+        reset_token=reset_token
     )
 
     delete_auth_cookies(
         response=response
     )
 
-    return result
+    return {
+        "success": True,
+        "nextAction": "login"
+    }
 
 
 # ============================================================
@@ -168,14 +217,8 @@ def login_controller(
         result=result
     )
 
-    # Trả về accessToken, refreshToken, expiresIn và user cho Mobile Client
     return {
-        "success": True,
-        "accessToken": result.get("accessToken"),
-        "refreshToken": result.get("refreshToken"),
-        "expiresIn": result.get("expiresIn"),
-        "tokenType": result.get("tokenType", "bearer"),
-        "user": result.get("user")
+        "success": True
     }
 
 
@@ -199,12 +242,7 @@ def google_login_controller(
     )
 
     return {
-        "success": True,
-        "accessToken": result.get("accessToken"),
-        "refreshToken": result.get("refreshToken"),
-        "expiresIn": result.get("expiresIn"),
-        "tokenType": result.get("tokenType", "bearer"),
-        "user": result.get("user")
+        "success": True
     }
 
 
@@ -234,11 +272,7 @@ def refresh_token_controller(
     )
 
     return {
-        "success": True,
-        "accessToken": result.get("accessToken"),
-        "refreshToken": result.get("refreshToken"),
-        "expiresIn": result.get("expiresIn"),
-        "tokenType": result.get("tokenType", "bearer")
+        "success": True
     }
 
 
@@ -252,6 +286,7 @@ def logout_controller(
     db: Session
 ):
     try:
+
         if token:
             logout_user(
                 db=db,
@@ -262,13 +297,13 @@ def logout_controller(
         db.rollback()
 
     finally:
+
         delete_auth_cookies(
             response=response
         )
 
     return {
-        "success": True,
-        "message": "Đăng xuất thành công"
+        "success": True
     }
 
 
@@ -280,7 +315,32 @@ def me_controller(
     payload: dict,
     db: Session
 ):
-    return get_current_user(
+    user = get_current_user(
         db=db,
         payload=payload
     )
+
+    return {
+        "success": True,
+        "user": user
+    }
+
+
+# ============================================================
+# UPDATE PROFILE
+# ============================================================
+
+def update_profile_controller(
+    request: UpdateProfileRequest,
+    payload: dict,
+    db: Session
+):
+    update_profile(
+        db=db,
+        payload=payload,
+        data=request
+    )
+
+    return {
+        "success": True
+    }

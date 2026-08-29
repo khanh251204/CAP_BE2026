@@ -6,7 +6,7 @@ from fastapi import (
     HTTPException,
     status
 )
-
+from app.models.user_model import User
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -740,7 +740,8 @@ def verify_auth_otp(
 
 def reset_password(
     db: Session,
-    data: ResetPasswordRequest
+    data: ResetPasswordRequest,
+    reset_token: str
 ):
 
     # --------------------------------------------------------
@@ -752,13 +753,23 @@ def reset_password(
     )
 
     # --------------------------------------------------------
+    # RESET TOKEN
+    # --------------------------------------------------------
+
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Reset token không tồn tại"
+        )
+
+    # --------------------------------------------------------
     # DECODE RESET TOKEN
     # --------------------------------------------------------
 
     try:
 
         payload = decode_reset_token(
-            data.resetToken
+            reset_token
         )
 
     except HTTPException:
@@ -864,9 +875,7 @@ def reset_password(
 
         update_user_password(
             db=db,
-
             user=user,
-
             password_hash=get_password_hash(
                 data.newPassword
             )
@@ -878,9 +887,7 @@ def reset_password(
 
         revoke_all_user_refresh_tokens(
             db=db,
-
             user_id=user.user_id,
-
             revoked_at=datetime.utcnow()
         )
 
@@ -914,7 +921,6 @@ def reset_password(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đặt lại mật khẩu"
         )
-
 
 # ============================================================
 # LOGIN
@@ -1408,43 +1414,50 @@ def get_current_user(
     db: Session,
     payload: dict
 ):
+    user_id = int(payload["sub"])
 
-    try:
-
-        user_id = int(
-            payload.get("sub")
+    user = (
+        db.query(User)
+        .filter(
+            User.user_id == user_id
         )
-
-    except (
-        TypeError,
-        ValueError
-    ):
-
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ"
-        )
-
-    user = get_user_by_id(
-        db,
-        user_id
+        .first()
     )
 
     if not user:
-
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Người dùng không tồn tại"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy người dùng"
         )
 
     return {
-        "success": True,
+        "userId": user.user_id,
+        "fullName": user.full_name,
+        "email": user.email,
+        "phoneNumber": user.phone_number,
 
-        "user": user_to_dict(
-            user
+        "provinceCode": user.province_code,
+        "province": user.region,
+
+        "wardCode": user.ward_code,
+        "ward": user.ward_name,
+
+        "addressDetail": user.address_detail,
+
+        "accountType": user.account_type,
+
+        "storeName": user.store_name,
+        "businessField": user.business_type,
+
+        "role": user.role,
+        "isVerified": user.is_verified,
+
+        "createdAt": (
+            user.created_at.isoformat()
+            if user.created_at
+            else None
         )
     }
-
 
 # ============================================================
 # UPDATE PROFILE

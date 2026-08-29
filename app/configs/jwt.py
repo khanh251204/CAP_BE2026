@@ -1,4 +1,4 @@
-﻿from datetime import (
+from datetime import (
     datetime,
     timedelta,
     timezone
@@ -15,11 +15,6 @@ from fastapi import (
     HTTPException,
     Request,
     status
-)
-
-from fastapi.security import (
-    HTTPBearer,
-    HTTPAuthorizationCredentials
 )
 
 from jose import (
@@ -64,12 +59,6 @@ if not SECRET_KEY:
     raise RuntimeError(
         "JWT_SECRET_KEY chưa được cấu hình trong .env"
     )
-
-
-bearer_scheme = HTTPBearer(
-    auto_error=False
-)
-
 
 # ============================================================
 # PASSWORD FINGERPRINT
@@ -264,27 +253,25 @@ def decode_reset_token(
         )
 
 
+
 # ============================================================
 # AUTHENTICATION
 # ============================================================
 
 def authenticate_user(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(
-        bearer_scheme
-    )
+    request: Request
 ):
-    # Ưu tiên lấy Access Token từ HttpOnly Cookie
-    token = request.cookies.get(
-        JWT_ACCESS_COOKIE_NAME
-    )
+    # Try to get token from Authorization: Bearer <token>
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
 
-    # Fallback sang Bearer Token
-    if (
-        not token
-        and credentials
-    ):
-        token = credentials.credentials
+    # Fallback to cookies
+    if not token:
+        token = request.cookies.get(
+            JWT_ACCESS_COOKIE_NAME
+        )
 
     if not token:
         raise HTTPException(
@@ -295,6 +282,7 @@ def authenticate_user(
     return decode_access_token(
         token
     )
+
 
 
 # ============================================================
