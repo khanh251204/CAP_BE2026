@@ -18,3 +18,19 @@ class AccountRepository:
             .order_by(Account.account_id.asc())
             .all()
         )
+
+
+    @staticmethod
+    def get_account_by_type(
+        db: Session,
+        user_id: int,
+        account_type: str
+    ):
+        return (
+            db.query(Account)
+            .filter(
+                Account.user_id == user_id,
+                Account.type == account_type
+            )
+            .first()
+        )

@@ -17,3 +17,18 @@ class CustomerRepository:
             .order_by(Customer.customer_id.desc())
             .all()
         )
+
+    @staticmethod
+    def get_by_name(
+        db: Session,
+        user_id: int,
+        customer_name: str
+    ):
+        return (
+            db.query(Customer)
+            .filter(
+                Customer.user_id == user_id,
+                Customer.name.ilike(customer_name)
+            )
+            .first()
+        )

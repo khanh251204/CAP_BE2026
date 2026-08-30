@@ -20,3 +20,13 @@ class IntentRepository:
             .filter(Intent.intent_id == intent_id)
             .first()
         )
+    @staticmethod
+    def get_intent_by_name(
+        db: Session,
+        name_intent: str
+    ):
+        return (
+            db.query(Intent)
+            .filter(Intent.name_intent == name_intent)
+            .first()
+        )

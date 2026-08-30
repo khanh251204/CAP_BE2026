@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from app.models.product_model import Product
+from app.repositories.product_repository import get_product_by_name
 
 
 class ProductService:
@@ -108,3 +109,38 @@ class ProductService:
             Product.is_active == True,
             Product.name.ilike(f"%{name}%")
         ).all()
+    
+
+
+    @staticmethod
+    def get_product_for_sale(
+        db: Session,
+        user_id: int,
+        product_name: str,
+    ):
+    # """
+    # Tìm product để bán.
+
+    # Rule:
+    # - Product bắt buộc
+    # - Product phải tồn tại
+    # - Không được tự tạo product
+    # """
+
+        if not product_name:
+            raise ValueError(
+                "Phải có sản phẩm"
+            )
+
+        product = get_product_by_name(
+            db=db,
+            user_id=user_id,
+            name=product_name,
+        )
+
+        if not product:
+            raise ValueError(
+                f"Sản phẩm '{product_name}' không tồn tại trong database"
+            )
+
+        return product

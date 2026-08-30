@@ -96,7 +96,7 @@ def save_transaction(
         }
         
     except ValueError as ve:
-        return {"success": False, "message": f"Thiếu thông tin: {str(ve)}"}
+        return {"success": False, "message": f" {str(ve)}"}
     except Exception as e:
         return {"success": False, "message": f"Lưu database thất bại: {str(e)}"}
 
