@@ -18,7 +18,7 @@ class Supplier(Base):
         Integer, 
         ForeignKey("User.user_id"), 
         nullable=True)
-    name = Column(String(255), nullable=False)
+    supplier_name = Column(String(255), nullable=False)
     phone_number = Column(String(20),nullable=False)
     note = Column(Text, nullable=False)
     created_at = Column(DateTime,nullable=False)

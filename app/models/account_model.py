@@ -16,8 +16,8 @@ class Account(Base):
     __tablename__ = "Account"
     account_id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("User.user_id"), nullable=True)
-    name = Column(String(255), nullable=False)
-    type = Column(
+    account_name = Column(String(255), nullable=False)
+    account_type = Column(
         Enum (
             "CASH",
             "BANK",

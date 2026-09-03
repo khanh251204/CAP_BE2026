@@ -42,3 +42,4 @@ firebase-service-account.json
 # Schemas
 # ========================================
 /app/schemas/analysis_schema.py
+/app/main.py

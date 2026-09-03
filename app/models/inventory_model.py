@@ -31,7 +31,7 @@ class InventoryTransaction(Base):
         nullable=False
     )
 
-    type = Column(
+    inventory_type = Column(
         Enum("IN", "OUT"),
         nullable=False
     )

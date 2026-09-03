@@ -106,7 +106,7 @@ def create_product(
 # SỬA PRODUCT - THEO USER ĐĂNG NHẬP
 # ==========================================
 
-@router.put("/products/{product_id}")
+@router.put("/product/{product_id}")
 def update_product(
     product_id: int,
     data: dict,
@@ -125,7 +125,7 @@ def update_product(
 # XÓA PRODUCT - THEO USER ĐĂNG NHẬP
 # ==========================================
 
-@router.delete("/products/{product_id}")
+@router.delete("/product/{product_id}")
 def delete_product(
     product_id: int,
     user_id: int = Depends(get_current_user_id),

@@ -32,7 +32,7 @@ class Product(Base):
         nullable=False
     )
 
-    name = Column(
+    product_name = Column(
         String(255),
         nullable=False
     )

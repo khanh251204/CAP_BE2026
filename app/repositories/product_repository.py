@@ -70,7 +70,7 @@ def get_products_with_stock(db: Session, user_id: int):
         data.append({
             "product_id": product.product_id,
             "user_id": product.user_id,
-            "name": product.name,
+            "name": product.product_name,
             "default_unit": product.default_unit,
             "unit_price": float(product.unit_price) if product.unit_price else 0.0,
             "min_quantity": float(product.min_quantity) if product.min_quantity else 0.0,
@@ -86,7 +86,7 @@ def get_product_by_name(db: Session, user_id: int, name: str):
         db.query(Product)
         .filter(
             Product.user_id == user_id,
-            Product.name == name,
+            Product.product_name == name,
             Product.is_active == True
         )
         .first()
@@ -102,7 +102,7 @@ def create_product(
 ):
     product = Product(
         user_id=user_id,
-        name=name,
+        product_name=name,
         default_unit=unit,
         unit_price=price,
         is_active=True
@@ -141,15 +141,15 @@ def search_products_by_name(db: Session, user_id: int, name: str):
         .filter(
             Product.user_id == user_id,
             Product.is_active == True,
-            Product.name.ilike(f"%{name}%")
+            Product.product_name.ilike(f"%{name}%")
         )
         .all()
     )
 
 
 def update_product(db: Session, product: Product, data: dict):
-    if "name" in data:
-        product.name = data["name"]
+    if "product_name" in data:
+        product.product_name = data["product_name"]
     if "default_unit" in data:
         product.default_unit = data["default_unit"]
     if "min_quantity" in data:

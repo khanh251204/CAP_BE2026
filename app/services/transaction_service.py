@@ -374,7 +374,7 @@ class TransactionService:
                 db.query(Customer)
                 .filter(
                     Customer.user_id == user_id,
-                    Customer.name.ilike(
+                    Customer.customer_name.ilike(
                         str(customer_name)
                     )
                 )
@@ -385,7 +385,7 @@ class TransactionService:
 
                 db_customer = Customer(
                     user_id=user_id,
-                    name=customer_name
+                    customer_name=customer_name
                 )
 
                 db.add(db_customer)
@@ -405,7 +405,7 @@ class TransactionService:
                 db.query(Supplier)
                 .filter(
                     Supplier.user_id == user_id,
-                    Supplier.name.ilike(
+                    Supplier.supplier_name.ilike(
                         str(supplier_name)
                     )
                 )
@@ -416,7 +416,7 @@ class TransactionService:
 
                 db_supplier = Supplier(
                     user_id=user_id,
-                    name=supplier_name
+                    supplier_name=supplier_name
                 )
 
                 db.add(db_supplier)
@@ -949,7 +949,7 @@ class TransactionService:
                     "product_id": detail.product_id,
                     "product": (
                         {
-                            "name": detail.product.name,
+                            "name": detail.product.product_name,
                             "image": detail.product.img 
                         }
                         if detail.product
@@ -960,15 +960,15 @@ class TransactionService:
             data.append({
                 "transaction_id": transaction.transaction_id,
                 "intent": (
-                    transaction.intent.name_intent
+                    transaction.intent.intent_name
                     if transaction.intent
                     else None
                 ),
                 "account": (
                     {
                         
-                        "name": transaction.account.name,
-                        "type": transaction.account.type,
+                        "name": transaction.account.account_name,
+                        "type": transaction.intent.intent_type if transaction.intent else None,
                     }
                     if transaction.account
                     else None
@@ -977,7 +977,7 @@ class TransactionService:
                 "customer": (
                     {
                         
-                        "name": transaction.customer.name,
+                        "name": transaction.customer.customer_name,
                     }
                     if transaction.customer
                     else None
@@ -986,7 +986,7 @@ class TransactionService:
                 "supplier": (
                     {
                         
-                        "name": transaction.supplier.name,
+                        "name": transaction.supplier.supplier_name,
                     }
                     if transaction.supplier
                     else None
@@ -1067,7 +1067,7 @@ class TransactionService:
             "transaction_id": transaction.transaction_id,
 
             "intent": (
-                transaction.intent.name_intent
+                transaction.intent.intent_name
                 if transaction.intent
                 else None
             ),
@@ -1075,8 +1075,8 @@ class TransactionService:
             "account": (
                 {
                     "account_id": transaction.account.account_id,
-                    "name": transaction.account.name,
-                    "type": transaction.account.type
+                    "name": transaction.account.account_name,
+                    "type": transaction.account.intent_type
                 }
                 if transaction.account
                 else None

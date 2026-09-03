@@ -51,22 +51,17 @@ class Debt(Base):
         nullable=False
     )
 
-    original_amount = Column(
+    total_debt = Column(
         Numeric(15, 2),
         nullable=False,
         default=0
     )
 
-    remaining_amount = Column(
-        Numeric(15, 2),
-        nullable=False,
-        default=0
-    )
 
     status = Column(
-        Enum("UNPAID", "PARTIAL", "PAID"),
+        Enum("Đã thanh toán", "Chưa thanh toán", "Chờ xác nhận", "Thanh toán một phần"),
         nullable=False,
-        default="UNPAID"
+        default="Đã thanh toán"
     )
 
     created_at = Column(
