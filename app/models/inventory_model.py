@@ -32,7 +32,7 @@ class InventoryTransaction(Base):
     )
 
     inventory_type = Column(
-        Enum("IN", "OUT"),
+        Enum("IN", "OUT", "DAMAGE", "ADJUSTMENT", name="inventory_type_enum"),
         nullable=False
     )
 

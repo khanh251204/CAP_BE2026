@@ -19,9 +19,13 @@ class Supplier(Base):
         ForeignKey("User.user_id"), 
         nullable=True)
     supplier_name = Column(String(255), nullable=False)
-    phone_number = Column(String(20),nullable=False)
-    note = Column(Text, nullable=False)
-    created_at = Column(DateTime,nullable=False)
+    phone_number = Column(String(20), nullable=True)
+    email = Column(String(255), nullable=True)
+    address = Column(String(255), nullable=True)
+    product_group = Column(String(100), nullable=True)
+    tax_code = Column(String(50), nullable=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
 
     transactions = relationship(

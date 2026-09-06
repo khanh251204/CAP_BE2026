@@ -88,24 +88,56 @@ class User(Base):
         default="user"
     )
 
+    province_code = Column(
+        String(20),
+        nullable=True
+    )
+
+    ward_code = Column(
+        String(20),
+        nullable=True
+    )
+
+    ward_name = Column(
+        String(150),
+        nullable=True
+    )
+
+    address_detail = Column(
+        String(255),
+        nullable=True
+    )
+
+    failed_attempts = Column(
+        Integer,
+        default=0,
+        nullable=True
+    )
+
+    lock_until = Column(
+        DateTime,
+        nullable=True
+    )
+
     created_at = Column(
         DateTime,
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP")
     )
+
+    # Relationships (User 1-N ...)
     transactions = relationship(
-            "Transaction",
-            back_populates="user"
-        )
-    
+        "Transaction",
+        back_populates="user"
+    )
     customer = relationship(
-            "Customer",
-            back_populates="user"
-        )
+        "Customer",
+        back_populates="user"
+    )
     supplier = relationship(
-            "Supplier",
-            back_populates="user"
-        )
+        "Supplier",
+        back_populates="user"
+    )
     account = relationship(
         "Account",
         back_populates="user"
@@ -120,6 +152,18 @@ class User(Base):
     )
     debt = relationship(
         "Debt",
+        back_populates="user"
+    )
+    categories = relationship(
+        "Category",
+        back_populates="user"
+    )
+    refresh_tokens = relationship(
+        "RefreshToken",
+        back_populates="user"
+    )
+    otp_codes = relationship(
+        "OTPCode",
         back_populates="user"
     )
     

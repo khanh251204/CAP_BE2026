@@ -44,25 +44,25 @@ class ProductService:
     @staticmethod
     def create_product(data: dict, user_id: int, db: Session):
 
-        name = data["name"].strip()
+        product_name = data["product_name"].strip()
 
         # Kiểm tra trùng tên
         existing_product = repo.get_product_by_name(
             db=db,
             user_id=user_id,
-            name=name
+            product_name=product_name
         )
 
         if existing_product:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Sản phẩm '{name}' đã tồn tại"
+                detail=f"Sản phẩm '{product_name}' đã tồn tại"
             )
 
         product = repo.create_product(
             db=db,
             user_id=user_id,
-            name=name,
+            product_name=product_name,
             unit=data.get("default_unit"),
             price=data.get("unit_price", 0.0)
         )

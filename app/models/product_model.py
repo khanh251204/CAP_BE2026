@@ -2,6 +2,7 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
+    Text,
     ForeignKey,
     Numeric,
     Boolean,
@@ -28,8 +29,8 @@ class Product(Base):
     )
 
     img = Column(
-        String(600),
-        nullable=False
+        Text,
+        nullable=True
     )
 
     product_name = Column(
@@ -41,8 +42,9 @@ class Product(Base):
         String(50),
         nullable=True
     )
+
     unit_price = Column(
-        Numeric(15, 2),
+        Text,
         nullable=True
     )
 

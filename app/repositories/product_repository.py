@@ -1,8 +1,10 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 from app.models.product_model import Product
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import  func, case
 from app.models.inventory_model import InventoryTransaction
 
 
@@ -81,12 +83,12 @@ def get_products_with_stock(db: Session, user_id: int):
         })
 
     return data
-def get_product_by_name(db: Session, user_id: int, name: str):
+def get_product_by_name(db: Session, user_id: int, product_name: str):
     return (
         db.query(Product)
         .filter(
             Product.user_id == user_id,
-            Product.product_name == name,
+            Product.product_name == product_name,
             Product.is_active == True
         )
         .first()
@@ -96,16 +98,17 @@ def get_product_by_name(db: Session, user_id: int, name: str):
 def create_product(
     db: Session,
     user_id: int,
-    name: str,
+    product_name: str,
     unit: str | None,
     price: float
 ):
     product = Product(
         user_id=user_id,
-        product_name=name,
+        product_name=product_name,
         default_unit=unit,
         unit_price=price,
-        is_active=True
+        is_active=True,
+        created_at=datetime.now()
     )
     db.add(product)
     db.flush()
@@ -150,20 +153,28 @@ def search_products_by_name(db: Session, user_id: int, name: str):
 def update_product(db: Session, product: Product, data: dict):
     if "product_name" in data:
         product.product_name = data["product_name"]
+
     if "default_unit" in data:
         product.default_unit = data["default_unit"]
+
     if "min_quantity" in data:
         product.min_quantity = data["min_quantity"]
+
     if "unit_price" in data:
         product.unit_price = data["unit_price"]
 
+    product.updated_at = datetime.now()
+
     db.commit()
     db.refresh(product)
+
     return product
 
 
 def delete_product(db: Session, product: Product):
     product.is_active = False
+    product.updated_at = datetime.now()
+
     db.commit()
     db.refresh(product)
     return product

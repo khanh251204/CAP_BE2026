@@ -29,8 +29,8 @@ class Account(Base):
         Numeric(15, 2),
         nullable=False
     )
-    currency= Column(
-        String(255), 
+    currency = Column(
+        String(10), 
         nullable=False
     )
     is_active = Column(

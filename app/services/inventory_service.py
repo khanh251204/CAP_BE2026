@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 from app.repositories.inventory_repo import InventoryRepository
 
@@ -8,23 +8,6 @@ class InventoryService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = InventoryRepository(db)
-
-    def _normalize_payment_status(self, raw_status: Optional[str]) -> str:
-        if not raw_status:
-            return "Đã thanh toán"
-
-        status_str = str(raw_status).strip().lower()
-
-        if any(kw in status_str for kw in ["chưa", "nợ", "ghi nợ", "unpaid", "thiếu"]):
-            return "Chưa thanh toán"
-        elif any(kw in status_str for kw in ["chờ", "pending", "xác nhận"]):
-            return "Chờ xác nhận"
-        elif any(kw in status_str for kw in ["một phần", "1 phần", "partial", "trả trước", "cọc"]):
-            return "Thanh toán một phần"
-        elif any(kw in status_str for kw in ["đã", "đủ", "paid", "hoàn tất", "rồi"]):
-            return "Đã thanh toán"
-
-        return "Đã thanh toán"
 
     def _normalize_payload_items(
         self, user_id: int, payload: Dict[str, Any], is_import: bool = False, **kwargs
@@ -94,7 +77,6 @@ class InventoryService:
         Thực hiện nghiệp vụ nhập hàng (Import Goods Transaction)
         """
         try:
-            # Truyền is_import=True để lấy giá nhập gốc
             items = self._normalize_payload_items(user_id, payload, is_import=True)
             if not items:
                 return {
@@ -126,7 +108,8 @@ class InventoryService:
             supplier_id = payload.get("supplier_id")
             account_id = payload.get("account_id")
 
-            payment_status_str = self._normalize_payment_status(payload.get("payment_status"))
+            # Nhận trực tiếp trạng thái thanh toán bằng tiếng Anh (Mặc định là "PAID" nếu không truyền)
+            payment_status_str = payload.get("payment_status") or "PAID"
 
             # 2. Tạo Master Transaction
             tx = self.repo.create_transaction(
@@ -221,7 +204,6 @@ class InventoryService:
         Thực hiện nghiệp vụ bán hàng (Sale Goods Transaction)
         """
         try:
-            # Truyền is_import=False để lấy giá bán lẻ
             items = self._normalize_payload_items(user_id, payload, is_import=False)
             if not items:
                 return {
@@ -264,7 +246,8 @@ class InventoryService:
             customer_id = payload.get("customer_id")
             account_id = payload.get("account_id")
 
-            payment_status_str = self._normalize_payment_status(payload.get("payment_status"))
+            # Nhận trực tiếp trạng thái thanh toán bằng tiếng Anh (Mặc định là "PAID" nếu không truyền)
+            payment_status_str = payload.get("payment_status") or "PAID"
 
             # 2. Tạo Master Transaction
             tx = self.repo.create_sale_transaction(
@@ -370,10 +353,8 @@ class InventoryService:
                 product_id=product_id
             )
 
-            # Lấy thông tin sản phẩm để lấy giá
             product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
             
-            # Lấy giá (ưu tiên unit_price hoặc price tùy theo model của bạn)
             unit_price = 0.0
             default_unit = ""
             if product_obj:
@@ -382,13 +363,11 @@ class InventoryService:
                 elif hasattr(product_obj, "price") and product_obj.price is not None:
                     unit_price = float(product_obj.price)
 
-            # Lấy đơn vị tính mặc định (tùy thuộc tên cột trong Model của bạn: default_unit hoặc unit)
                 if hasattr(product_obj, "default_unit") and product_obj.default_unit is not None:
                     default_unit = str(product_obj.default_unit)
                 elif hasattr(product_obj, "unit") and product_obj.unit is not None:
                     default_unit = str(product_obj.unit)
             
-            # Nếu product_name chưa có (trường hợp truyền lên bằng product_id)
             actual_product_name = product_name or (getattr(product_obj, "name", "") if product_obj else "")
 
             return {
@@ -398,8 +377,8 @@ class InventoryService:
                 "product_id": product_id,
                 "product_name": actual_product_name,
                 "quantity": float(stock),
-                "unit_price": unit_price,  # Đã bổ sung giá vào response
-                "default_unit": default_unit  # Đã bổ sung đơn vị tính vào response 
+                "unit_price": unit_price,
+                "default_unit": default_unit
             }
 
         except Exception as e:

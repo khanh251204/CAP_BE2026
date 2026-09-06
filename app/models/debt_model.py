@@ -4,12 +4,13 @@ from sqlalchemy import (
     Numeric,
     DateTime,
     ForeignKey,
-    Enum
+    Enum,
+    String
 )
+from sqlalchemy.orm import relationship, synonym
 from datetime import datetime
 
 from app.configs.database import Base
-from sqlalchemy.orm import relationship
 
 
 class Debt(Base):
@@ -45,22 +46,37 @@ class Debt(Base):
         nullable=True
     )
 
+    # # CẢNH BÁO: 'counterparty_name' không có trong ERD gốc.
+    # # Được giữ nguyên theo quy tắc để đảm bảo tương thích ngược.
+    # counterparty_name = Column(
+    #     String(255),
+    #     nullable=True
+    # )
+
+    # Giới hạn đúng 2 giá trị theo ERD: 'RECEIVABLE', 'PAYABLE'
     direction = Column(
-        Enum("RECEIVABLE", "PAYABLE"),
+        Enum("RECEIVABLE", "PAYABLE", name="debt_direction_enum"),
         nullable=False
     )
 
-    total_debt = Column(
+    original_amount = Column(
         Numeric(15, 2),
         nullable=False,
         default=0
     )
 
-
-    status = Column(
-        Enum("Đã thanh toán", "Thanh toán một phần", "Chưa thanh toán"),
+    # Đổi tên theo ERD chuẩn: remaining_debt
+    remaining_debt = Column(
+        Numeric(15, 2),
         nullable=False,
-        default="Chưa thanh toán"
+        default=0
+    )
+
+    # Giới hạn đúng 3 giá trị theo ERD: 'UNPAID', 'PARTIAL', 'PAID'
+    status = Column(
+        Enum("UNPAID", "PARTIAL", "PAID", name="debt_status_enum"),
+        nullable=False,
+        default="UNPAID"
     )
 
     created_at = Column(
@@ -76,20 +92,31 @@ class Debt(Base):
         nullable=True
     )
 
-    # User
+    # Backward compatibility synonyms
+    source_transaction_id = synonym("transaction_id")
+    remaining_amount = synonym("remaining_debt")
+    total_debt = synonym("original_amount")
+
+    # Relationships (theo bảng Mối quan hệ trong ERD)
     user = relationship(
         "User",
         back_populates="debt"
-     )
-    transactions = relationship(
+    )
+    transaction = relationship(
         "Transaction",
         back_populates="debt"
-     )
+    )
+    source_transaction = synonym("transaction")
+
     customer = relationship(
         "Customer",
         back_populates="debt"
-     )
+    )
     supplier = relationship(
         "Supplier",
         back_populates="debt"
-     )
+    )
+    payments = relationship(
+        "DebtPayment",
+        back_populates="debt"
+    )

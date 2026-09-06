@@ -20,8 +20,8 @@ class TransactionDetail(Base):
     # 2. Bắt buộc phải có product_id (nullable=False)
     product_id = Column(Integer, ForeignKey("Product.product_id"), nullable=False)
     
-    quantity = Column(Numeric(15, 2), nullable=False)
-    unit = Column(String(20), nullable=False)
+    quantity = Column(Numeric(15, 0), nullable=False)
+    unit = Column(String(50), nullable=False)
     
     # 3. Đơn giá không được để NULL, mặc định = 0.00
     unit_price = Column(Numeric(15, 2), nullable=False, default=0.00)
