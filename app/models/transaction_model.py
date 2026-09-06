@@ -135,5 +135,8 @@ class Transaction(Base):
         "Debt",
         back_populates="transactions"
     )
-
+    debt_payments = relationship(
+        "DebtPayment",
+        back_populates="transaction"
+    )
    

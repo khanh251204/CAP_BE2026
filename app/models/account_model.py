@@ -49,4 +49,8 @@ class Account(Base):
                 "User",
                 back_populates="account"
             )
+    debt_payments = relationship(
+                "DebtPayment",
+                back_populates="account"
+            )
 

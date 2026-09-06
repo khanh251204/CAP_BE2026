@@ -58,9 +58,9 @@ class Debt(Base):
 
 
     status = Column(
-        Enum("Đã thanh toán", "Chưa thanh toán", "Chờ xác nhận", "Thanh toán một phần"),
+        Enum("Đã thanh toán", "Thanh toán một phần", "Chưa thanh toán"),
         nullable=False,
-        default="Đã thanh toán"
+        default="Chưa thanh toán"
     )
 
     created_at = Column(

@@ -342,7 +342,74 @@ class InventoryService:
                 "success": False,
                 "message": f"Lỗi xử lý bán hàng: {str(e)}"
             }
+            
+    def check_stock(
+        self,
+        user_id: int,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        try:
+            product_id = payload.get("product_id")
+            product_name = payload.get("product_name")
+
+            if not product_id and product_name:
+                product_id = self.repo.get_product_id_by_name(
+                    user_id=user_id,
+                    name=product_name
+                )
+
+            if not product_id:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Không tìm thấy sản phẩm '{product_name}'."
+                }
+
+            stock = self.repo.get_latest_stock(
+                user_id=user_id,
+                product_id=product_id
+            )
+
+            # Lấy thông tin sản phẩm để lấy giá
+            product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
+            
+            # Lấy giá (ưu tiên unit_price hoặc price tùy theo model của bạn)
+            unit_price = 0.0
+            default_unit = ""
+            if product_obj:
+                if hasattr(product_obj, "unit_price") and product_obj.unit_price is not None:
+                    unit_price = float(product_obj.unit_price)
+                elif hasattr(product_obj, "price") and product_obj.price is not None:
+                    unit_price = float(product_obj.price)
+
+            # Lấy đơn vị tính mặc định (tùy thuộc tên cột trong Model của bạn: default_unit hoặc unit)
+                if hasattr(product_obj, "default_unit") and product_obj.default_unit is not None:
+                    default_unit = str(product_obj.default_unit)
+                elif hasattr(product_obj, "unit") and product_obj.unit is not None:
+                    default_unit = str(product_obj.unit)
+            
+            # Nếu product_name chưa có (trường hợp truyền lên bằng product_id)
+            actual_product_name = product_name or (getattr(product_obj, "name", "") if product_obj else "")
+
+            return {
+                "status": "success",
+                "success": True,
+                "message": f"Sản phẩm '{actual_product_name}' còn {stock}.",
+                "product_id": product_id,
+                "product_name": actual_product_name,
+                "quantity": float(stock),
+                "unit_price": unit_price,  # Đã bổ sung giá vào response
+                "default_unit": default_unit  # Đã bổ sung đơn vị tính vào response 
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "success": False,
+                "message": f"Lỗi kiểm tra tồn kho: {str(e)}"
+            }
 
     # Alias phương thức
     process_export = sell_goods
     process_import = import_goods
+    process_check_stock = check_stock

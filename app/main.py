@@ -15,9 +15,12 @@ from app.routes.auth_route import router as auth_router
 from app.routes.notification_route import router as notification_router
 from app.routes.product_route import router as product_router
 
-from app.routes.auth_route import router as auth_router
+from app.routes.groq_route import router as groq_router
 
-from app.routes.agent_route import router as agent_router
+from app.routes.auth_route import router as auth_router
+from app.routes import inventory_route
+from app.routes.debt_route import debt_router
+
 
 app = FastAPI(
     title="Expense Tracker API",
@@ -68,10 +71,10 @@ app.include_router(
     prefix="/api/v1"
 )
 
-# app.include_router(
-#     groq_router,
-#     prefix="/api/v1"
-# )
+app.include_router(
+    inventory_route.router,
+    prefix="/api/v1"
+)
 
 app.include_router(
     notification_router,
@@ -88,11 +91,18 @@ app.include_router(
     prefix="/api/v1"
 )
 
-
 app.include_router(
-    agent_router,
+    groq_router,
     prefix="/api/v1"
 )
+
+app.include_router(
+    debt_router,
+    prefix="/api/v1"
+)
+
+
+
 
 # ROOT
 @app.get("/")
