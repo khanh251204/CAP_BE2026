@@ -65,6 +65,18 @@ def _make_customer(
     return cust
 
 
+def _make_supplier(
+    supplier_id: int = 12,
+    user_id: int = 99,
+    supplier_name: str = "Công ty TNHH Nhựa Tiền Phong",
+):
+    supp = MagicMock()
+    supp.supplier_id = supplier_id
+    supp.user_id = user_id
+    supp.supplier_name = supplier_name
+    return supp
+
+
 def _make_account(
     account_id: int = 5,
     balance: float = 2_000_000,
@@ -652,5 +664,378 @@ class TestGetAllDebts:
         )
         assert len(result) == 1
         assert result[0]["status"] == "UNPAID"
+
+
+# ─── TEST: Tạo công nợ nhà cung cấp (create_supplier_debt) ───────────────────
+
+class TestCreateSupplierDebt:
+
+    def test_create_supplier_debt_without_transaction_id(self):
+        from app.services.debt_service import DebtService
+        from app.models.debt_model import Debt
+        from app.models.transaction_model import Transaction
+
+        supplier = _make_supplier(supplier_id=12, user_id=99)
+        db = MagicMock()
+
+        with (
+            patch("app.repositories.debt_repository.DebtRepository.get_supplier_by_id_and_user", return_value=supplier),
+            patch("app.services.debt_service._get_intent_id", return_value=101),
+        ):
+            def _fake_add(obj):
+                if isinstance(obj, Transaction):
+                    obj.transaction_id = 88
+                elif isinstance(obj, Debt):
+                    obj.debt_id = 42
+
+            db.add.side_effect = _fake_add
+
+            result = DebtService.create_supplier_debt(
+                db=db,
+                user_id=99,
+                supplier_id=12,
+                total_debt=5_000_000.0,
+                note="Nhập hàng ống nước",
+            )
+
+        assert result["debt_id"] == 42
+        assert result["status"] == "UNPAID"
+        assert result["original_amount"] == 5_000_000.0
+        assert result["remaining_debt"] == 5_000_000.0
+
+        # Kiểm tra Transaction được tạo đúng
+        added_objs = [call[0][0] for call in db.add.call_args_list]
+        tx = next(o for o in added_objs if isinstance(o, Transaction))
+        assert tx.supplier_id == 12
+        assert tx.payment_status == "PENDING"
+        assert tx.total_amount == Decimal("5000000.0")
+
+        # Kiểm tra Debt được tạo đúng
+        debt = next(o for o in added_objs if isinstance(o, Debt))
+        assert debt.supplier_id == 12
+        assert debt.direction == "PAYABLE"
+        assert debt.status == "UNPAID"
+        assert debt.transaction_id == 88
+
+    def test_create_supplier_debt_with_transaction_id(self):
+        from app.services.debt_service import DebtService
+        from app.models.debt_model import Debt
+
+        supplier = _make_supplier(supplier_id=12, user_id=99)
+        db = MagicMock()
+
+        with patch("app.repositories.debt_repository.DebtRepository.get_supplier_by_id_and_user", return_value=supplier):
+            def _fake_add(obj):
+                if isinstance(obj, Debt):
+                    obj.debt_id = 99
+
+            db.add.side_effect = _fake_add
+
+            result = DebtService.create_supplier_debt(
+                db=db,
+                user_id=99,
+                supplier_id=12,
+                total_debt=3_200_000.0,
+                transaction_id=50,
+            )
+
+        assert result["debt_id"] == 99
+        assert result["status"] == "UNPAID"
+        assert result["original_amount"] == 3_200_000.0
+
+        added_objs = [call[0][0] for call in db.add.call_args_list]
+        debt = next(o for o in added_objs if isinstance(o, Debt))
+        assert debt.transaction_id == 50
+        assert debt.direction == "PAYABLE"
+
+    def test_create_supplier_debt_supplier_not_found_raises_404(self):
+        from app.services.debt_service import DebtService
+        db = MagicMock()
+
+        with patch("app.repositories.debt_repository.DebtRepository.get_supplier_by_id_and_user", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                DebtService.create_supplier_debt(
+                    db=db,
+                    user_id=99,
+                    supplier_id=999,
+                    total_debt=1_000_000,
+                )
+
+        assert exc_info.value.status_code == 404
+        assert "không tồn tại" in exc_info.value.detail.lower()
+
+    def test_create_supplier_debt_zero_or_negative_amount_raises_400(self):
+        from app.services.debt_service import DebtService
+
+        supplier = _make_supplier(supplier_id=12, user_id=99)
+        db = MagicMock()
+
+        with patch("app.repositories.debt_repository.DebtRepository.get_supplier_by_id_and_user", return_value=supplier):
+            with pytest.raises(HTTPException) as exc_info:
+                DebtService.create_supplier_debt(
+                    db=db,
+                    user_id=99,
+                    supplier_id=12,
+                    total_debt=0,
+                )
+            assert exc_info.value.status_code == 400
+
+            with pytest.raises(HTTPException) as exc_info2:
+                DebtService.create_supplier_debt(
+                    db=db,
+                    user_id=99,
+                    supplier_id=12,
+                    total_debt=-500_000,
+                )
+            assert exc_info2.value.status_code == 400
+
+
+# ─── TEST: Trả tiền nợ nhà cung cấp (pay_supplier_debt) ──────────────────────
+
+class TestPaySupplierDebt:
+
+    def test_pay_supplier_debt_specific_partial(self):
+        """Trả bớt một phần nợ cho 1 khoản nợ NCC cụ thể, kiểm tra trừ số dư tài khoản."""
+        from app.services.debt_service import DebtService
+        from app.models.debt_payment_model import DebtPayment
+
+        debt = _make_debt(
+            debt_id=10,
+            total_debt=5_000_000,
+            remaining_debt=5_000_000,
+            status="UNPAID",
+            direction="PAYABLE",
+        )
+        debt.supplier_id = 12
+        account = _make_account(account_id=1, balance=10_000_000, user_id=99)
+        db = MagicMock()
+
+        with (
+            patch("app.repositories.debt_repository.DebtRepository.get_debt_by_id_and_user", return_value=debt),
+            patch("app.repositories.debt_repository.DebtRepository.get_account_by_id_and_user", return_value=account),
+            patch("app.services.debt_service._get_intent_id", return_value=102),
+        ):
+            def _fake_add(obj):
+                if isinstance(obj, DebtPayment):
+                    obj.payment_id = 201
+
+            db.add.side_effect = _fake_add
+
+            result = DebtService.pay_supplier_debt(
+                db=db,
+                user_id=99,
+                account_id=1,
+                amount=2_000_000,
+                debt_id=10,
+            )
+
+        assert result["debt_id"] == 10
+        assert result["payment_id"] == 201
+        assert result["amount_paid"] == 2_000_000.0
+        assert result["remaining_debt"] == 3_000_000.0
+        assert result["debt_status"] == "PARTIAL"
+
+        # Kiểm tra tài khoản bị TRỪ tiền
+        assert account.balance == Decimal("8000000")  # 10m - 2m = 8m
+        assert debt.status == "PARTIAL"
+        assert debt.remaining_debt == Decimal("3000000")
+
+    def test_pay_supplier_debt_specific_full(self):
+        """Trả hết nợ cho khoản nợ NCC cụ thể -> status chuyển PAID."""
+        from app.services.debt_service import DebtService
+        from app.models.debt_payment_model import DebtPayment
+
+        debt = _make_debt(
+            debt_id=10,
+            total_debt=5_000_000,
+            remaining_debt=2_000_000,
+            status="PARTIAL",
+            direction="PAYABLE",
+        )
+        debt.supplier_id = 12
+        account = _make_account(account_id=1, balance=5_000_000, user_id=99)
+        db = MagicMock()
+
+        with (
+            patch("app.repositories.debt_repository.DebtRepository.get_debt_by_id_and_user", return_value=debt),
+            patch("app.repositories.debt_repository.DebtRepository.get_account_by_id_and_user", return_value=account),
+            patch("app.services.debt_service._get_intent_id", return_value=102),
+        ):
+            def _fake_add(obj):
+                if isinstance(obj, DebtPayment):
+                    obj.payment_id = 202
+
+            db.add.side_effect = _fake_add
+
+            result = DebtService.pay_supplier_debt(
+                db=db,
+                user_id=99,
+                account_id=1,
+                amount=2_000_000,
+                debt_id=10,
+            )
+
+        assert result["remaining_debt"] == 0.0
+        assert result["debt_status"] == "PAID"
+        assert account.balance == Decimal("3000000")
+        assert debt.status == "PAID"
+
+    def test_pay_supplier_debt_insufficient_account_balance_raises_400(self):
+        """Số dư tài khoản không đủ để thanh toán nợ NCC -> raise HTTP 400."""
+        from app.services.debt_service import DebtService
+
+        debt = _make_debt(debt_id=10, total_debt=5_000_000, remaining_debt=5_000_000, direction="PAYABLE")
+        account = _make_account(account_id=1, balance=500_000, user_id=99)  # Chỉ có 500k
+        db = MagicMock()
+
+        with (
+            patch("app.repositories.debt_repository.DebtRepository.get_debt_by_id_and_user", return_value=debt),
+            patch("app.repositories.debt_repository.DebtRepository.get_account_by_id_and_user", return_value=account),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                DebtService.pay_supplier_debt(
+                    db=db,
+                    user_id=99,
+                    account_id=1,
+                    amount=2_000_000,  # Muốn trả 2tr
+                    debt_id=10,
+                )
+
+        assert exc_info.value.status_code == 400
+        assert "không đủ để thanh toán" in exc_info.value.detail.lower()
+
+    def test_pay_supplier_debt_overpayment_raises_400(self):
+        """Trả số tiền lớn hơn số nợ còn lại -> raise HTTP 400."""
+        from app.services.debt_service import DebtService
+
+        debt = _make_debt(debt_id=10, total_debt=5_000_000, remaining_debt=1_000_000, direction="PAYABLE")
+        account = _make_account(account_id=1, balance=10_000_000, user_id=99)
+        db = MagicMock()
+
+        with (
+            patch("app.repositories.debt_repository.DebtRepository.get_debt_by_id_and_user", return_value=debt),
+            patch("app.repositories.debt_repository.DebtRepository.get_account_by_id_and_user", return_value=account),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                DebtService.pay_supplier_debt(
+                    db=db,
+                    user_id=99,
+                    account_id=1,
+                    amount=2_000_000,  # Nợ 1tr nhưng trả 2tr
+                    debt_id=10,
+                )
+
+        assert exc_info.value.status_code == 400
+        assert "vượt quá" in exc_info.value.detail.lower()
+
+    def test_pay_supplier_debt_fifo(self):
+        """Trả tổng tiền theo supplier_id, tự động phân bổ FIFO qua nhiều khoản nợ PAYABLE."""
+        from app.services.debt_service import DebtService
+        from app.models.debt_payment_model import DebtPayment
+
+        supplier = _make_supplier(supplier_id=12, user_id=99)
+        debt1 = _make_debt(debt_id=1, total_debt=2_000_000, remaining_debt=2_000_000, direction="PAYABLE")
+        debt2 = _make_debt(debt_id=2, total_debt=3_000_000, remaining_debt=3_000_000, direction="PAYABLE")
+        account = _make_account(account_id=1, balance=10_000_000, user_id=99)
+        db = MagicMock()
+
+        with (
+            patch("app.repositories.debt_repository.DebtRepository.get_supplier_by_id_and_user", return_value=supplier),
+            patch("app.repositories.debt_repository.DebtRepository.get_open_debts_by_supplier_and_user", return_value=[debt1, debt2]),
+            patch("app.repositories.debt_repository.DebtRepository.get_account_by_id_and_user", return_value=account),
+            patch("app.services.debt_service._get_intent_id", return_value=102),
+        ):
+            pid_counter = [301]
+            def _fake_add(obj):
+                if isinstance(obj, DebtPayment):
+                    obj.payment_id = pid_counter[0]
+                    pid_counter[0] += 1
+
+            db.add.side_effect = _fake_add
+
+            result = DebtService.pay_supplier_debt(
+                db=db,
+                user_id=99,
+                account_id=1,
+                amount=3_500_000,  # Trả 3.5tr: hết khoản 1 (2tr) và trả 1.5tr vào khoản 2
+                supplier_id=12,
+            )
+
+        assert result["supplier_id"] == 12
+        assert result["amount_paid"] == 3_500_000.0
+        assert result["total_remaining_before"] == 5_000_000.0
+        assert result["total_remaining_after"] == 1_500_000.0
+        assert result["debt_status"] == "PARTIAL"
+
+        # debt1 hết -> PAID
+        assert debt1.status == "PAID"
+        assert debt1.remaining_debt == Decimal("0.00")
+
+        # debt2 còn 1.5tr -> PARTIAL
+        assert debt2.status == "PARTIAL"
+        assert debt2.remaining_debt == Decimal("1500000.0")
+
+        # Tài khoản bị trừ 3.5tr: 10m - 3.5m = 6.5m
+        assert account.balance == Decimal("6500000.0")
+
+    def test_pay_supplier_debt_supplier_not_found_raises_404(self):
+        from app.services.debt_service import DebtService
+        db = MagicMock()
+
+        with patch("app.repositories.debt_repository.DebtRepository.get_supplier_by_id_and_user", return_value=None):
+            with pytest.raises(HTTPException) as exc_info:
+                DebtService.pay_supplier_debt(
+                    db=db,
+                    user_id=99,
+                    account_id=1,
+                    amount=500_000,
+                    supplier_id=999,
+                )
+
+        assert exc_info.value.status_code == 404
+
+    def test_pay_supplier_debt_no_open_debts_raises_404(self):
+        from app.services.debt_service import DebtService
+
+        supplier = _make_supplier(supplier_id=12, user_id=99)
+        db = MagicMock()
+
+        with (
+            patch("app.repositories.debt_repository.DebtRepository.get_supplier_by_id_and_user", return_value=supplier),
+            patch("app.repositories.debt_repository.DebtRepository.get_open_debts_by_supplier_and_user", return_value=[]),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                DebtService.pay_supplier_debt(
+                    db=db,
+                    user_id=99,
+                    account_id=1,
+                    amount=500_000,
+                    supplier_id=12,
+                )
+
+        assert exc_info.value.status_code == 404
+        assert "không có khoản nợ" in exc_info.value.detail.lower()
+
+
+# ─── TEST: Lấy danh sách công nợ nhà cung cấp (get_supplier_debts) ────────────
+
+class TestGetSupplierDebts:
+
+    def test_get_supplier_debts_list(self):
+        from app.services.debt_service import DebtService
+
+        debt1 = _make_debt(debt_id=10, total_debt=4_000_000, remaining_debt=4_000_000, direction="PAYABLE")
+        debt1.supplier_id = 12
+        db = MagicMock()
+
+        with patch("app.repositories.debt_repository.DebtRepository.get_supplier_debts", return_value=[(debt1, "Công ty ABC")]):
+            result = DebtService.get_supplier_debts(user_id=99, db=db, supplier_id=12)
+
+        assert len(result) == 1
+        assert result[0]["debt_id"] == 10
+        assert result[0]["supplier_name"] == "Công ty ABC"
+        assert result[0]["direction"] == "PAYABLE"
+        assert result[0]["remaining_debt"] == 4_000_000.0
+
 
 

@@ -13,6 +13,12 @@ from app.schemas.debt_schema import (
     CollectCustomerDebtResponse,
     CustomerDebtItemResponse,
     CollectCustomerDebtByCustomerResponse,
+    CreateSupplierDebtRequest,
+    CreateSupplierDebtResponse,
+    PaySupplierDebtRequest,
+    PaySupplierDebtResponse,
+    SupplierDebtItemResponse,
+    PaySupplierDebtBySupplierResponse,
 )
 
 debt_router = APIRouter(prefix="/debts", tags=["Debt — Customer"])
@@ -171,6 +177,155 @@ def collect_customer_debt_fifo(
         db=db,
         user_id=user_id,
         customer_id=customer_id,
+        account_id=request.account_id,
+        amount=request.amount,
+        payment_date=request.payment_date,
+        note=request.note,
+    )
+
+
+# ==========================================
+# CÔNG NỢ NHÀ CUNG CẤP (PAYABLE)
+# ==========================================
+
+@debt_router.post(
+    "/supplier",
+    response_model=CreateSupplierDebtResponse,
+    summary="Tạo công nợ nhà cung cấp (create_supplier_debt / ghi_no_nha_cung_cap)",
+)
+def create_supplier_debt(
+    request: CreateSupplierDebtRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    **Intent**: `create_supplier_debt` (ghi_no_nha_cung_cap)
+
+    - Nhận `supplier_id` + `total_debt`.
+    - Nếu `transaction_id` không được truyền, server tự tạo Transaction rỗng loại
+      *ghi nợ* với payment_status = PENDING (đáp ứng ràng buộc FK bắt buộc trong ERD).
+    - Tạo bản ghi `Debt` với direction = PAYABLE, original_amount = total_debt, remaining_debt = total_debt, status = UNPAID.
+    - Trả về `{ debt_id, status, total_debt, original_amount, remaining_debt }`.
+    """
+    return DebtController.create_supplier_debt(
+        db=db,
+        user_id=user_id,
+        supplier_id=request.supplier_id,
+        total_debt=request.total_debt,
+        transaction_id=request.transaction_id,
+        note=request.note,
+    )
+
+
+@debt_router.get(
+    "/supplier",
+    response_model=List[SupplierDebtItemResponse],
+    summary="Lấy danh sách công nợ nhà cung cấp (PAYABLE)",
+)
+def get_supplier_debts(
+    supplier_id: Optional[int] = Query(None, description="Lọc theo ID nhà cung cấp"),
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái: UNPAID, PARTIAL, PAID"),
+    search: Optional[str] = Query(None, description="Tìm kiếm theo tên nhà cung cấp"),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Lấy danh sách toàn bộ công nợ người dùng nợ nhà cung cấp (direction = PAYABLE).
+    Có thể lọc theo `supplier_id`, trạng thái (`UNPAID`, `PARTIAL`, `PAID`) hoặc tìm kiếm tên.
+    """
+    return DebtController.get_supplier_debts(
+        user_id=user_id,
+        db=db,
+        supplier_id=supplier_id,
+        status=status,
+        search=search,
+    )
+
+# ------------------------------------------------XEM LẠI-------------------------------
+@debt_router.post(
+    "/supplier/payments",
+    response_model=PaySupplierDebtResponse,
+    summary="Trả tiền nợ nhà cung cấp (nhận debt_id hoặc supplier_id từ body)",
+)
+def pay_supplier_debt_by_body(
+    request: PaySupplierDebtRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Trả tiền nợ nhà cung cấp linh hoạt:
+    - Nếu truyền `debt_id`: Trả đích danh 1 khoản nợ.
+    - Nếu truyền `supplier_id`: Trả tổng theo NCC, tự động phân bổ FIFO.
+    """
+    return DebtController.pay_supplier_debt(
+        db=db,
+        user_id=user_id,
+        debt_id=request.debt_id,
+        supplier_id=request.supplier_id,
+        account_id=request.account_id,
+        amount=request.amount,
+        payment_date=request.payment_date,
+        note=request.note,
+    )
+
+
+@debt_router.post(
+    "/supplier/{debt_id}/payments",
+    response_model=PaySupplierDebtResponse,
+    summary="Trả tiền nợ nhà cung cấp (pay_supplier_debt / thu_no_nha_cung_cap / tra_no_nha_cung_cap)",
+)
+def pay_supplier_debt(
+    debt_id: int = Path(..., description="ID công nợ cần trả"),
+    request: PaySupplierDebtRequest = ...,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    **Intent**: `pay_supplier_debt` (thu_no_nha_cung_cap / tra_no_nha_cung_cap)
+
+    Chạy trong **1 DB transaction**:
+    1. Insert `Transaction` (intent = thu_no_nha_cung_cap, total_amount = amount, payment_status = PAID)
+    2. Insert `Debt_Payment` (liên kết debt_id, transaction_id, account_id, amount, payment_percentage)
+    3. `UPDATE Account SET balance = balance - amount` (trừ tiền)
+    4. Cập nhật `Debt.remaining_debt = remaining_debt - amount` và `Debt.status` (PARTIAL hoặc PAID)
+    5. Cập nhật `payment_status` của Transaction gốc nếu có.
+
+    **Validate**: `amount <= remaining_debt` và `amount <= account.balance`, trả 400 nếu vượt.
+    """
+    return DebtController.pay_supplier_debt(
+        db=db,
+        user_id=user_id,
+        debt_id=debt_id,
+        account_id=request.account_id,
+        amount=request.amount,
+        payment_date=request.payment_date,
+        note=request.note,
+    )
+
+
+@debt_router.post(
+    "/supplier-account/{supplier_id}/payments",
+    response_model=PaySupplierDebtBySupplierResponse,
+    summary="Trả tiền nợ nhà cung cấp - tự động phân bổ FIFO qua nhiều khoản nợ (pay_supplier_debt)",
+)
+def pay_supplier_debt_fifo(
+    supplier_id: int = Path(..., description="ID nhà cung cấp cần trả nợ"),
+    request: PaySupplierDebtRequest = ...,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    **Intent**: `pay_supplier_debt` (thu_no_nha_cung_cap) — chế độ FIFO theo nhà cung cấp.
+
+    Dùng khi trả MỘT khoản tiền tổng cho NCC, không chỉ rõ trả cho đơn nào.
+    Server tự tìm tất cả `Debt` đang mở (`status IN ('UNPAID','PARTIAL')`,
+    `direction='PAYABLE'`) của NCC này, sắp theo `created_at` tăng dần (khoản nợ
+    CŨ NHẤT trả trước), rồi trừ dần `amount` vào từng khoản cho tới khi hết tiền hoặc hết nợ.
+    """
+    return DebtController.pay_supplier_debt(
+        db=db,
+        user_id=user_id,
+        supplier_id=supplier_id,
         account_id=request.account_id,
         amount=request.amount,
         payment_date=request.payment_date,

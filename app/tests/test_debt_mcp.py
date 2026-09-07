@@ -23,11 +23,17 @@ from app.ai.mcp.debt.tools import (
     ThuNoKhachHangInput,
     ThuNoKhachHangOutput,
     DebtAllocationItem,
+    GhiNoNhaCungCapInput,
+    GhiNoNhaCungCapOutput,
+    ThuNoNhaCungCapInput,
+    ThuNoNhaCungCapOutput,
 )
 from app.ai.mcp.debt.server import (
     server as debt_server,
     ghi_no_khach_hang,
     thu_no_khach_hang,
+    ghi_no_nha_cung_cap,
+    thu_no_nha_cung_cap,
 )
 from app.ai.mcp.client import (
     list_mcp_tools,
@@ -296,10 +302,12 @@ class TestDebtMcpServerAndClient:
         assert "debt" in MCP_SERVERS
         tools = await list_mcp_tools()
         debt_tools = [t for t in tools if t["server"] == "debt"]
-        assert len(debt_tools) == 2
+        assert len(debt_tools) == 4
         names = [t["name"] for t in debt_tools]
         assert "ghi_no_khach_hang" in names
         assert "thu_no_khach_hang" in names
+        assert "ghi_no_nha_cung_cap" in names
+        assert "thu_no_nha_cung_cap" in names
 
     @pytest.mark.anyio
     async def test_find_mcp_server(self):
@@ -308,6 +316,12 @@ class TestDebtMcpServerAndClient:
 
         server_thu_no = await find_mcp_server("thu_no_khach_hang")
         assert server_thu_no is debt_server
+
+        server_ghi_no_ncc = await find_mcp_server("ghi_no_nha_cung_cap")
+        assert server_ghi_no_ncc is debt_server
+
+        server_thu_no_ncc = await find_mcp_server("thu_no_nha_cung_cap")
+        assert server_thu_no_ncc is debt_server
 
     @pytest.mark.anyio
     @patch("app.ai.mcp.debt.server.get_db_session")
@@ -722,6 +736,379 @@ class TestHandleThuNoKhachHang:
             entities={"customer": "Chị Lan", "price": 5000000},
             text="Chị Lan trả 5 triệu",
         )
+
+
+# =============================================================================
+# TESTS FOR SUPPLIER DEBT (Ghi nợ NCC & Thu/Trả nợ NCC)
+# =============================================================================
+
+class TestSupplierDebtPydanticModels:
+    """Test validation của các Pydantic model cho MCP Supplier Debt tools."""
+
+    def test_ghi_no_nha_cung_cap_input_valid(self):
+        data = GhiNoNhaCungCapInput(
+            supplier_id=12,
+            original_amount=5_000_000.0,
+            transaction_id=10,
+            note="Nhập hàng thiết bị",
+        )
+        assert data.supplier_id == 12
+        assert data.original_amount == 5_000_000.0
+        assert data.transaction_id == 10
+        assert data.note == "Nhập hàng thiết bị"
+
+    def test_ghi_no_nha_cung_cap_input_without_transaction_id(self):
+        data = GhiNoNhaCungCapInput(
+            supplier_id=12,
+            original_amount=2_000_000.0,
+        )
+        assert data.supplier_id == 12
+        assert data.transaction_id is None
+
+    def test_ghi_no_nha_cung_cap_input_invalid_amount(self):
+        with pytest.raises(ValidationError):
+            GhiNoNhaCungCapInput(supplier_id=12, original_amount=0)
+
+        with pytest.raises(ValidationError):
+            GhiNoNhaCungCapInput(supplier_id=12, original_amount=-100)
+
+    def test_thu_no_nha_cung_cap_input_valid_fifo(self):
+        inp = ThuNoNhaCungCapInput(
+            account_id=1,
+            amount=3_000_000.0,
+            supplier_id=12,
+        )
+        assert inp.account_id == 1
+        assert inp.amount == 3_000_000.0
+        assert inp.supplier_id == 12
+        assert inp.debt_id is None
+
+    def test_thu_no_nha_cung_cap_input_valid_specific_debt(self):
+        inp = ThuNoNhaCungCapInput(
+            account_id=1,
+            amount=1_500_000.0,
+            debt_id=45,
+        )
+        assert inp.account_id == 1
+        assert inp.amount == 1_500_000.0
+        assert inp.debt_id == 45
+        assert inp.supplier_id is None
+
+    def test_thu_no_nha_cung_cap_input_neither_debt_nor_supplier(self):
+        with pytest.raises(ValidationError) as exc_info:
+            ThuNoNhaCungCapInput(
+                account_id=1,
+                amount=500_000.0,
+            )
+        assert "Phải có debt_id hoặc supplier_id" in str(exc_info.value)
+
+    def test_thu_no_nha_cung_cap_input_both_debt_and_supplier(self):
+        with pytest.raises(ValidationError) as exc_info:
+            ThuNoNhaCungCapInput(
+                account_id=1,
+                amount=500_000.0,
+                debt_id=10,
+                supplier_id=12,
+            )
+        assert "Chỉ được truyền MỘT trong hai" in str(exc_info.value)
+
+    def test_thu_no_nha_cung_cap_input_invalid_amount(self):
+        with pytest.raises(ValidationError):
+            ThuNoNhaCungCapInput(account_id=1, amount=0, supplier_id=12)
+
+
+class TestGhiNoNhaCungCapTool:
+    """Kiểm tra MCP tool ghi_no_nha_cung_cap gọi DebtController đúng."""
+
+    @patch("app.ai.mcp.debt.server.get_db_session")
+    @patch("app.ai.mcp.debt.server.DebtController.create_supplier_debt")
+    def test_ghi_no_nha_cung_cap_success(self, mock_create, mock_get_db):
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+        mock_create.return_value = {
+            "debt_id": 42,
+            "status": "UNPAID",
+            "total_debt": 5_000_000.0,
+            "original_amount": 5_000_000.0,
+            "remaining_debt": 5_000_000.0,
+        }
+
+        inp = GhiNoNhaCungCapInput(
+            supplier_id=12,
+            original_amount=5_000_000.0,
+            note="Nhập hàng công ty A",
+        )
+        res = ghi_no_nha_cung_cap(input=inp, user_id=99)
+
+        assert isinstance(res, GhiNoNhaCungCapOutput)
+        assert res.debt_id == 42
+        assert res.status == "UNPAID"
+        assert res.remaining_debt == 5_000_000.0
+        mock_create.assert_called_once_with(
+            db=mock_db,
+            user_id=99,
+            supplier_id=12,
+            total_debt=5_000_000.0,
+            transaction_id=None,
+            note="Nhập hàng công ty A",
+        )
+
+
+class TestThuNoNhaCungCapTool:
+    """Kiểm tra MCP tool thu_no_nha_cung_cap."""
+
+    @patch("app.ai.mcp.debt.server.get_db_session")
+    @patch("app.ai.mcp.debt.server.DebtController.pay_supplier_debt")
+    def test_thu_no_nha_cung_cap_fifo_success(self, mock_pay, mock_get_db):
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+        mock_pay.return_value = {
+            "supplier_id": 12,
+            "payment_id": 101,
+            "amount_paid": 3_000_000.0,
+            "total_remaining_before": 5_000_000.0,
+            "total_remaining_after": 2_000_000.0,
+            "remaining_debt": 2_000_000.0,
+            "debt_status": "PARTIAL",
+            "debts": [
+                {
+                    "debt_id": 1,
+                    "payment_id": 101,
+                    "amount_applied": 3_000_000.0,
+                    "remaining_debt": 2_000_000.0,
+                    "debt_status": "PARTIAL",
+                }
+            ],
+        }
+
+        inp = ThuNoNhaCungCapInput(
+            account_id=1,
+            amount=3_000_000.0,
+            supplier_id=12,
+        )
+        res = thu_no_nha_cung_cap(input=inp, user_id=99)
+
+        assert isinstance(res, ThuNoNhaCungCapOutput)
+        assert res.amount_paid == 3_000_000.0
+        assert res.supplier_id == 12
+        assert res.debt_status == "PARTIAL"
+        assert res.remaining_debt == 2_000_000.0
+
+    @patch("app.ai.mcp.debt.server.get_db_session")
+    @patch("app.ai.mcp.debt.server.DebtController.pay_supplier_debt")
+    def test_thu_no_nha_cung_cap_specific_debt_success(self, mock_pay, mock_get_db):
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+        mock_pay.return_value = {
+            "payment_id": 105,
+            "debt_id": 45,
+            "remaining_debt": 0.0,
+            "debt_status": "PAID",
+            "amount_paid": 2_000_000.0,
+        }
+
+        inp = ThuNoNhaCungCapInput(
+            account_id=1,
+            amount=2_000_000.0,
+            debt_id=45,
+        )
+        res = thu_no_nha_cung_cap(input=inp, user_id=99)
+
+        assert isinstance(res, ThuNoNhaCungCapOutput)
+        assert res.debt_id == 45
+        assert res.debt_status == "PAID"
+        assert res.remaining_debt == 0.0
+
+
+class TestSupplierDebtAgentHandlers:
+    """Kiểm tra agent handlers handle_ghi_no_nha_cung_cap và handle_thu_no_nha_cung_cap."""
+
+    @pytest.mark.anyio
+    @patch("app.ai.agent.handlers.transaction.get_db_session")
+    async def test_handle_ghi_no_nha_cung_cap_success(self, mock_get_db):
+        from app.ai.agent.handlers.transaction import handle_ghi_no_nha_cung_cap
+
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+
+        mock_supp = MagicMock()
+        mock_supp.supplier_id = 15
+        mock_supp.supplier_name = "Công ty Nhựa A"
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_supp
+
+        entities = {
+            "supplier": "Công ty Nhựa A",
+            "price": 5_000_000,
+        }
+
+        result = await handle_ghi_no_nha_cung_cap(
+            intent="ghi_no_nha_cung_cap",
+            user_id=99,
+            entities=entities,
+            text="Ghi nợ nhà cung cấp Công ty Nhựa A 5 triệu",
+        )
+
+        assert result["success"] is True
+        assert result["status"] == "waiting_confirmation"
+        assert result["action"] == "ghi_no_nha_cung_cap"
+        payload = result["payload"]
+        assert payload["supplier_id"] == 15
+        assert payload["original_amount"] == 5_000_000.0
+        assert "Công ty Nhựa A" in result["message"]
+
+    @pytest.mark.anyio
+    async def test_handle_ghi_no_nha_cung_cap_missing_fields(self):
+        from app.ai.agent.handlers.transaction import handle_ghi_no_nha_cung_cap
+
+        entities = {}
+        result = await handle_ghi_no_nha_cung_cap(
+            intent="ghi_no_nha_cung_cap",
+            user_id=99,
+            entities=entities,
+            text="Ghi nợ nhà cung cấp",
+        )
+
+        assert result["success"] is False
+        assert result["status"] == "need_information"
+
+    @pytest.mark.anyio
+    @patch("app.ai.agent.handlers.transaction.get_db_session")
+    @patch("app.ai.agent.handlers.transaction.AccountService.get_account_by_name")
+    @patch("app.ai.agent.handlers.transaction.DebtRepository.get_open_debts_by_supplier_and_user")
+    async def test_handle_thu_no_nha_cung_cap_success(self, mock_debts, mock_get_acc, mock_get_db):
+        from app.ai.agent.handlers.transaction import handle_thu_no_nha_cung_cap
+
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+
+        mock_supp = MagicMock()
+        mock_supp.supplier_id = 15
+        mock_supp.supplier_name = "Công ty Nhựa A"
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_supp
+
+        mock_acc = MagicMock()
+        mock_acc.account_id = 2
+        mock_acc.account_name = "Tài khoản MB Bank"
+        mock_get_acc.return_value = mock_acc
+
+        mock_debt = MagicMock()
+        mock_debt.debt_id = 10
+        mock_debt.remaining_debt = Decimal("6000000")
+        mock_debts.return_value = [mock_debt]
+
+        entities = {
+            "supplier": "Công ty Nhựa A",
+            "price": 2_000_000,
+            "payment": "chuyển khoản",
+        }
+
+        result = await handle_thu_no_nha_cung_cap(
+            intent="thu_no_nha_cung_cap",
+            user_id=99,
+            entities=entities,
+            text="Trả nợ công ty Nhựa A 2 triệu chuyển khoản",
+        )
+
+        assert result["success"] is True
+        assert result["status"] == "waiting_confirmation"
+        assert result["action"] == "thu_no_nha_cung_cap"
+        payload = result["payload"]
+        assert payload["supplier_id"] == 15
+        assert payload["account_id"] == 2
+        assert payload["amount"] == 2_000_000.0
+
+    @pytest.mark.anyio
+    @patch("app.ai.agent.handlers.transaction.get_db_session")
+    @patch("app.ai.agent.handlers.transaction.AccountService.get_account_by_name")
+    @patch("app.ai.agent.handlers.transaction.DebtRepository.get_open_debts_by_supplier_and_user")
+    async def test_handle_thu_no_nha_cung_cap_full_settlement(self, mock_debts, mock_get_acc, mock_get_db):
+        """Khi người dùng nói tất toán / trả hết không nói rõ số tiền -> amount = remaining_debt."""
+        from app.ai.agent.handlers.transaction import handle_thu_no_nha_cung_cap
+
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+
+        mock_supp = MagicMock()
+        mock_supp.supplier_id = 15
+        mock_supp.supplier_name = "Anh Bình"
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_supp
+
+        mock_acc = MagicMock()
+        mock_acc.account_id = 1
+        mock_acc.account_name = "Tiền mặt"
+        mock_get_acc.return_value = mock_acc
+
+        mock_debt = MagicMock()
+        mock_debt.debt_id = 10
+        mock_debt.remaining_debt = Decimal("3500000")
+        mock_debts.return_value = [mock_debt]
+
+        entities = {
+            "supplier": "Anh Bình",
+            # Không truyền price
+        }
+
+        result = await handle_thu_no_nha_cung_cap(
+            intent="thu_no_nha_cung_cap",
+            user_id=99,
+            entities=entities,
+            text="Tất toán nợ chỗ anh Bình",
+        )
+
+        assert result["success"] is True
+        assert result["payload"]["amount"] == 3_500_000.0
+
+    @pytest.mark.anyio
+    @patch("app.ai.agent.agent_router.handle_ghi_no_nha_cung_cap")
+    async def test_agent_router_dispatches_ghi_no_nha_cung_cap(self, mock_handler):
+        from app.ai.agent.agent_router import AgentRouter
+
+        mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
+
+        res = await AgentRouter.execute(
+            intent="ghi_no_nha_cung_cap",
+            user_id=99,
+            entities={"supplier": "Công ty X", "price": 5000000},
+            text="Ghi nợ công ty X 5 triệu",
+        )
+
+        assert res["success"] is True
+        mock_handler.assert_called_once()
+
+    @pytest.mark.anyio
+    @patch("app.ai.agent.agent_router.handle_thu_no_nha_cung_cap")
+    async def test_agent_router_dispatches_thu_no_nha_cung_cap(self, mock_handler):
+        from app.ai.agent.agent_router import AgentRouter
+
+        mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
+
+        res = await AgentRouter.execute(
+            intent="thu_no_nha_cung_cap",
+            user_id=99,
+            entities={"supplier": "Công ty X", "price": 2000000},
+            text="Trả nợ công ty X 2 triệu",
+        )
+
+        assert res["success"] is True
+        mock_handler.assert_called_once()
+
+    @pytest.mark.anyio
+    @patch("app.ai.agent.agent_router.handle_thu_no_nha_cung_cap")
+    async def test_agent_router_dispatches_tra_no_nha_cung_cap(self, mock_handler):
+        from app.ai.agent.agent_router import AgentRouter
+
+        mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
+
+        res = await AgentRouter.execute(
+            intent="tra_no_nha_cung_cap",
+            user_id=99,
+            entities={"supplier": "Công ty X", "price": 2000000},
+            text="Trả nợ công ty X 2 triệu",
+        )
+
+        assert res["success"] is True
+        mock_handler.assert_called_once()
+
 
 
 

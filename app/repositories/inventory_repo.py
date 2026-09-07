@@ -5,11 +5,12 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models.account_model import Account
-from app.models.debt_model import Debt
 from app.models.inventory_model import InventoryTransaction
 from app.models.transaction_model import Transaction
 from app.models.transactionDetail_model import TransactionDetail
 from app.models.product_model import Product
+from app.models.supplier_model import Supplier
+from app.models.customer_model import Customer
 
 
 class InventoryRepository:
@@ -214,32 +215,103 @@ class InventoryRepository:
                 + amount
             )
 
+
     # =========================================================
-    # DEBT - CUSTOMER
+    # SUPPLIER
     # =========================================================
 
-    def create_receivable_debt(
+    def get_supplier_by_name(
         self,
-        transaction_id: int,
         user_id: int,
-        customer_id: int,
-        amount: Decimal,
-        status: str = "UNPAID",
-    ) -> Debt:
+        name: str
+    ) -> Optional[Supplier]:
 
-        debt = Debt(
-            transaction_id=transaction_id,
-            user_id=user_id,
-            customer_id=customer_id,
-            direction="RECEIVABLE",
-            original_amount=amount,
-            remaining_amount=amount,
-            status=status,
+        if not name:
+            return None
+
+        clean_name = name.strip()
+
+        # Exact match
+        supplier = (
+            self.db.query(Supplier)
+            .filter(
+                Supplier.user_id == user_id,
+                Supplier.supplier_name == clean_name,
+            )
+            .first()
         )
 
-        self.db.add(debt)
+        # Fuzzy match
+        if not supplier:
+            supplier = (
+                self.db.query(Supplier)
+                .filter(
+                    Supplier.user_id == user_id,
+                    Supplier.supplier_name.ilike(f"%{clean_name}%"),
+                )
+                .first()
+            )
 
-        return debt
+        return supplier
+
+    def create_supplier(
+        self,
+        user_id: int,
+        supplier_name: str,
+        note: Optional[str] = None
+    ) -> Supplier:
+
+        now = datetime.now()
+        supplier = Supplier(
+            user_id=user_id,
+            supplier_name=supplier_name.strip(),
+            note=note,
+            created_at=now,
+            updated_at=now,
+        )
+
+        self.db.add(supplier)
+        self.db.flush()
+
+        return supplier
+
+    # =========================================================
+    # CUSTOMER
+    # =========================================================
+
+    def get_customer_by_name(
+        self,
+        user_id: int,
+        name: str
+    ) -> Optional[Customer]:
+
+        if not name:
+            return None
+
+        clean_name = name.strip()
+
+        # Exact match
+        customer = (
+            self.db.query(Customer)
+            .filter(
+                Customer.user_id == user_id,
+                Customer.customer_name == clean_name,
+            )
+            .first()
+        )
+
+        # Fuzzy match
+        if not customer:
+            customer = (
+                self.db.query(Customer)
+                .filter(
+                    Customer.user_id == user_id,
+                    Customer.customer_name.ilike(f"%{clean_name}%"),
+                )
+                .first()
+            )
+
+        return customer
 
     # =========================================================
     # PRODUCT

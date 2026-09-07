@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 from app.repositories.inventory_repo import InventoryRepository
+from app.services.debt_service import DebtService
 
 
 class InventoryService:
@@ -103,13 +104,56 @@ class InventoryService:
                     "subtotal": subtotal
                 })
 
-            amount_paid_input = payload.get("amount_paid")
-            amount_paid = Decimal(str(amount_paid_input)) if amount_paid_input is not None else total_amount
-            supplier_id = payload.get("supplier_id")
-            account_id = payload.get("account_id")
+            # Xử lý payment_status & amount_paid
+            raw_payment_status = str(payload.get("payment_status") or "").strip()
+            payment_status_upper = raw_payment_status.upper()
 
-            # Nhận trực tiếp trạng thái thanh toán bằng tiếng Anh (Mặc định là "PAID" nếu không truyền)
-            payment_status_str = payload.get("payment_status") or "PAID"
+            # Các từ khóa biểu thị chưa trả tiền
+            unpaid_keywords = ["CHƯA TRẢ", "CHƯA THANH TOÁN", "CHUA TRA", "CHUA THANH TOAN", "NỢ", "NO", "PENDING", "UNPAID"]
+            is_unpaid = any(kw in payment_status_upper for kw in unpaid_keywords) or payment_status_upper in ("UNPAID", "PENDING")
+
+            amount_paid_input = payload.get("amount_paid")
+            if amount_paid_input is not None:
+                amount_paid = Decimal(str(amount_paid_input))
+            elif is_unpaid:
+                amount_paid = Decimal("0.0")
+            else:
+                amount_paid = total_amount
+
+            # Chuẩn hóa payment_status theo enum ERD: 'PAID', 'PARTIAL', 'PENDING'
+            if amount_paid >= total_amount:
+                payment_status_str = "PAID"
+            elif amount_paid > 0:
+                payment_status_str = "PARTIAL"
+            else:
+                payment_status_str = "PENDING"
+
+            # Xử lý supplier_id & supplier_name (Chỉ tìm kiếm trong DB, KHÔNG tự ý tạo mới Supplier)
+            supplier_id = payload.get("supplier_id")
+            supplier_name = payload.get("supplier_name") or payload.get("supplier")
+            
+            if not supplier_id and supplier_name:
+                existing_supplier = self.repo.get_supplier_by_name(user_id=user_id, name=str(supplier_name))
+                if existing_supplier:
+                    supplier_id = existing_supplier.supplier_id
+                else:
+                    return {
+                        "status": "error",
+                        "success": False,
+                        "message": f"Không tìm thấy nhà cung cấp '{supplier_name}' trong hệ thống. Vui lòng tạo nhà cung cấp trước."
+                    }
+
+            unpaid_amount = total_amount - amount_paid
+
+            # Nếu phát sinh nợ nhưng không có nhà cung cấp -> Báo lỗi cần nhà cung cấp để ghi nợ
+            if unpaid_amount > 0 and not supplier_id:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": "Đơn hàng chưa thanh toán đủ cần có thông tin Nhà cung cấp để ghi nợ."
+                }
+
+            account_id = payload.get("account_id")
 
             # 2. Tạo Master Transaction
             tx = self.repo.create_transaction(
@@ -156,26 +200,19 @@ class InventoryService:
                 elif hasattr(self.repo, "update_account_balance"):
                     self.repo.update_account_balance(account_id=account_id, amount=amount_paid)
 
-            # 5. Xử lý ghi nợ
-            unpaid_amount = total_amount - amount_paid
+            # 5. Xử lý ghi nợ nhà cung cấp (PAYABLE) qua DebtService
+            created_debt = None
             if unpaid_amount > 0 and supplier_id:
                 debt_status = "PARTIAL" if amount_paid > 0 else "UNPAID"
-                if hasattr(self.repo, "create_payable_debt"):
-                    self.repo.create_payable_debt(
-                        transaction_id=tx.transaction_id,
-                        user_id=user_id,
-                        supplier_id=supplier_id,
-                        amount=unpaid_amount,
-                        status=debt_status
-                    )
-                elif hasattr(self.repo, "create_debt"):
-                    self.repo.create_debt(
-                        transaction_id=tx.transaction_id,
-                        user_id=user_id,
-                        supplier_id=supplier_id,
-                        amount=unpaid_amount,
-                        status=debt_status
-                    )
+                created_debt = DebtService.create_payable_debt_for_transaction(
+                    db=self.db,
+                    user_id=user_id,
+                    supplier_id=supplier_id,
+                    transaction_id=tx.transaction_id,
+                    amount=unpaid_amount,
+                    status=debt_status,
+                    flush_only=True,
+                )
 
             self.db.commit()
             self.db.refresh(tx)
@@ -188,7 +225,10 @@ class InventoryService:
                 "total_amount": float(total_amount),
                 "quantity": float(sum([item["quantity"] for item in processed_items])),
                 "amount_paid": float(amount_paid),
-                "remaining_debt": float(unpaid_amount) if unpaid_amount > 0 else 0.0
+                "remaining_debt": float(unpaid_amount) if unpaid_amount > 0 else 0.0,
+                "supplier_id": supplier_id,
+                "debt_id": getattr(created_debt, "debt_id", None) if created_debt else None,
+                "supplier_debt": float(unpaid_amount) if unpaid_amount > 0 else 0.0
             }
 
         except Exception as e:
@@ -241,13 +281,58 @@ class InventoryService:
                     "stock_before": current_stock,
                 })
 
-            amount_paid_input = payload.get("amount_paid")
-            amount_paid = Decimal(str(amount_paid_input)) if amount_paid_input is not None else total_amount
-            customer_id = payload.get("customer_id")
-            account_id = payload.get("account_id")
+            # Xử lý payment_status & amount_paid
+            raw_payment_status = str(payload.get("payment_status") or "").strip()
+            payment_status_upper = raw_payment_status.upper()
 
-            # Nhận trực tiếp trạng thái thanh toán bằng tiếng Anh (Mặc định là "PAID" nếu không truyền)
-            payment_status_str = payload.get("payment_status") or "PAID"
+            unpaid_keywords = [
+                "CHƯA TRẢ", "CHƯA THANH TOÁN", "CHUA TRA", "CHUA THANH TOAN",
+                "NỢ", "NO", "PENDING", "UNPAID", "GHI NỢ", "GHI NO"
+            ]
+            is_unpaid = any(kw in payment_status_upper for kw in unpaid_keywords) or payment_status_upper in ("UNPAID", "PENDING")
+
+            amount_paid_input = payload.get("amount_paid")
+            if amount_paid_input is not None:
+                amount_paid = Decimal(str(amount_paid_input))
+            elif is_unpaid:
+                amount_paid = Decimal("0.0")
+            else:
+                amount_paid = total_amount
+
+            # Chuẩn hóa payment_status theo enum ERD: 'PAID', 'PARTIAL', 'PENDING'
+            if amount_paid >= total_amount:
+                payment_status_str = "PAID"
+            elif amount_paid > 0:
+                payment_status_str = "PARTIAL"
+            else:
+                payment_status_str = "PENDING"
+
+            # Xử lý customer_id & customer_name (Chỉ tìm kiếm trong DB Customer, KHÔNG tự ý tạo mới Customer)
+            customer_id = payload.get("customer_id")
+            customer_name = payload.get("customer_name") or payload.get("customer")
+
+            if not customer_id and customer_name:
+                existing_customer = self.repo.get_customer_by_name(user_id=user_id, name=str(customer_name))
+                if existing_customer:
+                    customer_id = existing_customer.customer_id
+                else:
+                    return {
+                        "status": "error",
+                        "success": False,
+                        "message": f"Không tìm thấy khách hàng '{customer_name}' trong hệ thống. Vui lòng tạo khách hàng trước."
+                    }
+
+            unpaid_amount = total_amount - amount_paid
+
+            # Nếu phát sinh nợ nhưng không có khách hàng -> Báo lỗi cần khách hàng để ghi nợ
+            if unpaid_amount > 0 and not customer_id:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": "Đơn hàng bán chưa thanh toán đủ cần có thông tin Khách hàng để ghi nợ."
+                }
+
+            account_id = payload.get("account_id")
 
             # 2. Tạo Master Transaction
             tx = self.repo.create_sale_transaction(
@@ -292,16 +377,18 @@ class InventoryService:
                     user_id=user_id, account_id=account_id, amount=amount_paid
                 )
 
-            # 5. Ghi nhận nợ phải thu (RECEIVABLE)
-            unpaid_amount = total_amount - amount_paid
+            # 5. Ghi nhận nợ phải thu (RECEIVABLE) qua DebtService
+            created_debt = None
             if unpaid_amount > 0 and customer_id:
                 debt_status = "PARTIAL" if amount_paid > 0 else "UNPAID"
-                self.repo.create_receivable_debt(
-                    transaction_id=tx.transaction_id,
+                created_debt = DebtService.create_receivable_debt_for_transaction(
+                    db=self.db,
                     user_id=user_id,
                     customer_id=customer_id,
+                    transaction_id=tx.transaction_id,
                     amount=unpaid_amount,
                     status=debt_status,
+                    flush_only=True,
                 )
 
             self.db.commit()
@@ -315,6 +402,9 @@ class InventoryService:
                 "total_amount": float(total_amount),
                 "quantity": float(sum([item["quantity"] for item in processed_items])),
                 "amount_paid": float(amount_paid),
+                "remaining_debt": float(unpaid_amount) if unpaid_amount > 0 else 0.0,
+                "customer_id": customer_id,
+                "debt_id": getattr(created_debt, "debt_id", None) if created_debt else None,
                 "customer_debt": float(unpaid_amount) if unpaid_amount > 0 else 0.0,
             }
 
