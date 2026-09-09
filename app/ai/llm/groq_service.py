@@ -86,69 +86,6 @@ class GroqService:
 
         return transcription.text.strip()
 
-    # ============================================================
-    # ANALYZE TRANSACTION
-    # ============================================================
-
-    # def analyze_transaction(
-    #     self,
-    #     text: str
-    # ) -> dict:
-    #     """
-    #     Phân tích câu giao dịch bằng LLM
-    #     và trả về JSON.
-    #     """
-
-    #     if not text or not text.strip():
-    #         raise ValueError(
-    #             "Text giao dịch không được để trống."
-    #         )
-
-    #     response = (
-    #         self.client.chat.completions.create(
-    #             model=self.analysis_model,
-
-    #             temperature=0,
-
-    #             response_format={
-    #                 "type": "json_object"
-    #             },
-
-    #             messages=[
-    #                 {
-    #                     "role": "system",
-    #                     "content": get_system_prompt()
-    #                 },
-    #                 {
-    #                     "role": "user",
-    #                     "content": text
-    #                 }
-    #             ]
-    #         )
-    #     )
-
-    #     result = (
-    #         response
-    #         .choices[0]
-    #         .message
-    #         .content
-    #         .strip()
-    #     )
-
-    #     try:
-    #         return json.loads(result)
-
-    #     except json.JSONDecodeError as error:
-    #         raise ValueError(
-    #             f"Groq trả về JSON không hợp lệ: {result}"
-    #         ) from error
-    
-    
-    
-    
-    
-    
-    
     
     
     

@@ -403,10 +403,10 @@ class TestHandleGhiNoKhachHang:
     """Test handler handle_ghi_no_khach_hang với tính năng tự tìm giá qua search_products."""
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
-    @patch("app.ai.agent.handlers.transaction.search_product")
+    @patch("app.ai.core.handlers.get_db_session")
+    @patch("app.ai.core.handlers.search_product")
     async def test_without_price_calculates_price_times_quantity(self, mock_search, mock_get_db):
-        from app.ai.agent.handlers.transaction import handle_ghi_no_khach_hang
+        from app.ai.core.handlers import handle_ghi_no_khach_hang
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -457,9 +457,9 @@ class TestHandleGhiNoKhachHang:
         mock_search.assert_called_once_with(product_name="Bia Heineken", user_id=99)
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.search_product")
+    @patch("app.ai.core.handlers.search_product")
     async def test_without_price_product_not_found(self, mock_search):
-        from app.ai.agent.handlers.transaction import handle_ghi_no_khach_hang
+        from app.ai.core.handlers import handle_ghi_no_khach_hang
 
         mock_search.return_value = {
             "success": True,
@@ -484,9 +484,9 @@ class TestHandleGhiNoKhachHang:
         assert "Không tìm thấy" in result["message"]
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.search_product")
+    @patch("app.ai.core.handlers.search_product")
     async def test_without_price_product_has_no_price(self, mock_search):
-        from app.ai.agent.handlers.transaction import handle_ghi_no_khach_hang
+        from app.ai.core.handlers import handle_ghi_no_khach_hang
 
         mock_search.return_value = {
             "success": True,
@@ -518,10 +518,10 @@ class TestHandleGhiNoKhachHang:
         assert "chưa có giá" in result["message"]
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
-    @patch("app.ai.agent.handlers.transaction.search_product")
+    @patch("app.ai.core.handlers.get_db_session")
+    @patch("app.ai.core.handlers.search_product")
     async def test_with_price_does_not_need_search(self, mock_search, mock_get_db):
-        from app.ai.agent.handlers.transaction import handle_ghi_no_khach_hang
+        from app.ai.core.handlers import handle_ghi_no_khach_hang
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -548,7 +548,7 @@ class TestHandleGhiNoKhachHang:
 
     @pytest.mark.anyio
     async def test_missing_customer_returns_need_information(self):
-        from app.ai.agent.handlers.transaction import handle_ghi_no_khach_hang
+        from app.ai.core.handlers import handle_ghi_no_khach_hang
 
         entities = {
             "product": "bia",
@@ -567,9 +567,9 @@ class TestHandleGhiNoKhachHang:
         assert "customer" in result["missing_fields"]
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.agent_router.handle_ghi_no_khach_hang")
+    @patch("app.ai.core.router.handle_ghi_no_khach_hang")
     async def test_agent_router_dispatches_to_handler(self, mock_handler):
-        from app.ai.agent.agent_router import AgentRouter
+        from app.ai.core.router import AgentRouter
 
         mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
 
@@ -593,11 +593,11 @@ class TestHandleThuNoKhachHang:
     """Test handler handle_thu_no_khach_hang với AccountService tìm account_id theo tên/phương thức thanh toán."""
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
-    @patch("app.ai.agent.handlers.transaction.AccountService.get_account_by_name")
-    @patch("app.ai.agent.handlers.transaction.DebtRepository.get_open_debts_by_customer_and_user")
+    @patch("app.ai.core.handlers.get_db_session")
+    @patch("app.ai.core.handlers.AccountService.get_account_by_name")
+    @patch("app.ai.core.handlers.DebtRepository.get_open_debts_by_customer_and_user")
     async def test_finds_account_by_name_or_keyword(self, mock_debts, mock_get_acc, mock_get_db):
-        from app.ai.agent.handlers.transaction import handle_thu_no_khach_hang
+        from app.ai.core.handlers import handle_thu_no_khach_hang
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -650,11 +650,11 @@ class TestHandleThuNoKhachHang:
         )
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
-    @patch("app.ai.agent.handlers.transaction.AccountService.get_account_by_name")
-    @patch("app.ai.agent.handlers.transaction.DebtRepository.get_open_debts_by_customer_and_user")
+    @patch("app.ai.core.handlers.get_db_session")
+    @patch("app.ai.core.handlers.AccountService.get_account_by_name")
+    @patch("app.ai.core.handlers.DebtRepository.get_open_debts_by_customer_and_user")
     async def test_fallback_to_default_account_when_payment_not_specified(self, mock_debts, mock_get_acc, mock_get_db):
-        from app.ai.agent.handlers.transaction import handle_thu_no_khach_hang
+        from app.ai.core.handlers import handle_thu_no_khach_hang
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -692,9 +692,9 @@ class TestHandleThuNoKhachHang:
         assert result["payload"]["account_name"] == "Tiền mặt"
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
+    @patch("app.ai.core.handlers.get_db_session")
     async def test_customer_not_found_returns_error(self, mock_get_db):
-        from app.ai.agent.handlers.transaction import handle_thu_no_khach_hang
+        from app.ai.core.handlers import handle_thu_no_khach_hang
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -716,9 +716,9 @@ class TestHandleThuNoKhachHang:
         assert result["status"] == "customer_not_found"
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.agent_router.handle_thu_no_khach_hang")
+    @patch("app.ai.core.router.handle_thu_no_khach_hang")
     async def test_agent_router_dispatches_to_thu_no_handler(self, mock_handler):
-        from app.ai.agent.agent_router import AgentRouter
+        from app.ai.core.router import AgentRouter
 
         mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
 
@@ -924,9 +924,9 @@ class TestSupplierDebtAgentHandlers:
     """Kiểm tra agent handlers handle_ghi_no_nha_cung_cap và handle_thu_no_nha_cung_cap."""
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
+    @patch("app.ai.core.handlers.get_db_session")
     async def test_handle_ghi_no_nha_cung_cap_success(self, mock_get_db):
-        from app.ai.agent.handlers.transaction import handle_ghi_no_nha_cung_cap
+        from app.ai.core.handlers import handle_ghi_no_nha_cung_cap
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -958,7 +958,7 @@ class TestSupplierDebtAgentHandlers:
 
     @pytest.mark.anyio
     async def test_handle_ghi_no_nha_cung_cap_missing_fields(self):
-        from app.ai.agent.handlers.transaction import handle_ghi_no_nha_cung_cap
+        from app.ai.core.handlers import handle_ghi_no_nha_cung_cap
 
         entities = {}
         result = await handle_ghi_no_nha_cung_cap(
@@ -972,11 +972,11 @@ class TestSupplierDebtAgentHandlers:
         assert result["status"] == "need_information"
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
-    @patch("app.ai.agent.handlers.transaction.AccountService.get_account_by_name")
-    @patch("app.ai.agent.handlers.transaction.DebtRepository.get_open_debts_by_supplier_and_user")
+    @patch("app.ai.core.handlers.get_db_session")
+    @patch("app.ai.core.handlers.AccountService.get_account_by_name")
+    @patch("app.ai.core.handlers.DebtRepository.get_open_debts_by_supplier_and_user")
     async def test_handle_thu_no_nha_cung_cap_success(self, mock_debts, mock_get_acc, mock_get_db):
-        from app.ai.agent.handlers.transaction import handle_thu_no_nha_cung_cap
+        from app.ai.core.handlers import handle_thu_no_nha_cung_cap
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -1018,12 +1018,12 @@ class TestSupplierDebtAgentHandlers:
         assert payload["amount"] == 2_000_000.0
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.handlers.transaction.get_db_session")
-    @patch("app.ai.agent.handlers.transaction.AccountService.get_account_by_name")
-    @patch("app.ai.agent.handlers.transaction.DebtRepository.get_open_debts_by_supplier_and_user")
+    @patch("app.ai.core.handlers.get_db_session")
+    @patch("app.ai.core.handlers.AccountService.get_account_by_name")
+    @patch("app.ai.core.handlers.DebtRepository.get_open_debts_by_supplier_and_user")
     async def test_handle_thu_no_nha_cung_cap_full_settlement(self, mock_debts, mock_get_acc, mock_get_db):
         """Khi người dùng nói tất toán / trả hết không nói rõ số tiền -> amount = remaining_debt."""
-        from app.ai.agent.handlers.transaction import handle_thu_no_nha_cung_cap
+        from app.ai.core.handlers import handle_thu_no_nha_cung_cap
 
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
@@ -1059,9 +1059,9 @@ class TestSupplierDebtAgentHandlers:
         assert result["payload"]["amount"] == 3_500_000.0
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.agent_router.handle_ghi_no_nha_cung_cap")
+    @patch("app.ai.core.router.handle_ghi_no_nha_cung_cap")
     async def test_agent_router_dispatches_ghi_no_nha_cung_cap(self, mock_handler):
-        from app.ai.agent.agent_router import AgentRouter
+        from app.ai.core.router import AgentRouter
 
         mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
 
@@ -1076,9 +1076,9 @@ class TestSupplierDebtAgentHandlers:
         mock_handler.assert_called_once()
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.agent_router.handle_thu_no_nha_cung_cap")
+    @patch("app.ai.core.router.handle_thu_no_nha_cung_cap")
     async def test_agent_router_dispatches_thu_no_nha_cung_cap(self, mock_handler):
-        from app.ai.agent.agent_router import AgentRouter
+        from app.ai.core.router import AgentRouter
 
         mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
 
@@ -1093,9 +1093,9 @@ class TestSupplierDebtAgentHandlers:
         mock_handler.assert_called_once()
 
     @pytest.mark.anyio
-    @patch("app.ai.agent.agent_router.handle_thu_no_nha_cung_cap")
+    @patch("app.ai.core.router.handle_thu_no_nha_cung_cap")
     async def test_agent_router_dispatches_tra_no_nha_cung_cap(self, mock_handler):
-        from app.ai.agent.agent_router import AgentRouter
+        from app.ai.core.router import AgentRouter
 
         mock_handler.return_value = {"success": True, "status": "waiting_confirmation"}
 

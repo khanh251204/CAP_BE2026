@@ -9,8 +9,11 @@ INTENT_RULES = """
 | them_san_pham | product |
 | sua_san_pham | product |
 | xoa_san_pham | product |
-| nhap_hang | product, quantity, unit |
-| ban_hang | product, quantity, unit |
+| mua_hang | product, quantity |
+| nhap_hang | product, quantity |
+| ban_hang | product, quantity |
+| nhap_kho | product, quantity |
+| xuat_kho | product, quantity |
 | ghi_no_khach_hang | customer |
 | thu_no_khach_hang | customer, price |
 | khach_ghi_no | customer |
@@ -19,27 +22,35 @@ INTENT_RULES = """
 | tra_no_nha_cung_cap | supplier, price |
 | chi_phi | price |
 | hang_hong | product, quantity, unit |
-| kiem_kho | none |
+| kiem_kho | product |
 | bao_cao | none |
 | khac | none |
 
 ## RULES
 
-- Chọn đúng 1 intent.
-- Thiếu required -> status="error", thêm vào missing_fields.
+- Chọn đúng 1 intent duy nhất.
+- Thiếu required field -> status="error", thêm field bị thiếu vào missing_fields (VD: thiếu product -> missing_fields=["product"]; thiếu quantity -> missing_fields=["quantity"]).
 - Đủ required -> status="success".
-- Entity không được nói -> null.
-- Không tự tạo giá trị.
-- `ban_hang`: price không bắt buộc, không có -> null.
-- `ghi_no_khach_hang`: Bắt buộc `customer`. `price` KHÔNG bắt buộc nếu người dùng có nói `product` (hệ thống sẽ tự động dùng search_products để tìm giá và tính: số tiền nợ = đơn giá * số lượng).
-  Ví dụ: "Ghi nợ cho anh Tuấn 3 thùng bia", "Chị Lan mua 2 triệu, ghi nợ giúp anh", "Anh Tuấn còn thiếu 500 nghìn tiền hàng hôm qua", "Ghi sổ nợ cho khách tên Hoa 1 triệu 2".
-- `thu_no_khach_hang`: dùng khi khách hàng trả bớt hoặc trả hết nợ.
-  Ví dụ: "Chị Lan vừa trả 15 triệu", "Anh Tuấn trả hết nợ rồi", "Thanh toán 5 triệu cho đơn hàng ngày 3/9 của chị Hoa".
-- Nếu người dùng tự sửa lời -> lấy giá trị sau cùng.
-- Nếu câu mới bổ sung thông tin -> giữ intent và entity cũ.
-- RAG chỉ dùng để hỗ trợ hiểu từ lóng, sản phẩm và đơn vị.
-- Không tự đoán quy cách sản phẩm nếu RAG không có thông tin.
+- Entity không được nói rõ trong câu -> null. Tuyệt đối không tự suy luận hoặc tự bịa entity (không tự đoán Product, Customer, Supplier, Debt).
 
-
+### PHÂN BIỆT NGHIỆP VỤ BẮT BUỘC:
+1. `mua_hang` != `nhap_kho`:
+   - `mua_hang`: Nghiệp vụ mua hàng từ nhà cung cấp (VD: "Mua 30kg tôm giá 100k từ bà Hoa", "Mua 10 thùng bia", "Nhập 50 thùng mì từ nhà cung cấp").
+   - `nhap_kho`: Nghiệp vụ nhập tồn kho đơn thuần (VD: "Nhập kho 30kg tôm", "Nhập 30kg tôm vào kho", "Nhập thêm 20 thùng nước ngọt vào kho").
+   - Câu "Nhập kho 30kg tôm từ bà Hoa": Người dùng nói rõ "nhập kho" nên BẮT BUỘC là `nhap_kho`, KHÔNG được tự ý biến thành `mua_hang`.
+2. `ban_hang` != `xuat_kho`:
+   - `ban_hang`: Nghiệp vụ bán hàng cho khách hàng (VD: "Bán 5kg tôm giá 120k", "Bán cho chị Lan 5kg tôm").
+   - `xuat_kho`: Nghiệp vụ xuất tồn kho đơn thuần (VD: "Xuất kho 10kg tôm", "Xuất 10kg tôm khỏi kho"). KHÔNG tự động biến thành `ban_hang` và KHÔNG tự tạo Customer.
+3. `kiem_kho` != `xuat_kho`:
+   - `kiem_kho`: Tra cứu/kiểm tra số lượng tồn kho (VD: "Kiểm kho tôm", "Tôm còn bao nhiêu trong kho", "Check kho bánh mì"). KHÔNG được nhầm thành `xuat_kho` hay `hang_hong`.
+4. Quy tắc công nợ & giá:
+   - `ban_hang`: price không bắt buộc (nếu không nói -> null).
+   - `mua_hang`: price không bắt buộc (nếu không nói -> null).
+   - `ghi_no_khach_hang`: Bắt buộc `customer`. `price` KHÔNG bắt buộc nếu có `product`.
+   - `thu_no_khach_hang`: dùng khi khách trả nợ (Bắt buộc `customer`, `price`).
+5. Xử lý câu nói:
+   - Nếu người dùng tự sửa lời (VD: "bán 3... à không 5kg") -> LUÔN lấy giá trị sau cùng.
+   - Nếu câu mới bổ sung thông tin -> giữ nguyên intent và entity cũ.
+   - RAG chỉ hỗ trợ từ lóng, đơn vị, sản phẩm. Không tự bịa thông tin không có.
 """
 

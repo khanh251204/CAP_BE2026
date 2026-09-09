@@ -3,6 +3,7 @@ from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 from app.repositories.inventory_repo import InventoryRepository
 from app.services.debt_service import DebtService
+from app.models.intent_model import Intent
 
 
 class InventoryService:
@@ -155,6 +156,10 @@ class InventoryService:
 
             account_id = payload.get("account_id")
 
+            # Lấy intent_id nếu tồn tại trong DB
+            intent_obj = self.db.query(Intent).filter(Intent.intent_name.in_(["mua_hang", "nhap_hang"])).first()
+            intent_id = intent_obj.intent_id if intent_obj else None
+
             # 2. Tạo Master Transaction
             tx = self.repo.create_transaction(
                 user_id=user_id,
@@ -165,6 +170,7 @@ class InventoryService:
                 input_method=payload.get("input_method", "MANUAL"),
                 input_text=payload.get("input_text"),
                 note=payload.get("note") or payload.get("input_text"),
+                intent_id=intent_id,
             )
 
             # 3. Tạo Transaction Details & Cập nhật biến động Kho
@@ -334,6 +340,10 @@ class InventoryService:
 
             account_id = payload.get("account_id")
 
+            # Lấy intent_id nếu tồn tại trong DB
+            intent_obj = self.db.query(Intent).filter(Intent.intent_name == "ban_hang").first()
+            intent_id = intent_obj.intent_id if intent_obj else None
+
             # 2. Tạo Master Transaction
             tx = self.repo.create_sale_transaction(
                 user_id=user_id,
@@ -344,6 +354,7 @@ class InventoryService:
                 input_method=payload.get("input_method", "MANUAL"),
                 input_text=payload.get("input_text"),
                 note=payload.get("note") or payload.get("input_text"),
+                intent_id=intent_id,
             )
 
             # 3. Tạo Transaction Details & Trừ Kho
@@ -478,7 +489,219 @@ class InventoryService:
                 "message": f"Lỗi kiểm tra tồn kho: {str(e)}"
             }
 
+    def nhap_kho(
+        self,
+        user_id: int,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Nghiệp vụ nhập kho đơn thuần (Inventory IN).
+        Mapping theo Intent_DB_Mapping.docx: Inventory_Transaction + Product.
+        TUYỆT ĐỐI KHÔNG tạo: Customer, Supplier, Debt, Sales/Purchase Transaction.
+        """
+        try:
+            product_id = payload.get("product_id")
+            product_name = payload.get("product_name") or payload.get("product")
+            quantity_raw = payload.get("quantity")
+
+            if quantity_raw is None or quantity_raw == "":
+                return {
+                    "status": "error",
+                    "success": False,
+                    "missing_fields": ["quantity"],
+                    "message": "Thiếu thông tin số lượng cần nhập kho."
+                }
+
+            try:
+                qty = Decimal(str(quantity_raw))
+                if qty <= 0:
+                    return {
+                        "status": "error",
+                        "success": False,
+                        "message": "Số lượng nhập kho phải lớn hơn 0."
+                    }
+            except Exception:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Số lượng không hợp lệ: {quantity_raw}"
+                }
+
+            # 1. Tìm product_id thông qua Repo nếu thiếu ID
+            if not product_id and product_name:
+                product_id = self.repo.get_product_id_by_name(user_id=user_id, name=str(product_name))
+                if not product_id:
+                    return {
+                        "status": "error",
+                        "success": False,
+                        "missing_fields": ["product"],
+                        "message": f"Không tìm thấy sản phẩm '{product_name}' trong hệ thống."
+                    }
+            elif not product_id and not product_name:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "missing_fields": ["product"],
+                    "message": "Thiếu thông tin sản phẩm cần nhập kho."
+                }
+
+            product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
+            unit = payload.get("unit") or (getattr(product_obj, "default_unit", "") if product_obj else "")
+            actual_product_name = product_name or (getattr(product_obj, "product_name", "") if product_obj else f"ID {product_id}")
+
+            # 2. Cập nhật tồn kho qua InventoryTransaction
+            qty_before = self.repo.get_latest_stock(user_id, product_id)
+            qty_after = qty_before + qty
+
+            inv_tx = self.repo.create_inventory_transaction(
+                user_id=user_id,
+                product_id=product_id,
+                transaction_id=None,
+                type="IN",
+                quantity=qty,
+                unit=unit,
+                quantity_before=qty_before,
+                quantity_after=qty_after,
+                note=payload.get("note") or payload.get("input_text") or "Nhập kho",
+            )
+
+            self.db.commit()
+            self.db.refresh(inv_tx)
+
+            return {
+                "status": "success",
+                "success": True,
+                "message": f"Nhập kho thành công {qty} {unit} {actual_product_name}.",
+                "inventory_transaction_id": inv_tx.inventory_transaction_id,
+                "product_id": product_id,
+                "product_name": actual_product_name,
+                "quantity": float(qty),
+                "unit": unit,
+                "quantity_before": float(qty_before),
+                "quantity_after": float(qty_after),
+                "inventory_type": "IN"
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            return {
+                "status": "error",
+                "success": False,
+                "message": f"Lỗi xử lý nhập kho: {str(e)}"
+            }
+
+    def xuat_kho(
+        self,
+        user_id: int,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Nghiệp vụ xuất kho đơn thuần (Inventory OUT).
+        Mapping theo Intent_DB_Mapping.docx: Inventory_Transaction + Product.
+        TUYỆT ĐỐI KHÔNG tạo: Customer, Supplier, Debt, Sales/Purchase Transaction.
+        Phải kiểm tra tồn kho, không cho phép xuất vượt quá số lượng tồn.
+        """
+        try:
+            product_id = payload.get("product_id")
+            product_name = payload.get("product_name") or payload.get("product")
+            quantity_raw = payload.get("quantity")
+
+            if quantity_raw is None or quantity_raw == "":
+                return {
+                    "status": "error",
+                    "success": False,
+                    "missing_fields": ["quantity"],
+                    "message": "Thiếu thông tin số lượng cần xuất kho."
+                }
+
+            try:
+                qty = Decimal(str(quantity_raw))
+                if qty <= 0:
+                    return {
+                        "status": "error",
+                        "success": False,
+                        "message": "Số lượng xuất kho phải lớn hơn 0."
+                    }
+            except Exception:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Số lượng không hợp lệ: {quantity_raw}"
+                }
+
+            # 1. Tìm product_id thông qua Repo nếu thiếu ID
+            if not product_id and product_name:
+                product_id = self.repo.get_product_id_by_name(user_id=user_id, name=str(product_name))
+                if not product_id:
+                    return {
+                        "status": "error",
+                        "success": False,
+                        "missing_fields": ["product"],
+                        "message": f"Không tìm thấy sản phẩm '{product_name}' trong hệ thống."
+                    }
+            elif not product_id and not product_name:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "missing_fields": ["product"],
+                    "message": "Thiếu thông tin sản phẩm cần xuất kho."
+                }
+
+            product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
+            unit = payload.get("unit") or (getattr(product_obj, "default_unit", "") if product_obj else "")
+            actual_product_name = product_name or (getattr(product_obj, "product_name", "") if product_obj else f"ID {product_id}")
+
+            # 2. Kiểm tra số lượng tồn kho
+            qty_before = self.repo.get_latest_stock(user_id, product_id)
+            if qty_before < qty:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Sản phẩm '{actual_product_name}' không đủ tồn kho (Tồn: {qty_before}, Yêu cầu: {qty})"
+                }
+
+            qty_after = qty_before - qty
+
+            inv_tx = self.repo.create_inventory_transaction(
+                user_id=user_id,
+                product_id=product_id,
+                transaction_id=None,
+                type="OUT",
+                quantity=qty,
+                unit=unit,
+                quantity_before=qty_before,
+                quantity_after=qty_after,
+                note=payload.get("note") or payload.get("input_text") or "Xuất kho",
+            )
+
+            self.db.commit()
+            self.db.refresh(inv_tx)
+
+            return {
+                "status": "success",
+                "success": True,
+                "message": f"Xuất kho thành công {qty} {unit} {actual_product_name}.",
+                "inventory_transaction_id": inv_tx.inventory_transaction_id,
+                "product_id": product_id,
+                "product_name": actual_product_name,
+                "quantity": float(qty),
+                "unit": unit,
+                "quantity_before": float(qty_before),
+                "quantity_after": float(qty_after),
+                "inventory_type": "OUT"
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            return {
+                "status": "error",
+                "success": False,
+                "message": f"Lỗi xử lý xuất kho: {str(e)}"
+            }
+
     # Alias phương thức
     process_export = sell_goods
     process_import = import_goods
     process_check_stock = check_stock
+    process_nhap_kho = nhap_kho
+    process_xuat_kho = xuat_kho

@@ -13,7 +13,7 @@ from app.models.account_model import Account
 from app.models.customer_model import Customer
 from app.models.inventory_model import InventoryTransaction
 from app.services.inventory_service import InventoryService
-from app.ai.agent.handlers.transaction import handle_import, handle_sell
+from app.ai.core.handlers import handle_import, handle_sell
 
 
 @pytest.fixture
@@ -225,7 +225,7 @@ async def test_handle_import_handler_detects_unpaid_and_supplier(db_session, mon
     Test handle_import handler when user says:
     'Nhập hàng 300 lốc sữa tươi Vinamilk giá 6 triệu chưa trả tiền'
     """
-    from app.ai.agent.handlers import transaction as tx_handler
+    from app.ai.core import handlers as tx_handler
 
     # Mock get_db_session in handler
     monkeypatch.setattr(tx_handler, "get_db_session", lambda: db_session)
@@ -277,7 +277,7 @@ async def test_handle_import_handler_supplier_not_found(db_session, monkeypatch)
     Test handle_import when user mentions a supplier NOT in DB:
     Expect status='supplier_not_found', no new supplier created.
     """
-    from app.ai.agent.handlers import transaction as tx_handler
+    from app.ai.core import handlers as tx_handler
 
     monkeypatch.setattr(tx_handler, "get_db_session", lambda: db_session)
 
@@ -480,7 +480,7 @@ async def test_handle_sell_handler_detects_unpaid_and_resolves_customer(db_sessi
     - Sets amount_paid=0.0
     - Waiting confirmation with debt note
     """
-    from app.ai.agent.handlers import transaction as tx_handler
+    from app.ai.core import handlers as tx_handler
 
     monkeypatch.setattr(tx_handler, "get_db_session", lambda: db_session)
 
@@ -527,7 +527,7 @@ async def test_handle_sell_handler_customer_not_found(db_session, monkeypatch):
     Test handle_sell handler when user mentions a customer NOT in DB:
     Expect status='customer_not_found', NO new customer created in DB.
     """
-    from app.ai.agent.handlers import transaction as tx_handler
+    from app.ai.core import handlers as tx_handler
 
     monkeypatch.setattr(tx_handler, "get_db_session", lambda: db_session)
 
@@ -578,7 +578,7 @@ async def test_handle_sell_handler_unpaid_missing_customer_requires_customer(db_
     'Bán 5 lốc sữa tươi Vinamilk ghi nợ' (không có tên khách hàng)
     Expect status='need_information', missing_fields=['customer'].
     """
-    from app.ai.agent.handlers import transaction as tx_handler
+    from app.ai.core import handlers as tx_handler
 
     monkeypatch.setattr(tx_handler, "get_db_session", lambda: db_session)
 

@@ -44,7 +44,7 @@ class ProductService:
     @staticmethod
     def create_product(data: dict, user_id: int, db: Session):
 
-        product_name = data["product_name"].strip()
+        product_name = (data.get("product_name") or data.get("product") or "").strip()
 
         # Kiểm tra trùng tên
         existing_product = repo.get_product_by_name(

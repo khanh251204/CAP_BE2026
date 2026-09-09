@@ -241,7 +241,7 @@ def get_supplier_debts(
         search=search,
     )
 
-# ------------------------------------------------XEM LẠI-------------------------------
+# ------------------------------------------------XEM LẠI------------------------------------------------
 @debt_router.post(
     "/supplier/payments",
     response_model=PaySupplierDebtResponse,

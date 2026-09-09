@@ -28,7 +28,7 @@ class InventoryTransaction(Base):
     transaction_id = Column(
         Integer,
         ForeignKey("Transaction.transaction_id"),
-        nullable=False
+        nullable=True
     )
 
     inventory_type = Column(

@@ -11,6 +11,8 @@ server = FastMCP(
 server.tool()(InventoryTools.export_inventory)
 server.tool()(InventoryTools.import_inventory)
 server.tool()(InventoryTools.check_stock)
+server.tool()(InventoryTools.nhap_kho)
+server.tool()(InventoryTools.xuat_kho)
 
 
 if __name__ == "__main__":

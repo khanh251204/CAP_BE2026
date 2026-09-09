@@ -14,7 +14,7 @@ from fastapi import (
 from requests import Session
 
 from app.ai.llm.groq_service import GroqService
-from app.ai.agent.transaction_agent import TransactionAgent
+from app.ai.core.agent import Agent as TransactionAgent
 
 from app.schemas.analysis_schema import AnalysisRequest
 from app.configs.jwt import get_current_user_id
@@ -149,7 +149,7 @@ async def voice_transaction(
         }
 
 
-from app.ai.agent.state import pending_confirmations
+from app.ai.core.state import pending_confirmations
 from app.controllers.product_controller import ProductController
 from app.configs.database import get_db
 from sqlalchemy.orm import Session
@@ -229,13 +229,45 @@ async def confirm_action(
         result = normalize_mcp_result(result)
 
     # ========================================================
-    # NHẬP HÀNG
+    # MUA HÀNG / NHẬP HÀNG
     # ========================================================
 
-    elif intent == "nhap_hang":
+    elif intent in ("mua_hang", "nhap_hang"):
 
         result = await call_mcp_tool(
             "import_inventory",
+            {
+                "payload": payload,
+                "user_id": current_user_id
+            }
+        )
+
+        result = normalize_mcp_result(result)
+
+    # ========================================================
+    # NHẬP KHO
+    # ========================================================
+
+    elif intent == "nhap_kho":
+
+        result = await call_mcp_tool(
+            "nhap_kho",
+            {
+                "payload": payload,
+                "user_id": current_user_id
+            }
+        )
+
+        result = normalize_mcp_result(result)
+
+    # ========================================================
+    # XUẤT KHO
+    # ========================================================
+
+    elif intent == "xuat_kho":
+
+        result = await call_mcp_tool(
+            "xuat_kho",
             {
                 "payload": payload,
                 "user_id": current_user_id

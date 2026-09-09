@@ -35,13 +35,13 @@ def get_products_with_stock(db: Session, user_id: int):
             Product,
             func.coalesce(
                 func.sum(
-                    case((InventoryTransaction.type == 'IN', InventoryTransaction.quantity), else_=0)
+                    case((InventoryTransaction.inventory_type == 'IN', InventoryTransaction.quantity), else_=0)
                 ), 
                 0
             ).label("total_imported"),
             func.coalesce(
                 func.sum(
-                    case((InventoryTransaction.type == 'OUT', InventoryTransaction.quantity), else_=0)
+                    case((InventoryTransaction.inventory_type == 'OUT', InventoryTransaction.quantity), else_=0)
                 ), 
                 0
             ).label("total_sold"),
