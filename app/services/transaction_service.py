@@ -27,6 +27,58 @@ from app.repositories.product_repository import (
 from app.schemas.transaction_schema import TransactionCreateRequest
 
 
+# ==========================================================
+# 10 INTENTS MAPPING THEO docs/erd.md:
+# 1. mua_hang            -> EXPENSE
+# 2. ban_hang            -> INCOME
+# 3. ghi_no_nha_cung_cap -> DEBT
+# 4. tra_no_cung_cap     -> DEBT
+# 5. ghi_no_khach_hang   -> DEBT
+# 6. thu_no_khach_hang   -> DEBT
+# 7. chi_tien            -> EXPENSE
+# 8. hang_hong           -> EXPENSE
+# 9. kiem_kho            -> NONE
+# 10. bao_cao            -> NONE
+# ==========================================================
+INTENT_TYPE_MAPPING = {
+    "ban_hang": "INCOME",
+    "mua_hang": "EXPENSE",
+    "nhap_hang": "EXPENSE",
+    "chi_tien": "EXPENSE",
+    "hang_hong": "EXPENSE",
+    "hoan_tien": "REFUND",
+    "ghi_no_khach_hang": "DEBT",
+    "ghi_no_phai_thu": "DEBT",
+    "khach_ghi_no": "DEBT",
+    "thu_no_khach_hang": "DEBT",
+    "thu_no_phai_thu": "DEBT",
+    "thu_no_khach": "DEBT",
+    "ghi_no_nha_cung_cap": "DEBT",
+    "ghi_no_cung_cap": "DEBT",
+    "ghi_no_phai_tra": "DEBT",
+    "ncc_ghi_no": "DEBT",
+    "tra_no_cung_cap": "DEBT",
+    "tra_no_nha_cung_cap": "DEBT",
+    "tra_no_phai_tra": "DEBT",
+    "tra_no_ncc": "DEBT",
+    "thu_no_nha_cung_cap": "DEBT",
+    "kiem_kho": "NONE",
+    "bao_cao": "NONE",
+    "chuyen_tien": "TRANFER",
+}
+
+
+def resolve_intent_type(intent_obj: Optional[Intent], intent_name: Optional[str] = None) -> Optional[str]:
+    """
+    Lấy intent_type từ Intent model theo ERD (INCOME, EXPENSE, DEBT, TRANFER, REFUND, NONE),
+    hoặc suy diễn từ danh mục 10 intent theo docs/erd.md nếu intent_type trong DB bị null/chưa gán.
+    """
+    if intent_obj and intent_obj.intent_type:
+        return str(intent_obj.intent_type)
+    name = (intent_obj.intent_name if intent_obj else intent_name) or ""
+    return INTENT_TYPE_MAPPING.get(name.lower().strip())
+
+
 class TransactionService:
 
     @staticmethod
@@ -176,10 +228,17 @@ class TransactionService:
         db.commit()
         db.refresh(new_transaction)
 
+        intent_name = intent.intent_name if intent else None
+        resolved_type = resolve_intent_type(intent, intent_name)
+
         return {
             "transaction_id": new_transaction.transaction_id,
             "user_id": new_transaction.user_id,
             "intent_id": new_transaction.intent_id,
+            "intent": intent_name,
+            "intent_name": intent_name,
+            "intent_type": resolved_type,
+            "type": resolved_type,
             "category_id": new_transaction.category_id,
             "account_id": new_transaction.account_id,
             "customer_id": new_transaction.customer_id,
@@ -617,10 +676,17 @@ class TransactionService:
         # ==========================================================
         # 16. RETURN
         # ==========================================================
+        intent_name = db_intent.intent_name if db_intent else groq_intent
+        resolved_type = resolve_intent_type(db_intent, intent_name)
+
         return {
             "transaction_id": new_transaction.transaction_id,
             "user_id": user_id,
             "intent_id": intent_id,
+            "intent": intent_name,
+            "intent_name": intent_name,
+            "intent_type": resolved_type,
+            "type": resolved_type,
             "account_id": account_id,
             "customer_id": customer_id,
             "supplier_id": supplier_id,
@@ -647,13 +713,17 @@ class TransactionService:
         db: Session,
         user_id: int,
         page: int = 1,
-        limit: int = 20
+        limit: int = 20,
+        intent_type: Optional[str] = None,
+        intent_name: Optional[str] = None,
     ):
         transactions, total = TransactionRepository.get_transactions(
             db=db,
             user_id=user_id,
             page=page,
-            limit=limit
+            limit=limit,
+            intent_type=intent_type,
+            intent_name=intent_name,
         )
 
         total_pages = ceil(total / limit) if limit > 0 else 0
@@ -684,6 +754,9 @@ class TransactionService:
                     )
                 })
 
+            item_intent_name = transaction.intent.intent_name if transaction.intent else None
+            resolved_type = resolve_intent_type(transaction.intent, item_intent_name)
+
             data.append({
                 "transaction_id": transaction.transaction_id,
                 "user_id": transaction.user_id,
@@ -692,11 +765,10 @@ class TransactionService:
                 "account_id": transaction.account_id,
                 "customer_id": transaction.customer_id,
                 "supplier_id": transaction.supplier_id,
-                "intent": (
-                    transaction.intent.intent_name
-                    if transaction.intent
-                    else None
-                ),
+                "intent": item_intent_name,
+                "intent_name": item_intent_name,
+                "intent_type": resolved_type,
+                "type": resolved_type,
                 "account": (
                     {
                         "account_id": transaction.account.account_id,
@@ -797,6 +869,9 @@ class TransactionService:
                 )
             })
 
+        item_intent_name = transaction.intent.intent_name if transaction.intent else None
+        resolved_type = resolve_intent_type(transaction.intent, item_intent_name)
+
         return {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,
@@ -805,11 +880,10 @@ class TransactionService:
             "account_id": transaction.account_id,
             "customer_id": transaction.customer_id,
             "supplier_id": transaction.supplier_id,
-            "intent": (
-                transaction.intent.intent_name
-                if transaction.intent
-                else None
-            ),
+            "intent": item_intent_name,
+            "intent_name": item_intent_name,
+            "intent_type": resolved_type,
+            "type": resolved_type,
             "account": (
                 {
                     "account_id": transaction.account.account_id,

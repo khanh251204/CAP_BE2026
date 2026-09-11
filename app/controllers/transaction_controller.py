@@ -77,13 +77,17 @@ class TransactionController:
         db: Session,
         user_id: int,
         page: int = 1,
-        limit: int = 10
+        limit: int = 10,
+        intent_type: str | None = None,
+        intent: str | None = None,
     ):
         return TransactionService.get_transactions(
             db=db,
             user_id=user_id,
             page=page,
-            limit=limit
+            limit=limit,
+            intent_type=intent_type,
+            intent_name=intent,
         )
 
     @staticmethod

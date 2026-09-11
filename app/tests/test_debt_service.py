@@ -119,6 +119,7 @@ def _make_db(debt=None, customer=None, account=None, intent=None):
             target = intent
 
         inner.options.return_value = inner
+        inner.with_for_update.return_value = inner
         inner.filter.return_value = inner
         inner.order_by.return_value = inner
         inner.join.return_value = inner

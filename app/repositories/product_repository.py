@@ -102,13 +102,15 @@ def create_product(
     unit: str | None,
     price: float
 ):
+    now = datetime.now()
     product = Product(
         user_id=user_id,
         product_name=product_name,
         default_unit=unit,
-        unit_price=price,
+        unit_price=str(price),
         is_active=True,
-        created_at=datetime.now()
+        created_at=now,
+        updated_at=now
     )
     db.add(product)
     db.flush()
@@ -150,18 +152,43 @@ def search_products_by_name(db: Session, user_id: int, name: str):
     )
 
 
+def get_product_with_lock(db: Session, user_id: int, product_id: int):
+    """
+    Khóa dòng (row-level lock) để tránh race condition khi cập nhật tồn kho đồng thời.
+    """
+    return (
+        db.query(Product)
+        .filter(
+            Product.product_id == product_id,
+            Product.user_id == user_id,
+            Product.is_active == True
+        )
+        .with_for_update()
+        .first()
+    )
+
+
 def update_product(db: Session, product: Product, data: dict):
-    if "product_name" in data:
+    if "product_name" in data and data["product_name"] is not None:
         product.product_name = data["product_name"]
 
-    if "default_unit" in data:
+    if "default_unit" in data and data["default_unit"] is not None:
         product.default_unit = data["default_unit"]
 
-    if "min_quantity" in data:
+    if "min_quantity" in data and data["min_quantity"] is not None:
         product.min_quantity = data["min_quantity"]
 
-    if "unit_price" in data:
-        product.unit_price = data["unit_price"]
+    if "unit_price" in data and data["unit_price"] is not None:
+        product.unit_price = str(data["unit_price"])
+
+    if "is_active" in data and data["is_active"] is not None:
+        product.is_active = data["is_active"]
+
+    if "category_id" in data:
+        product.category_id = data["category_id"]
+
+    if "img" in data:
+        product.img = data["img"]
 
     product.updated_at = datetime.now()
 
@@ -171,10 +198,19 @@ def update_product(db: Session, product: Product, data: dict):
     return product
 
 
-def delete_product(db: Session, product: Product):
+def soft_delete_product(db: Session, product: Product):
     product.is_active = False
     product.updated_at = datetime.now()
 
     db.commit()
     db.refresh(product)
     return product
+
+
+def hard_delete_product(db: Session, product: Product):
+    db.delete(product)
+    db.commit()
+    return True
+
+
+delete_product = soft_delete_product

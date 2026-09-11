@@ -5,7 +5,11 @@ from typing import Optional
 from app.configs.database import get_db
 from app.configs.jwt import get_current_user_id
 from app.controllers.transaction_controller import TransactionController
-from app.schemas.transaction_schema import TransactionCreateRequest
+from app.schemas.transaction_schema import (
+    TransactionCreateRequest,
+    TransactionListResponse,
+    TransactionResponseItem,
+)
 
 
 transaction_router = APIRouter(tags=["Transactions"])
@@ -13,7 +17,8 @@ transaction_router = APIRouter(tags=["Transactions"])
 
 @transaction_router.get(
     "/transactions",
-    summary="Lấy danh sách giao dịch (Transaction) có phân trang"
+    response_model=TransactionListResponse,
+    summary="Lấy danh sách giao dịch (Transaction) có phân trang và bộ lọc intent_type"
 )
 def get_transactions(
     page: int = Query(
@@ -27,23 +32,34 @@ def get_transactions(
         le=100,
         description="Số lượng bản ghi trên một trang"
     ),
+    intent_type: Optional[str] = Query(
+        default=None,
+        description="Lọc theo loại intent (INCOME, EXPENSE, DEBT, TRANFER, REFUND, NONE theo docs/erd.md)"
+    ),
+    intent: Optional[str] = Query(
+        default=None,
+        description="Lọc theo tên intent cụ thể (ban_hang, mua_hang, chi_tien, ghi_no_khach_hang...)"
+    ),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
     """
     Lấy danh sách giao dịch của người dùng hiện tại theo đúng cấu trúc model Transaction và docs/erd.md:
-    Bao gồm thông tin Transaction, Transaction_Detail, Product, Customer, Supplier, Account, Intent.
+    Bao gồm thông tin Transaction, Transaction_Detail, Product, Customer, Supplier, Account, Intent (kèm intent_type).
     """
     return TransactionController.get_transactions(
         db=db,
         user_id=user_id,
         page=page,
-        limit=limit
+        limit=limit,
+        intent_type=intent_type,
+        intent=intent,
     )
 
 
 @transaction_router.get(
     "/transaction/{transaction_id}",
+    response_model=TransactionResponseItem,
     summary="Lấy chi tiết giao dịch theo transaction_id"
 )
 def get_transaction_by_id(

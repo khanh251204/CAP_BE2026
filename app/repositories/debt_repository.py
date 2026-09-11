@@ -1,7 +1,7 @@
 from decimal import Decimal
-from typing import Optional, List, Tuple
-from sqlalchemy import or_, and_
-from sqlalchemy.orm import Session, joinedload
+from typing import Optional, List, Tuple, Any, Dict
+from sqlalchemy import or_, and_, func
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.debt_model import Debt
 from app.models.debt_payment_model import DebtPayment
@@ -9,6 +9,9 @@ from app.models.customer_model import Customer
 from app.models.supplier_model import Supplier
 from app.models.account_model import Account
 from app.models.transaction_model import Transaction
+from app.models.transactionDetail_model import TransactionDetail
+from app.models.product_model import Product
+from app.models.intent_model import Intent
 
 
 class DebtRepository:
@@ -43,15 +46,19 @@ class DebtRepository:
         debt_id: int,
         user_id: int,
         db: Session,
-        direction: Optional[str] = None
+        direction: Optional[str] = None,
+        for_update: bool = False
     ) -> Optional[Debt]:
         query = (
             db.query(Debt)
             .options(
                 joinedload(Debt.customer),
                 joinedload(Debt.supplier),
-                joinedload(Debt.payments),
-                joinedload(Debt.transaction),
+                joinedload(Debt.payments).joinedload(DebtPayment.account),
+                joinedload(Debt.transaction).joinedload(Transaction.intent),
+                joinedload(Debt.transaction)
+                .selectinload(Transaction.transaction_detail)
+                .joinedload(TransactionDetail.product),
             )
             .filter(
                 Debt.debt_id == debt_id,
@@ -60,6 +67,8 @@ class DebtRepository:
         )
         if direction:
             query = query.filter(Debt.direction == direction)
+        if for_update:
+            query = query.with_for_update()
         return query.first()
 
     # ==========================================
@@ -123,13 +132,17 @@ class DebtRepository:
     def get_account_by_id_and_user(
         account_id: int,
         user_id: int,
-        db: Session
+        db: Session,
+        for_update: bool = False
     ) -> Optional[Account]:
-        return db.query(Account).filter(
+        query = db.query(Account).filter(
             Account.account_id == account_id,
             Account.user_id == user_id,
             Account.is_active == True,
-        ).first()
+        )
+        if for_update:
+            query = query.with_for_update()
+        return query.first()
 
     # ==========================================
     # LẤY CÔNG NỢ KHÁCH HÀNG (RECEIVABLE)
@@ -466,8 +479,9 @@ class DebtRepository:
         user_id: int,
         direction: str = "RECEIVABLE",
         order_by: str = "created_at asc",
+        for_update: bool = False,
     ) -> List[Debt]:
-        return (
+        query = (
             db.query(Debt)
             .options(
                 joinedload(Debt.customer),
@@ -479,9 +493,10 @@ class DebtRepository:
                 Debt.direction == direction,
                 Debt.status.in_(["UNPAID", "PARTIAL"]),
             )
-            .order_by(Debt.created_at.asc())  # FIFO: cũ nhất trước
-            .all()
         )
+        if for_update:
+            query = query.with_for_update()
+        return query.order_by(Debt.created_at.asc(), Debt.debt_id.asc()).all()
 
     @staticmethod
     def get_open_debts_by_supplier_and_user(
@@ -490,8 +505,9 @@ class DebtRepository:
         user_id: int,
         direction: str = "PAYABLE",
         order_by: str = "created_at asc",
+        for_update: bool = False,
     ) -> List[Debt]:
-        return (
+        query = (
             db.query(Debt)
             .options(
                 joinedload(Debt.supplier),
@@ -503,6 +519,137 @@ class DebtRepository:
                 Debt.direction == direction,
                 Debt.status.in_(["UNPAID", "PARTIAL"]),
             )
-            .order_by(Debt.created_at.asc())  # FIFO: cũ nhất trước
+        )
+        if for_update:
+            query = query.with_for_update()
+        return query.order_by(Debt.created_at.asc(), Debt.debt_id.asc()).all()
+
+    # ==========================================
+    # DASHBOARD SUMMARY (Mục 6.1)
+    # ==========================================
+    @staticmethod
+    def get_summary_by_user(user_id: int, db: Session) -> Dict[str, Any]:
+        rec = (
+            db.query(
+                func.coalesce(func.sum(Debt.remaining_debt), 0).label("total_remaining"),
+                func.count(Debt.debt_id).label("count")
+            )
+            .filter(
+                Debt.user_id == user_id,
+                Debt.direction == "RECEIVABLE",
+                Debt.status != "PAID"
+            )
+            .first()
+        )
+        pay = (
+            db.query(
+                func.coalesce(func.sum(Debt.remaining_debt), 0).label("total_remaining"),
+                func.count(Debt.debt_id).label("count")
+            )
+            .filter(
+                Debt.user_id == user_id,
+                Debt.direction == "PAYABLE",
+                Debt.status != "PAID"
+            )
+            .first()
+        )
+        return {
+            "receivable": {
+                "total_remaining": float(rec.total_remaining) if rec and rec.total_remaining is not None else 0.0,
+                "count": int(rec.count) if rec and rec.count is not None else 0
+            },
+            "payable": {
+                "total_remaining": float(pay.total_remaining) if pay and pay.total_remaining is not None else 0.0,
+                "count": int(pay.count) if pay and pay.count is not None else 0
+            }
+        }
+
+    # ==========================================
+    # PHÂN TRANG DANH SÁCH DEBT (Mục 6.2)
+    # ==========================================
+    @staticmethod
+    def get_debts_paginated(
+        user_id: int,
+        db: Session,
+        direction: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        customer_id: Optional[int] = None,
+        supplier_id: Optional[int] = None,
+        page: int = 1,
+        limit: int = 20
+    ) -> Tuple[List[Debt], int]:
+        query = db.query(Debt).filter(Debt.user_id == user_id)
+
+        if direction:
+            query = query.filter(Debt.direction == direction.upper())
+
+        if status:
+            query = query.filter(Debt.status == status.upper())
+
+        if customer_id is not None:
+            query = query.filter(Debt.customer_id == customer_id)
+
+        if supplier_id is not None:
+            query = query.filter(Debt.supplier_id == supplier_id)
+
+        if search:
+            search_pattern = f"%{search.strip()}%"
+            query = (
+                query.outerjoin(Customer, Debt.customer_id == Customer.customer_id)
+                .outerjoin(Supplier, Debt.supplier_id == Supplier.supplier_id)
+            )
+            if direction and direction.upper() == "RECEIVABLE":
+                query = query.filter(Customer.customer_name.ilike(search_pattern))
+            elif direction and direction.upper() == "PAYABLE":
+                query = query.filter(Supplier.supplier_name.ilike(search_pattern))
+            else:
+                query = query.filter(
+                    or_(
+                        Customer.customer_name.ilike(search_pattern),
+                        Supplier.supplier_name.ilike(search_pattern)
+                    )
+                )
+
+        total = query.count()
+        offset = (page - 1) * limit
+        results = (
+            query.options(
+                joinedload(Debt.customer),
+                joinedload(Debt.supplier),
+                joinedload(Debt.transaction).joinedload(Transaction.intent),
+                joinedload(Debt.transaction)
+                .selectinload(Transaction.transaction_detail)
+                .joinedload(TransactionDetail.product),
+            )
+            .order_by(Debt.created_at.desc(), Debt.debt_id.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return results, total
+
+    # ==========================================
+    # LỊCH SỬ THANH TOÁN (Mục 6.4)
+    # ==========================================
+    @staticmethod
+    def get_payments_by_debt_id(
+        debt_id: int,
+        user_id: int,
+        db: Session
+    ) -> Optional[List[DebtPayment]]:
+        # Phải kiểm tra ownership thông qua Debt.user_id
+        debt = db.query(Debt).filter(Debt.debt_id == debt_id, Debt.user_id == user_id).first()
+        if not debt:
+            return None
+        return (
+            db.query(DebtPayment)
+            .filter(DebtPayment.debt_id == debt_id)
+            .options(joinedload(DebtPayment.account))
+            .order_by(
+                DebtPayment.payment_date.desc(),
+                DebtPayment.created_at.desc(),
+                DebtPayment.payment_id.desc()
+            )
             .all()
         )

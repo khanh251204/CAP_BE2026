@@ -99,16 +99,17 @@ class GhiNoNhaCungCapHandler:
                     .first()
                 )
                 if not db_supplier:
-                    db_supplier = Supplier(
-                        user_id=user_id,
-                        supplier_name=supplier_name,
-                        created_at=datetime.now(),
-                        updated_at=datetime.now()
-                    )
-                    db.add(db_supplier)
-                    db.commit()
-                    db.refresh(db_supplier)
+                    return {
+                        "success": False,
+                        "status": "error",
+                        "code": "SUPPLIER_NOT_FOUND",
+                        "intent": intent,
+                        "supplier_name": supplier_name,
+                        "message": f"Không tìm thấy nhà cung cấp '{supplier_name}' trong hệ thống. Vui lòng tạo nhà cung cấp trước."
+                    }
                 supplier_id = db_supplier.supplier_id
+                if hasattr(db_supplier, "supplier_name") and db_supplier.supplier_name:
+                    supplier_name = db_supplier.supplier_name
             finally:
                 db.close()
 

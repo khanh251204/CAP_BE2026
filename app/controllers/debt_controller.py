@@ -156,3 +156,131 @@ class DebtController:
             direction=direction,
             status=status,
         )
+
+    # ==========================================
+    # DASHBOARD SUMMARY (Mục 6.1)
+    # ==========================================
+    @staticmethod
+    def get_summary(
+        user_id: int,
+        db: Session
+    ) -> Dict[str, Any]:
+        return DebtService.get_summary(user_id=user_id, db=db)
+
+    # ==========================================
+    # DANH SÁCH PHÂN TRANG (Mục 6.2)
+    # ==========================================
+    @staticmethod
+    def get_debts_paginated(
+        user_id: int,
+        db: Session,
+        direction: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        customer_id: Optional[int] = None,
+        supplier_id: Optional[int] = None,
+        page: int = 1,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        return DebtService.get_debts_paginated(
+            user_id=user_id,
+            db=db,
+            direction=direction,
+            status=status,
+            search=search,
+            customer_id=customer_id,
+            supplier_id=supplier_id,
+            page=page,
+            limit=limit,
+        )
+
+    # ==========================================
+    # CHI TIẾT CÔNG NỢ (Mục 6.3)
+    # ==========================================
+    @staticmethod
+    def get_debt_detail(
+        debt_id: int,
+        user_id: int,
+        db: Session
+    ) -> Dict[str, Any]:
+        return DebtService.get_debt_detail(debt_id=debt_id, user_id=user_id, db=db)
+
+    # ==========================================
+    # LỊCH SỬ THANH TOÁN (Mục 6.4)
+    # ==========================================
+    @staticmethod
+    def get_payment_history(
+        debt_id: int,
+        user_id: int,
+        db: Session
+    ) -> List[Dict[str, Any]]:
+        return DebtService.get_payment_history(debt_id=debt_id, user_id=user_id, db=db)
+
+    # ==========================================
+    # THANH TOÁN CHÍNH XÁC THEO DEBT_ID (Mục 10 & 11)
+    # ==========================================
+    @staticmethod
+    def pay_debt_exact(
+        debt_id: int,
+        account_id: int,
+        amount: float,
+        payment_date: Optional[datetime],
+        note: Optional[str],
+        user_id: int,
+        db: Session
+    ) -> Dict[str, Any]:
+        return DebtService.pay_debt_exact(
+            debt_id=debt_id,
+            account_id=account_id,
+            amount=amount,
+            payment_date=payment_date,
+            note=note,
+            user_id=user_id,
+            db=db
+        )
+
+    # ==========================================
+    # FIFO CUSTOMER PAYMENT (Mục 13)
+    # ==========================================
+    @staticmethod
+    def pay_customer_debts_fifo(
+        customer_id: int,
+        account_id: int,
+        amount: float,
+        payment_date: Optional[datetime],
+        note: Optional[str],
+        user_id: int,
+        db: Session
+    ) -> Dict[str, Any]:
+        return DebtService.pay_customer_debts_fifo(
+            customer_id=customer_id,
+            account_id=account_id,
+            amount=amount,
+            payment_date=payment_date,
+            note=note,
+            user_id=user_id,
+            db=db
+        )
+
+    # ==========================================
+    # FIFO SUPPLIER PAYMENT (Mục 14)
+    # ==========================================
+    @staticmethod
+    def pay_supplier_debts_fifo(
+        supplier_id: int,
+        account_id: int,
+        amount: float,
+        payment_date: Optional[datetime],
+        note: Optional[str],
+        user_id: int,
+        db: Session
+    ) -> Dict[str, Any]:
+        return DebtService.pay_supplier_debts_fifo(
+            supplier_id=supplier_id,
+            account_id=account_id,
+            amount=amount,
+            payment_date=payment_date,
+            note=note,
+            user_id=user_id,
+            db=db
+        )

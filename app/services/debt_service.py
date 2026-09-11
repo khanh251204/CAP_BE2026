@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.transaction_model import Transaction
@@ -31,30 +32,77 @@ from app.repositories.debt_repository import DebtRepository
 # =========================================================
 # Helper: lấy intent_id an toàn từ database
 # =========================================================
+INTENT_ALIASES = {
+    "tra_no_nha_cung_cap": [
+        "tra_no_nha_cung_cap",
+        "tra_no_cung_cap",
+        "tra_no_phai_tra",
+        "tra_no_ncc",
+        "thu_no_nha_cung_cap",
+    ],
+    "thu_no_khach_hang": [
+        "thu_no_khach_hang",
+        "thu_no_phai_thu",
+        "thu_no_khach",
+    ],
+    "ghi_no_nha_cung_cap": [
+        "ghi_no_nha_cung_cap",
+        "ghi_no_cung_cap",
+        "ghi_no_phai_tra",
+        "ncc_ghi_no",
+    ],
+    "ghi_no_khach_hang": [
+        "ghi_no_khach_hang",
+        "ghi_no_phai_thu",
+        "khach_ghi_no",
+    ],
+}
+
+
 def _get_intent_id(db: Session, intent_name: str, fallback_type: str = "DEBT") -> Optional[int]:
     """
-    Tra cứu intent_id theo tên intent. Nếu không tìm thấy, fallback tìm theo loại intent
-    hoặc intent đầu tiên trong DB để đảm bảo không crash trong môi trường test/chưa seed.
+    Tra cứu intent_id theo tên intent và các tên đồng nghĩa (alias).
+    Tránh fallback bừa bãi sang intent khác loại (ví dụ trả nợ bị nhầm thành ghi nợ).
     """
+    # 1. Tìm chính xác theo intent_name
     intent = (
         db.query(Intent)
         .filter(Intent.intent_name.ilike(intent_name))
         .first()
     )
-
     if intent:
         return intent.intent_id
 
-    # Fallback theo intent_type
-    intent = (
-        db.query(Intent)
-        .filter(Intent.intent_type == fallback_type)
-        .first()
-    )
+    # 2. Tìm qua danh sách alias tương ứng
+    for group_key, aliases in INTENT_ALIASES.items():
+        if intent_name.lower() in [a.lower() for a in aliases]:
+            for alias in aliases:
+                alt_intent = (
+                    db.query(Intent)
+                    .filter(Intent.intent_name.ilike(alias))
+                    .first()
+                )
+                if alt_intent:
+                    return alt_intent.intent_id
+
+    # 3. Fallback theo intent_type (ưu tiên intent không phải 'ghi_no' nếu đang tìm tra_no/thu_no)
+    is_payment = any(k in intent_name.lower() for k in ["tra_no", "thu_no", "pay", "collect"])
+    query = db.query(Intent).filter(Intent.intent_type == fallback_type)
+    if is_payment:
+        pay_intent = query.filter(
+            or_(
+                Intent.intent_name.ilike("%tra_no%"),
+                Intent.intent_name.ilike("%thu_no%"),
+            )
+        ).first()
+        if pay_intent:
+            return pay_intent.intent_id
+
+    intent = query.first()
     if intent:
         return intent.intent_id
 
-    # Fallback lấy bất kỳ intent nào nếu có
+    # 4. Fallback lấy bất kỳ intent nào nếu có
     first_intent = db.query(Intent).first()
     if first_intent:
         return first_intent.intent_id
@@ -226,7 +274,8 @@ class DebtService:
                     debt_id=debt_id,
                     user_id=user_id,
                     db=db,
-                    direction="RECEIVABLE"
+                    direction="RECEIVABLE",
+                    for_update=True
                 )
                 if not debt:
                     raise HTTPException(
@@ -258,6 +307,7 @@ class DebtService:
                     user_id=user_id,
                     direction="RECEIVABLE",
                     order_by="created_at asc",
+                    for_update=True
                 )
                 if not debts_to_pay:
                     raise HTTPException(
@@ -296,7 +346,8 @@ class DebtService:
             account = DebtRepository.get_account_by_id_and_user(
                 account_id=account_id,
                 user_id=user_id,
-                db=db
+                db=db,
+                for_update=True
             )
             if not account:
                 raise HTTPException(
@@ -620,7 +671,8 @@ class DebtService:
                     debt_id=debt_id,
                     user_id=user_id,
                     db=db,
-                    direction="PAYABLE"
+                    direction="PAYABLE",
+                    for_update=True
                 )
                 if not debt:
                     raise HTTPException(
@@ -652,6 +704,7 @@ class DebtService:
                     user_id=user_id,
                     direction="PAYABLE",
                     order_by="created_at asc",
+                    for_update=True
                 )
                 if not debts_to_pay:
                     raise HTTPException(
@@ -690,7 +743,8 @@ class DebtService:
             account = DebtRepository.get_account_by_id_and_user(
                 account_id=account_id,
                 user_id=user_id,
-                db=db
+                db=db,
+                for_update=True
             )
             if not account:
                 raise HTTPException(
@@ -705,7 +759,7 @@ class DebtService:
                     detail=f"Số dư tài khoản ({current_balance}) không đủ để thanh toán ({amount_dec})"
                 )
 
-            intent_id = _get_intent_id(db, "thu_no_nha_cung_cap")
+            intent_id = _get_intent_id(db, "tra_no_nha_cung_cap")
 
             # ---------------------------------------------------------
             # Bước 4: tạo 1 Transaction duy nhất cho cả lượt chi trả
@@ -999,3 +1053,747 @@ class DebtService:
             status=status,
             flush_only=flush_only,
         )
+
+    # =====================================================
+    # 9. DASHBOARD SUMMARY (Mục 6.1)
+    # =====================================================
+    @staticmethod
+    def get_summary(user_id: int, db: Session) -> Dict[str, Any]:
+        return DebtRepository.get_summary_by_user(user_id=user_id, db=db)
+
+    # =====================================================
+    # 10. DANH SÁCH DEBT PHÂN TRANG & FILTER (Mục 6.2)
+    # =====================================================
+    @staticmethod
+    def get_debts_paginated(
+        user_id: int,
+        db: Session,
+        direction: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        customer_id: Optional[int] = None,
+        supplier_id: Optional[int] = None,
+        page: int = 1,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        debts, total = DebtRepository.get_debts_paginated(
+            user_id=user_id,
+            db=db,
+            direction=direction,
+            status=status,
+            search=search,
+            customer_id=customer_id,
+            supplier_id=supplier_id,
+            page=page,
+            limit=limit,
+        )
+        total_pages = (total + limit - 1) // limit if total > 0 else 1
+
+        items = []
+        for debt in debts:
+            orig = float(debt.original_amount) if debt.original_amount is not None else 0.0
+            rem = float(debt.remaining_debt) if debt.remaining_debt is not None else 0.0
+            paid = max(0.0, orig - rem)
+
+            cust_info = None
+            if debt.customer:
+                cust_info = {
+                    "customer_id": debt.customer.customer_id,
+                    "customer_name": debt.customer.customer_name,
+                    "phone_number": debt.customer.phone_number,
+                    "email": debt.customer.email,
+                    "address": debt.customer.address,
+                    "customer_type": debt.customer.customer_type,
+                }
+
+            supp_info = None
+            if debt.supplier:
+                supp_info = {
+                    "supplier_id": debt.supplier.supplier_id,
+                    "supplier_name": debt.supplier.supplier_name,
+                    "phone_number": debt.supplier.phone_number,
+                    "email": debt.supplier.email,
+                    "address": debt.supplier.address,
+                    "product_group": debt.supplier.product_group,
+                    "tax_code": debt.supplier.tax_code,
+                    "note": debt.supplier.note,
+                }
+
+            tx_info = None
+            if debt.transaction:
+                details = []
+                if hasattr(debt.transaction, "transaction_detail") and debt.transaction.transaction_detail:
+                    for td in debt.transaction.transaction_detail:
+                        pname = td.product.product_name if td.product else None
+                        details.append({
+                            "detail_id": td.detail_id,
+                            "product_id": td.product_id,
+                            "product_name": pname,
+                            "quantity": float(td.quantity or 0),
+                            "unit": td.unit,
+                            "unit_price": float(td.unit_price or 0),
+                            "subtotal": float(td.subtotal or 0),
+                        })
+                tx_intent_name = debt.transaction.intent.intent_name if debt.transaction.intent else None
+                tx_intent_type = str(debt.transaction.intent.intent_type) if (debt.transaction.intent and debt.transaction.intent.intent_type) else None
+                tx_info = {
+                    "transaction_id": debt.transaction.transaction_id,
+                    "transaction_date": debt.transaction.transaction_date,
+                    "intent_name": tx_intent_name,
+                    "intent_type": tx_intent_type,
+                    "type": tx_intent_type,
+                    "input_text": debt.transaction.input_text,
+                    "total_amount": float(debt.transaction.total_amount or 0),
+                    "payment_status": str(debt.transaction.payment_status) if debt.transaction.payment_status else None,
+                    "details": details,
+                }
+
+            items.append({
+                "debt_id": debt.debt_id,
+                "transaction_id": debt.transaction_id,
+                "direction": str(debt.direction),
+                "customer": cust_info,
+                "supplier": supp_info,
+                "original_amount": orig,
+                "paid_amount": paid,
+                "remaining_debt": rem,
+                "status": str(debt.status),
+                "transaction": tx_info,
+                "created_at": debt.created_at,
+                "updated_at": debt.updated_at,
+                # Tương thích ngược
+                "customer_id": debt.customer_id,
+                "customer_name": debt.customer.customer_name if debt.customer else None,
+                "supplier_id": debt.supplier_id,
+                "supplier_name": debt.supplier.supplier_name if debt.supplier else None,
+            })
+
+        return {
+            "items": items,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "total_pages": total_pages,
+            },
+        }
+
+    # =====================================================
+    # 11. CHI TIẾT DEBT (Mục 6.3 & Mục 9)
+    # =====================================================
+    @staticmethod
+    def get_debt_detail(debt_id: int, user_id: int, db: Session) -> Dict[str, Any]:
+        debt = DebtRepository.get_debt_by_id_and_user(debt_id=debt_id, user_id=user_id, db=db)
+        if not debt:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Công nợ {debt_id} không tồn tại hoặc không thuộc quyền quản lý"
+            )
+
+        orig = float(debt.original_amount) if debt.original_amount is not None else 0.0
+        rem = float(debt.remaining_debt) if debt.remaining_debt is not None else 0.0
+        paid = max(0.0, orig - rem)
+
+        cust_info = None
+        if debt.customer:
+            cust_info = {
+                "customer_id": debt.customer.customer_id,
+                "customer_name": debt.customer.customer_name,
+                "phone_number": debt.customer.phone_number,
+                "email": debt.customer.email,
+                "address": debt.customer.address,
+                "customer_type": debt.customer.customer_type,
+            }
+
+        supp_info = None
+        if debt.supplier:
+            supp_info = {
+                "supplier_id": debt.supplier.supplier_id,
+                "supplier_name": debt.supplier.supplier_name,
+                "phone_number": debt.supplier.phone_number,
+                "email": debt.supplier.email,
+                "address": debt.supplier.address,
+                "product_group": debt.supplier.product_group,
+                "tax_code": debt.supplier.tax_code,
+                "note": debt.supplier.note,
+            }
+
+        debt_info = {
+            "original_amount": orig,
+            "paid_amount": paid,
+            "remaining_debt": rem,
+            "status": str(debt.status),
+        }
+
+        tx_info = None
+        if debt.transaction:
+            details = []
+            if hasattr(debt.transaction, "transaction_detail") and debt.transaction.transaction_detail:
+                for td in debt.transaction.transaction_detail:
+                    pname = td.product.product_name if td.product else None
+                    details.append({
+                        "detail_id": td.detail_id,
+                        "product_id": td.product_id,
+                        "product_name": pname,
+                        "quantity": float(td.quantity or 0),
+                        "unit": td.unit,
+                        "unit_price": float(td.unit_price or 0),
+                        "subtotal": float(td.subtotal or 0),
+                    })
+                tx_intent_name = debt.transaction.intent.intent_name if debt.transaction.intent else None
+                tx_intent_type = str(debt.transaction.intent.intent_type) if (debt.transaction.intent and debt.transaction.intent.intent_type) else None
+                tx_info = {
+                    "transaction_id": debt.transaction.transaction_id,
+                    "transaction_date": debt.transaction.transaction_date,
+                    "intent_name": tx_intent_name,
+                    "intent_type": tx_intent_type,
+                    "type": tx_intent_type,
+                    "input_text": debt.transaction.input_text,
+                    "total_amount": float(debt.transaction.total_amount or 0),
+                    "payment_status": str(debt.transaction.payment_status) if debt.transaction.payment_status else None,
+                    "details": details,
+                }
+
+        payments_list = []
+        if debt.payments:
+            sorted_payments = sorted(
+                debt.payments,
+                key=lambda p: (p.payment_date or datetime.min, p.created_at or datetime.min),
+                reverse=True
+            )
+            for p in sorted_payments:
+                acc_info = None
+                if p.account:
+                    acc_info = {
+                        "account_id": p.account.account_id,
+                        "account_name": p.account.account_name,
+                        "account_type": str(p.account.account_type) if p.account.account_type else None,
+                    }
+                payments_list.append({
+                    "payment_id": p.payment_id,
+                    "debt_id": p.debt_id,
+                    "transaction_id": p.transaction_id,
+                    "account_id": p.account_id,
+                    "account": acc_info,
+                    "amount": float(p.amount) if p.amount is not None else 0.0,
+                    "payment_percentage": float(p.payment_percentage) if p.payment_percentage is not None else None,
+                    "payment_date": p.payment_date,
+                    "note": p.note,
+                    "created_at": p.created_at,
+                })
+
+        return {
+            "debt_id": debt.debt_id,
+            "direction": str(debt.direction),
+            "customer": cust_info,
+            "supplier": supp_info,
+            "debt": debt_info,
+            "transaction": tx_info,
+            "payments": payments_list,
+            # Tương thích ngược
+            "original_amount": orig,
+            "paid_amount": paid,
+            "remaining_debt": rem,
+            "status": str(debt.status),
+            "transaction_id": debt.transaction_id,
+            "created_at": debt.created_at,
+            "updated_at": debt.updated_at,
+        }
+
+    # =====================================================
+    # 12. LỊCH SỬ THANH TOÁN (Mục 6.4 & Mục 12)
+    # =====================================================
+    @staticmethod
+    def get_payment_history(debt_id: int, user_id: int, db: Session) -> List[Dict[str, Any]]:
+        payments = DebtRepository.get_payments_by_debt_id(debt_id=debt_id, user_id=user_id, db=db)
+        if payments is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Công nợ {debt_id} không tồn tại hoặc không thuộc quyền quản lý"
+            )
+
+        res = []
+        for p in payments:
+            acc_info = None
+            if p.account:
+                acc_info = {
+                    "account_id": p.account.account_id,
+                    "account_name": p.account.account_name,
+                    "account_type": str(p.account.account_type) if p.account.account_type else None,
+                }
+            res.append({
+                "payment_id": p.payment_id,
+                "debt_id": p.debt_id,
+                "transaction_id": p.transaction_id,
+                "account_id": p.account_id,
+                "account": acc_info,
+                "amount": float(p.amount) if p.amount is not None else 0.0,
+                "payment_percentage": float(p.payment_percentage) if p.payment_percentage is not None else None,
+                "payment_date": p.payment_date,
+                "note": p.note,
+                "created_at": p.created_at,
+            })
+        return res
+
+    # =====================================================
+    # 13. THANH TOÁN CHÍNH XÁC THEO DEBT_ID (Mục 10 & Mục 11)
+    # =====================================================
+    @staticmethod
+    def pay_debt_exact(
+        debt_id: int,
+        account_id: int,
+        amount: float,
+        payment_date: Optional[datetime],
+        note: Optional[str],
+        user_id: int,
+        db: Session,
+    ) -> Dict[str, Any]:
+        """
+        Thanh toán đúng theo debt_id (Mục 10 & 11).
+        Hỗ trợ cả RECEIVABLE (khách trả) và PAYABLE (trả NCC).
+        Đảm bảo atomic và cập nhật số dư tài khoản an toàn.
+        """
+        amount_dec = Decimal(str(amount))
+        if amount_dec <= Decimal("0"):
+            raise HTTPException(
+                status_code=400,
+                detail="Số tiền thanh toán phải lớn hơn 0"
+            )
+
+        if payment_date is None:
+            payment_date = datetime.now()
+
+        try:
+            # 1. Validate Debt
+            debt = DebtRepository.get_debt_by_id_and_user(
+                debt_id=debt_id,
+                user_id=user_id,
+                db=db,
+                for_update=True
+            )
+            if not debt:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Công nợ {debt_id} không tồn tại hoặc không thuộc quyền quản lý"
+                )
+
+            remaining_dec = Decimal(str(debt.remaining_debt or 0))
+            if str(debt.status).upper() == "PAID" or remaining_dec <= Decimal("0"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Công nợ này đã được thanh toán đầy đủ"
+                )
+
+            if amount_dec > remaining_dec:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Số tiền thanh toán ({amount_dec}) vượt quá số nợ còn lại ({remaining_dec})"
+                )
+
+            # 2. Validate Account
+            account = DebtRepository.get_account_by_id_and_user(
+                account_id=account_id,
+                user_id=user_id,
+                db=db,
+                for_update=True
+            )
+            if not account or not account.is_active:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Tài khoản {account_id} không tồn tại hoặc đã bị vô hiệu hóa"
+                )
+
+            current_balance = Decimal(str(account.balance or 0))
+            direction = str(debt.direction).upper()
+
+            if direction == "RECEIVABLE":
+                account.balance = current_balance + amount_dec
+                intent_name = "thu_no_khach_hang"
+                default_note = note or "Thu nợ khách hàng"
+            elif direction == "PAYABLE":
+                if current_balance < amount_dec:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Số dư tài khoản ({current_balance}) không đủ để thanh toán ({amount_dec})"
+                    )
+                account.balance = current_balance - amount_dec
+                intent_name = "tra_no_nha_cung_cap"
+                default_note = note or "Trả nợ nhà cung cấp"
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Chiều công nợ không hợp lệ: {direction}"
+                )
+
+            intent_id = _get_intent_id(db, intent_name)
+
+            # 3. Tạo Transaction thanh toán
+            new_tx = Transaction(
+                user_id=user_id,
+                intent_id=intent_id,
+                account_id=account_id,
+                customer_id=debt.customer_id,
+                supplier_id=debt.supplier_id,
+                total_amount=amount_dec,
+                payment_status="PAID",
+                input_method="MANUAL",
+                input_text=default_note,
+                transaction_date=payment_date,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+            db.add(new_tx)
+            db.flush()
+
+            # 4. Tạo DebtPayment
+            orig_dec = Decimal(str(debt.original_amount or 0))
+            pct = (
+                (amount_dec / orig_dec * 100).quantize(Decimal("0.01"))
+                if orig_dec > 0 else Decimal("0.00")
+            )
+
+            debt_payment = DebtPayment(
+                debt_id=debt.debt_id,
+                transaction_id=new_tx.transaction_id,
+                account_id=account_id,
+                amount=amount_dec,
+                payment_percentage=pct,
+                payment_date=payment_date,
+                note=note,
+                created_at=datetime.now(),
+            )
+            db.add(debt_payment)
+            db.flush()
+
+            # 5. Cập nhật Debt & Account
+            new_remaining = remaining_dec - amount_dec
+            debt.remaining_debt = max(Decimal("0.00"), new_remaining)
+            debt.status = "PAID" if debt.remaining_debt == 0 else "PARTIAL"
+            debt.updated_at = datetime.now()
+
+            if getattr(debt, "transaction", None):
+                debt.transaction.payment_status = debt.status
+                debt.transaction.updated_at = datetime.now()
+
+            account.updated_at = datetime.now()
+
+            db.commit()
+            db.refresh(debt_payment)
+            db.refresh(debt)
+            db.refresh(account)
+
+            orig_val = float(debt.original_amount)
+            rem_val = float(debt.remaining_debt)
+            paid_val = max(0.0, orig_val - rem_val)
+
+            return {
+                "payment_id": debt_payment.payment_id,
+                "debt_id": debt.debt_id,
+                "transaction_id": new_tx.transaction_id,
+                "amount_paid": float(amount_dec),
+                "debt": {
+                    "original_amount": orig_val,
+                    "paid_amount": paid_val,
+                    "remaining_debt": rem_val,
+                    "status": str(debt.status),
+                },
+                "account": {
+                    "account_id": account.account_id,
+                    "account_name": account.account_name,
+                    "balance": float(account.balance),
+                }
+            }
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lỗi khi thanh toán công nợ: {str(e)}"
+            )
+
+    # =====================================================
+    # 14. FIFO PAYMENT CHO CUSTOMER (Mục 13)
+    # =====================================================
+    @staticmethod
+    def pay_customer_debts_fifo(
+        customer_id: int,
+        account_id: int,
+        amount: float,
+        payment_date: Optional[datetime],
+        note: Optional[str],
+        user_id: int,
+        db: Session,
+    ) -> Dict[str, Any]:
+        amount_dec = Decimal(str(amount))
+        if amount_dec <= Decimal("0"):
+            raise HTTPException(status_code=400, detail="Số tiền thanh toán phải lớn hơn 0")
+
+        if payment_date is None:
+            payment_date = datetime.now()
+
+        try:
+            customer = DebtRepository.get_customer_by_id_and_user(customer_id=customer_id, user_id=user_id, db=db)
+            if not customer:
+                raise HTTPException(status_code=404, detail=f"Khách hàng {customer_id} không tồn tại hoặc không thuộc quyền quản lý")
+
+            debts = (
+                db.query(Debt)
+                .filter(
+                    Debt.customer_id == customer_id,
+                    Debt.user_id == user_id,
+                    Debt.direction == "RECEIVABLE",
+                    Debt.status != "PAID",
+                    Debt.remaining_debt > 0
+                )
+                .order_by(Debt.created_at.asc(), Debt.debt_id.asc())
+                .with_for_update()
+                .all()
+            )
+            if not debts:
+                raise HTTPException(status_code=404, detail=f"Khách hàng {customer_id} hiện không có khoản nợ nào đang mở")
+
+            total_remaining = sum(Decimal(str(d.remaining_debt or 0)) for d in debts)
+            if total_remaining <= Decimal("0"):
+                raise HTTPException(status_code=400, detail="Các khoản công nợ này đã được thanh toán đầy đủ")
+
+            if amount_dec > total_remaining:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Số tiền thanh toán ({amount_dec}) vượt quá tổng số nợ hiện có ({total_remaining})"
+                )
+
+            account = DebtRepository.get_account_by_id_and_user(account_id=account_id, user_id=user_id, db=db, for_update=True)
+            if not account or not account.is_active:
+                raise HTTPException(status_code=404, detail=f"Tài khoản {account_id} không tồn tại hoặc đã bị vô hiệu hóa")
+
+            intent_id = _get_intent_id(db, "thu_no_khach_hang")
+
+            new_tx = Transaction(
+                user_id=user_id,
+                intent_id=intent_id,
+                account_id=account_id,
+                customer_id=customer_id,
+                supplier_id=None,
+                total_amount=amount_dec,
+                payment_status="PAID",
+                input_method="MANUAL",
+                input_text=note or "Khách thanh toán công nợ",
+                transaction_date=payment_date,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+            db.add(new_tx)
+            db.flush()
+
+            amount_left = amount_dec
+            allocations = []
+            for d in debts:
+                if amount_left <= Decimal("0"):
+                    break
+                rem = Decimal(str(d.remaining_debt or 0))
+                if rem <= Decimal("0"):
+                    continue
+
+                applied = min(amount_left, rem)
+                orig = Decimal(str(d.original_amount or 0))
+                pct = ((applied / orig * 100).quantize(Decimal("0.01")) if orig > 0 else Decimal("0.00"))
+
+                dp = DebtPayment(
+                    debt_id=d.debt_id,
+                    transaction_id=new_tx.transaction_id,
+                    account_id=account_id,
+                    amount=applied,
+                    payment_percentage=pct,
+                    payment_date=payment_date,
+                    note=note,
+                    created_at=datetime.now(),
+                )
+                db.add(dp)
+
+                rem_after = rem - applied
+                d.remaining_debt = max(Decimal("0.00"), rem_after)
+                d.status = "PAID" if d.remaining_debt == 0 else "PARTIAL"
+                d.updated_at = datetime.now()
+                if getattr(d, "transaction", None):
+                    d.transaction.payment_status = d.status
+
+                allocations.append({
+                    "debt_id": d.debt_id,
+                    "transaction_id": d.transaction_id or new_tx.transaction_id,
+                    "amount_applied": float(applied),
+                    "remaining_debt": float(d.remaining_debt),
+                    "status": str(d.status),
+                })
+                amount_left -= applied
+
+            account.balance = Decimal(str(account.balance or 0)) + amount_dec
+            account.updated_at = datetime.now()
+
+            db.commit()
+
+            final_remaining = max(Decimal("0.00"), total_remaining - amount_dec)
+            return {
+                "customer_id": customer_id,
+                "amount_paid": float(amount_dec),
+                "before": {
+                    "total_remaining": float(total_remaining)
+                },
+                "after": {
+                    "total_remaining": float(final_remaining)
+                },
+                "allocations": allocations
+            }
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Lỗi khi xử lý FIFO công nợ khách hàng: {str(e)}")
+
+    # =====================================================
+    # 15. FIFO PAYMENT CHO SUPPLIER (Mục 14)
+    # =====================================================
+    @staticmethod
+    def pay_supplier_debts_fifo(
+        supplier_id: int,
+        account_id: int,
+        amount: float,
+        payment_date: Optional[datetime],
+        note: Optional[str],
+        user_id: int,
+        db: Session,
+    ) -> Dict[str, Any]:
+        amount_dec = Decimal(str(amount))
+        if amount_dec <= Decimal("0"):
+            raise HTTPException(status_code=400, detail="Số tiền thanh toán phải lớn hơn 0")
+
+        if payment_date is None:
+            payment_date = datetime.now()
+
+        try:
+            supplier = DebtRepository.get_supplier_by_id_and_user(supplier_id=supplier_id, user_id=user_id, db=db)
+            if not supplier:
+                raise HTTPException(status_code=404, detail=f"Nhà cung cấp {supplier_id} không tồn tại hoặc không thuộc quyền quản lý")
+
+            debts = (
+                db.query(Debt)
+                .filter(
+                    Debt.supplier_id == supplier_id,
+                    Debt.user_id == user_id,
+                    Debt.direction == "PAYABLE",
+                    Debt.status != "PAID",
+                    Debt.remaining_debt > 0
+                )
+                .order_by(Debt.created_at.asc(), Debt.debt_id.asc())
+                .with_for_update()
+                .all()
+            )
+            if not debts:
+                raise HTTPException(status_code=404, detail=f"Nhà cung cấp {supplier_id} hiện không có khoản nợ nào đang mở")
+
+            total_remaining = sum(Decimal(str(d.remaining_debt or 0)) for d in debts)
+            if total_remaining <= Decimal("0"):
+                raise HTTPException(status_code=400, detail="Các khoản công nợ này đã được thanh toán đầy đủ")
+
+            if amount_dec > total_remaining:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Số tiền thanh toán ({amount_dec}) vượt quá tổng số nợ hiện có ({total_remaining})"
+                )
+
+            account = DebtRepository.get_account_by_id_and_user(account_id=account_id, user_id=user_id, db=db, for_update=True)
+            if not account or not account.is_active:
+                raise HTTPException(status_code=404, detail=f"Tài khoản {account_id} không tồn tại hoặc đã bị vô hiệu hóa")
+
+            current_balance = Decimal(str(account.balance or 0))
+            if current_balance < amount_dec:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Số dư tài khoản ({current_balance}) không đủ để thanh toán ({amount_dec})"
+                )
+
+            intent_id = _get_intent_id(db, "tra_no_nha_cung_cap")
+
+            new_tx = Transaction(
+                user_id=user_id,
+                intent_id=intent_id,
+                account_id=account_id,
+                customer_id=None,
+                supplier_id=supplier_id,
+                total_amount=amount_dec,
+                payment_status="PAID",
+                input_method="MANUAL",
+                input_text=note or "Thanh toán công nợ NCC",
+                transaction_date=payment_date,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+            db.add(new_tx)
+            db.flush()
+
+            amount_left = amount_dec
+            allocations = []
+            for d in debts:
+                if amount_left <= Decimal("0"):
+                    break
+                rem = Decimal(str(d.remaining_debt or 0))
+                if rem <= Decimal("0"):
+                    continue
+
+                applied = min(amount_left, rem)
+                orig = Decimal(str(d.original_amount or 0))
+                pct = ((applied / orig * 100).quantize(Decimal("0.01")) if orig > 0 else Decimal("0.00"))
+
+                dp = DebtPayment(
+                    debt_id=d.debt_id,
+                    transaction_id=new_tx.transaction_id,
+                    account_id=account_id,
+                    amount=applied,
+                    payment_percentage=pct,
+                    payment_date=payment_date,
+                    note=note,
+                    created_at=datetime.now(),
+                )
+                db.add(dp)
+
+                rem_after = rem - applied
+                d.remaining_debt = max(Decimal("0.00"), rem_after)
+                d.status = "PAID" if d.remaining_debt == 0 else "PARTIAL"
+                d.updated_at = datetime.now()
+                if getattr(d, "transaction", None):
+                    d.transaction.payment_status = d.status
+
+                allocations.append({
+                    "debt_id": d.debt_id,
+                    "transaction_id": d.transaction_id or new_tx.transaction_id,
+                    "amount_applied": float(applied),
+                    "remaining_debt": float(d.remaining_debt),
+                    "status": str(d.status),
+                })
+                amount_left -= applied
+
+            account.balance = current_balance - amount_dec
+            account.updated_at = datetime.now()
+
+            db.commit()
+
+            final_remaining = max(Decimal("0.00"), total_remaining - amount_dec)
+            return {
+                "supplier_id": supplier_id,
+                "amount_paid": float(amount_dec),
+                "before": {
+                    "total_remaining": float(total_remaining)
+                },
+                "after": {
+                    "total_remaining": float(final_remaining)
+                },
+                "allocations": allocations
+            }
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Lỗi khi xử lý FIFO công nợ NCC: {str(e)}")

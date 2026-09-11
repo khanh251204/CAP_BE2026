@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, select, func
 
@@ -37,8 +38,10 @@ class TransactionRepository:
     def get_transactions(
         db: Session,
         user_id: int,
-        page: int,
-        limit: int
+        page: int = 1,
+        limit: int = 20,
+        intent_type: Optional[str] = None,
+        intent_name: Optional[str] = None,
     ):
         stmt = (
             select(Transaction)
@@ -65,6 +68,26 @@ class TransactionRepository:
             .select_from(Transaction)
             .filter(Transaction.user_id == user_id)
         )
+
+        if intent_type:
+            stmt = stmt.join(Transaction.intent).filter(
+                func.upper(Intent.intent_type) == intent_type.upper()
+            )
+            count_stmt = count_stmt.join(Transaction.intent).filter(
+                func.upper(Intent.intent_type) == intent_type.upper()
+            )
+
+        if intent_name:
+            if not intent_type:
+                stmt = stmt.join(Transaction.intent)
+                count_stmt = count_stmt.join(Transaction.intent)
+            stmt = stmt.filter(
+                Intent.intent_name.ilike(f"%{intent_name.strip()}%")
+            )
+            count_stmt = count_stmt.filter(
+                Intent.intent_name.ilike(f"%{intent_name.strip()}%")
+            )
+
         total = db.scalar(count_stmt) or 0
 
         offset = (page - 1) * limit
@@ -72,7 +95,8 @@ class TransactionRepository:
         paginated_stmt = (
             stmt
             .order_by(
-                desc(Transaction.transaction_date)
+                desc(Transaction.transaction_date),
+                desc(Transaction.transaction_id)
             )
             .offset(offset)
             .limit(limit)

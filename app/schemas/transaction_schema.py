@@ -83,3 +83,55 @@ class TransactionCreateRequest(BaseModel):
     supplier: Optional[str] = Field(None, description="Tên nhà cung cấp")
     date: Optional[str] = Field(None, description="Ngày diễn giải dạng text")
     payment: Optional[str] = Field(None, description="Phương thức thanh toán dạng text")
+
+
+# ==========================================
+# RESPONSE SCHEMAS CHO TRANSACTION (docs/erd.md)
+# ==========================================
+class TransactionAccountBrief(BaseModel):
+    account_id: int
+    account_name: Optional[str] = None
+    name: Optional[str] = None
+    account_type: Optional[str] = None
+
+
+class TransactionPartnerBrief(BaseModel):
+    customer_id: Optional[int] = None
+    supplier_id: Optional[int] = None
+    customer_name: Optional[str] = None
+    supplier_name: Optional[str] = None
+    name: Optional[str] = None
+
+
+class TransactionResponseItem(BaseModel):
+    transaction_id: int
+    user_id: int
+    intent_id: Optional[int] = None
+    intent: Optional[str] = Field(None, description="Tên intent (10 intent docs/erd.md)")
+    intent_name: Optional[str] = Field(None, description="Tên intent")
+    intent_type: Optional[str] = Field(None, description="Loại intent theo docs/erd.md (INCOME, EXPENSE, DEBT, TRANFER, REFUND, NONE)")
+    type: Optional[str] = Field(None, description="Tương đương intent_type để FE tiện phân loại thu/chi/nợ")
+    category_id: Optional[int] = None
+    account_id: Optional[int] = None
+    customer_id: Optional[int] = None
+    supplier_id: Optional[int] = None
+    account: Optional[TransactionAccountBrief] = None
+    customer: Optional[TransactionPartnerBrief] = None
+    supplier: Optional[TransactionPartnerBrief] = None
+    total_amount: float
+    payment_status: Optional[str] = None
+    input_method: Optional[str] = None
+    input_text: Optional[str] = None
+    note: Optional[str] = None
+    transaction_date: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    details: List[TransactionDetailResponse] = Field(default_factory=list)
+
+
+class TransactionListResponse(BaseModel):
+    items: List[TransactionResponseItem]
+    page: int
+    limit: int
+    total: int
+    total_pages: int

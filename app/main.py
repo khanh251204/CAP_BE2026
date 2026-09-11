@@ -20,6 +20,8 @@ from app.routes.groq_route import router as groq_router
 from app.routes.auth_route import router as auth_router
 from app.routes import inventory_route
 from app.routes.debt_route import debt_router
+from app.routes.customer_route import customer_router
+from app.routes.supplier_route import supplier_router
 
 
 app = FastAPI(
@@ -98,6 +100,16 @@ app.include_router(
 
 app.include_router(
     debt_router,
+    prefix="/api/v1"
+)
+
+app.include_router(
+    customer_router,
+    prefix="/api/v1"
+)
+
+app.include_router(
+    supplier_router,
     prefix="/api/v1"
 )
 
