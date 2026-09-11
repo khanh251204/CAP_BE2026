@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 
 from app.services.debt_service import DebtService
+from app.services.websocket_manager import trigger_report_update
 
 
 class DebtController:
@@ -19,7 +20,7 @@ class DebtController:
         transaction_id: Optional[int] = None,
         note: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return DebtService.create_customer_debt(
+        res = DebtService.create_customer_debt(
             db=db,
             user_id=user_id,
             customer_id=customer_id,
@@ -27,6 +28,11 @@ class DebtController:
             transaction_id=transaction_id,
             note=note,
         )
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "receivable"])
+        except Exception:
+            pass
+        return res
 
     # ==========================================
     # THU TIỀN NỢ KHÁCH HÀNG (THU NỢ)
@@ -43,7 +49,7 @@ class DebtController:
         payment_date: Optional[datetime] = None,
         note: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return DebtService.collect_customer_debt(
+        res = DebtService.collect_customer_debt(
             db=db,
             user_id=user_id,
             debt_id=debt_id,
@@ -53,6 +59,11 @@ class DebtController:
             payment_date=payment_date,
             note=note,
         )
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "receivable", "balance"])
+        except Exception:
+            pass
+        return res
 
     # ==========================================
     # LẤY DANH SÁCH NỢ KHÁCH HÀNG
@@ -85,7 +96,7 @@ class DebtController:
         transaction_id: Optional[int] = None,
         note: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return DebtService.create_supplier_debt(
+        res = DebtService.create_supplier_debt(
             db=db,
             user_id=user_id,
             supplier_id=supplier_id,
@@ -93,6 +104,11 @@ class DebtController:
             transaction_id=transaction_id,
             note=note,
         )
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "payable"])
+        except Exception:
+            pass
+        return res
 
     # ==========================================
     # TRẢ TIỀN NỢ NHÀ CUNG CẤP (TRẢ NỢ)
@@ -108,7 +124,7 @@ class DebtController:
         payment_date: Optional[datetime] = None,
         note: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return DebtService.pay_supplier_debt(
+        res = DebtService.pay_supplier_debt(
             db=db,
             user_id=user_id,
             debt_id=debt_id,
@@ -118,6 +134,11 @@ class DebtController:
             payment_date=payment_date,
             note=note,
         )
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "payable", "balance"])
+        except Exception:
+            pass
+        return res
 
     # ==========================================
     # LẤY DANH SÁCH NỢ NHÀ CUNG CẤP
@@ -229,7 +250,7 @@ class DebtController:
         user_id: int,
         db: Session
     ) -> Dict[str, Any]:
-        return DebtService.pay_debt_exact(
+        res = DebtService.pay_debt_exact(
             debt_id=debt_id,
             account_id=account_id,
             amount=amount,
@@ -238,6 +259,11 @@ class DebtController:
             user_id=user_id,
             db=db
         )
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "receivable", "payable", "balance"])
+        except Exception:
+            pass
+        return res
 
     # ==========================================
     # FIFO CUSTOMER PAYMENT (Mục 13)
@@ -252,7 +278,7 @@ class DebtController:
         user_id: int,
         db: Session
     ) -> Dict[str, Any]:
-        return DebtService.pay_customer_debts_fifo(
+        res = DebtService.pay_customer_debts_fifo(
             customer_id=customer_id,
             account_id=account_id,
             amount=amount,
@@ -261,6 +287,11 @@ class DebtController:
             user_id=user_id,
             db=db
         )
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "receivable", "balance"])
+        except Exception:
+            pass
+        return res
 
     # ==========================================
     # FIFO SUPPLIER PAYMENT (Mục 14)
@@ -275,7 +306,7 @@ class DebtController:
         user_id: int,
         db: Session
     ) -> Dict[str, Any]:
-        return DebtService.pay_supplier_debts_fifo(
+        res = DebtService.pay_supplier_debts_fifo(
             supplier_id=supplier_id,
             account_id=account_id,
             amount=amount,
@@ -284,3 +315,8 @@ class DebtController:
             user_id=user_id,
             db=db
         )
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "payable", "balance"])
+        except Exception:
+            pass
+        return res

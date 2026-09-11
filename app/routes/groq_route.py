@@ -5,6 +5,7 @@ import asyncio
 import tempfile
 import traceback
 
+# pyrefly: ignore [missing-import]
 from fastapi import (
     APIRouter,
     UploadFile,
@@ -53,47 +54,8 @@ transaction_agent = TransactionAgent(
 # STT
 # ============================================================
 
-@router.post("/stt/groq")
-async def stt_groq(
-    file: UploadFile = File(...)
-):
-
-    ext = (
-        os.path.splitext(file.filename)[1]
-        if file.filename
-        else ".m4a"
-    )
-
-    if not ext:
-        ext = ".m4a"
-
-    with tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=ext
-    ) as temp_file:
-
-        content = await file.read()
-
-        temp_file.write(content)
-
-        temp_path = temp_file.name
-
-    try:
-
-        text = await asyncio.to_thread(
-            groq_service.transcribe,
-            temp_path
-        )
-
-        return {
-            "success": True,
-            "text": text
-        }
-
-    finally:
-
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+from app.api.stt import stt_groq
+router.add_api_route("/stt/groq", stt_groq, methods=["POST"], tags=["Speech to Text"])
 
 
 # ============================================================
@@ -152,6 +114,7 @@ async def voice_transaction(
 from app.ai.core.state import pending_confirmations
 from app.controllers.product_controller import ProductController
 from app.configs.database import get_db
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 from app.ai.mcp.client import (
     call_mcp_tool,
@@ -322,6 +285,22 @@ async def confirm_action(
         result = normalize_mcp_result(result)
 
     # ========================================================
+    # CHI PHÍ (EXPENSE)
+    # ========================================================
+
+    elif intent in ("chi_phi", "chi_tien"):
+
+        result = await call_mcp_tool(
+            "create_expense",
+            {
+                "payload": payload,
+                "user_id": current_user_id
+            }
+        )
+
+        result = normalize_mcp_result(result)
+
+    # ========================================================
     # CHƯA HỖ TRỢ
     # ========================================================
 
@@ -335,12 +314,21 @@ async def confirm_action(
         }
 
     # ========================================================
-    # XÓA PENDING SAU KHI XỬ LÝ
+    # XÓA PENDING SAU KHI XỬ LÝ & TRIGGER REALTIME SOCKET
     # ========================================================
 
     pending_confirmations.pop(
         current_user_id,
         None
     )
+
+    try:
+        from app.services.websocket_manager import trigger_report_update
+        trigger_report_update(
+            user_id=current_user_id,
+            affected=["sales", "purchase", "expense", "debt", "inventory", "profit"]
+        )
+    except Exception:
+        pass
 
     return result

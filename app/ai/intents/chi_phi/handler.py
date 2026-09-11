@@ -25,18 +25,21 @@ class ChiPhiHandler:
         if not val_result["success"]:
             return {
                 "success": False,
-                "status": "error",
+                "status": val_result.get("status", "need_information"),
                 "intent": intent,
                 "missing_fields": val_result["missing_fields"],
-                "message": "Thiếu thông tin bắt buộc"
+                "message": val_result["message"]
             }
 
         payload = build_payload(entities=entities, text=text)
-        result = await call_mcp_tool(
-            "create_expense",
-            {
-                "payload": payload,
-                "user_id": user_id
-            }
-        )
-        return normalize_mcp_result(result)
+        cat_label = payload.get("category_name") or "Khác"
+        amt = payload.get("amount", 0.0)
+
+        return {
+            "success": True,
+            "status": "waiting_confirmation",
+            "intent": intent,
+            "action": "create_expense",
+            "payload": payload,
+            "message": f"Bạn có chắc muốn ghi nhận chi phí '{cat_label}' với số tiền {amt:,.0f}đ không?"
+        }

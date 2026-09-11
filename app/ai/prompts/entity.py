@@ -68,4 +68,10 @@ Cần trích xuất các thông tin sau:
    * KHÔNG tự bịa `transaction_id`.
    * KHÔNG thêm trường `note` vào công nợ Debt.
    * payment: Trạng thái thanh toán của công nợ khách hàng hoặc nhà cung cấp. Chỉ được phép: `"PAID"`, `"PARTIAL"`, `"PENDING"`, hoặc `null`. Không được tự đoán hoặc tự tạo giá trị khác. Người dùng không nói rõ trạng thái thanh toán -> `null`. "đã trả đủ", "thanh toán rồi", "trả hết" -> `"PAID"`. "trả một phần", "trả bớt", "còn lại nợ" -> `"PARTIAL"`. "chưa trả", "ghi nợ", "còn nợ" -> `"PENDING"`.
+
+4. Quy tắc cho chi phí hoạt động (chi_phi):
+   * price: Số tiền chi phí, dạng số nguyên VND (Bắt buộc). VD: "Chi 500k tiền điện" -> price = 500000.
+   * category: Loại chi phí hoặc mục đích chi (VD: "tiền điện", "tiền nước", "mặt bằng", "tiền nhà", "vận chuyển", "xăng xe", "văn phòng phẩm"...).
+   * note: Ghi chú chi phí (nếu có nói thêm chi tiết).
+   * payment: Hình thức/trạng thái thanh toán ("tiền mặt", "chuyển khoản", "PAID").
 """

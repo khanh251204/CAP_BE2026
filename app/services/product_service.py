@@ -2,8 +2,11 @@ import logging
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+# pyrefly: ignore [missing-import]
 from sqlalchemy import func
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
+# pyrefly: ignore [missing-import]
 from fastapi import HTTPException, status
 
 from app.models.product_model import Product
@@ -49,7 +52,7 @@ class ProductService:
 
     @staticmethod
     def create_product(data: dict, user_id: int, db: Session):
-        product_name = (data.get("product_name") or data.get("product") or "").strip()
+        product_name = (data.get("product_name") or data.get("product") or data.get("name") or "").strip()
         if not product_name:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

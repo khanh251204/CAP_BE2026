@@ -13,6 +13,10 @@ from app.models.debt_payment_model import DebtPayment
 from app.models.voice_record_model import VoiceRecord
 from app.models.refresh_token_model import RefreshToken
 from app.models.otp_model import OTPCode
+from app.models.closing_period_model import ClosingPeriod
+from app.models.closing_transaction_model import ClosingTransaction
+from app.models.closing_setting_model import ClosingSetting
+from app.models.closing_report_model import ClosingReport
 
 __all__ = [
     "User",
@@ -30,4 +34,8 @@ __all__ = [
     "VoiceRecord",
     "RefreshToken",
     "OTPCode",
+    "ClosingPeriod",
+    "ClosingTransaction",
+    "ClosingSetting",
+    "ClosingReport",
 ]

@@ -7,20 +7,31 @@ REQUIRED_FIELDS = [
 
 def validate(entities: dict[str, Any]) -> dict:
     """
-    Validate dữ liệu đầu vào cho chi_phi.
+    Validate dữ liệu đầu vào cho chi_phi: bắt buộc có số tiền (price, amount hoặc total_price).
     """
-    missing_fields = []
-    for field in REQUIRED_FIELDS:
-        val = entities.get(field)
-        if val is None or val == "":
-            missing_fields.append(field)
+    val = entities.get("price") or entities.get("amount") or entities.get("total_price")
+    if val is None or val == "":
+        return {
+            "success": False,
+            "status": "need_information",
+            "missing_fields": ["price"],
+            "message": "Vui lòng cung cấp số tiền chi phí (VD: 'Chi 500k tiền điện')"
+        }
 
-    if missing_fields:
+    try:
+        if float(val) <= 0:
+            return {
+                "success": False,
+                "status": "error",
+                "missing_fields": ["price"],
+                "message": "Số tiền chi phí phải lớn hơn 0"
+            }
+    except (ValueError, TypeError):
         return {
             "success": False,
             "status": "error",
-            "missing_fields": missing_fields,
-            "message": "Thiếu thông tin bắt buộc"
+            "missing_fields": ["price"],
+            "message": f"Số tiền chi phí '{val}' không hợp lệ"
         }
 
     return {

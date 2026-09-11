@@ -26,37 +26,47 @@ class TransactionController:
         )
 
         if is_direct:
-            return TransactionService.create_direct_transaction(
+            result = TransactionService.create_direct_transaction(
                 db=db,
                 user_id=user_id,
                 request=request
             )
-
-        # Chế độ tương thích ngược Flat NLP / Groq Voice
-        groq_result_dict = {
-            "transaction_analysis": {
-                "text": request.text or request.input_text or "",
-                "intent": request.intent or "",
-                "type": request.type or "",
-                "entities": {
-                    "product": request.product,
-                    "price": request.price or request.total_amount,
-                    "quantity": request.quantity,
-                    "unit": request.unit,
-                    "customer": request.customer,
-                    "supplier": request.supplier,
-                    "date": request.date or (request.transaction_date.isoformat() if request.transaction_date else None),
-                    "payment": request.payment
+        else:
+            # Chế độ tương thích ngược Flat NLP / Groq Voice
+            groq_result_dict = {
+                "transaction_analysis": {
+                    "text": request.text or request.input_text or "",
+                    "intent": request.intent or "",
+                    "type": request.type or "",
+                    "entities": {
+                        "product": request.product,
+                        "price": request.price or request.total_amount,
+                        "quantity": request.quantity,
+                        "unit": request.unit,
+                        "customer": request.customer,
+                        "supplier": request.supplier,
+                        "date": request.date or (request.transaction_date.isoformat() if request.transaction_date else None),
+                        "payment": request.payment
+                    }
                 }
             }
-        }
 
-        return TransactionService.save_groq_transaction(
-            db=db,
-            user_id=user_id,
-            account_id=request.account_id,
-            groq_result=groq_result_dict
-        )
+            result = TransactionService.save_groq_transaction(
+                db=db,
+                user_id=user_id,
+                account_id=request.account_id,
+                groq_result=groq_result_dict
+            )
+
+        # Kích hoạt sự kiện WebSocket realtime thông báo Dashboard & Report
+        try:
+            from app.services.websocket_manager import trigger_report_update
+            tx_id = result.get("transaction_id") if isinstance(result, dict) else getattr(result, "transaction_id", None)
+            trigger_report_update(user_id=user_id, transaction_id=tx_id)
+        except Exception:
+            pass
+
+        return result
 
     @staticmethod
     def save_groq_transaction(
@@ -65,12 +75,19 @@ class TransactionController:
         account_id: int | None,
         groq_result: dict
     ):
-        return TransactionService.save_groq_transaction(
+        result = TransactionService.save_groq_transaction(
             db=db,
             user_id=user_id,
             account_id=account_id,
             groq_result=groq_result
         )
+        try:
+            from app.services.websocket_manager import trigger_report_update
+            tx_id = result.get("transaction_id") if isinstance(result, dict) else getattr(result, "transaction_id", None)
+            trigger_report_update(user_id=user_id, transaction_id=tx_id)
+        except Exception:
+            pass
+        return result
 
     @staticmethod
     def get_transactions(

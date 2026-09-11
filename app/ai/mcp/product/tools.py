@@ -133,8 +133,8 @@ class ProductTools:
 
         try:
             data = {
-                "name": name,
-                "default_unit": default_unit,
+                "product_name": name,
+                "default_unit": default_unit.strip() if default_unit else "cái",
                 "unit_price": unit_price,
             }
 

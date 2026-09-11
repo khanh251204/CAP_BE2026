@@ -4,6 +4,7 @@ from typing import Any
 from app.ai.mcp.product.server import server as product_server
 from app.ai.mcp.inventory.server import server as inventory_server
 from app.ai.mcp.debt.server import server as debt_server
+from app.ai.mcp.expense.server import server as expense_server
 
 
 # ============================================================
@@ -14,6 +15,7 @@ MCP_SERVERS = {
     "product": product_server,
     "inventory": inventory_server,
     "debt": debt_server,
+    "expense": expense_server,
 }
 
 
