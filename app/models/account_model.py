@@ -16,8 +16,8 @@ class Account(Base):
     __tablename__ = "Account"
     account_id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("User.user_id"), nullable=True)
-    name = Column(String(255), nullable=False)
-    type = Column(
+    account_name = Column(String(255), nullable=False)
+    account_type = Column(
         Enum (
             "CASH",
             "BANK",
@@ -29,8 +29,8 @@ class Account(Base):
         Numeric(15, 2),
         nullable=False
     )
-    currency= Column(
-        String(255), 
+    currency = Column(
+        String(10), 
         nullable=False
     )
     is_active = Column(
@@ -47,6 +47,10 @@ class Account(Base):
             )
     user = relationship(
                 "User",
+                back_populates="account"
+            )
+    debt_payments = relationship(
+                "DebtPayment",
                 back_populates="account"
             )
 

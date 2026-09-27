@@ -31,14 +31,20 @@ firebase-service-account.json
 # ========================================
 # AI
 # ========================================
-/app/ai/
+# /app/ai/
 
 # ========================================
 # Routes
 # ========================================
-/app/routes/groq_route.py
+# /app/routes/groq_route.py
 
 # ========================================
 # Schemas
 # ========================================
 /app/schemas/analysis_schema.py
+main.py
+/docs
+AGENTS.md
+tests/
+/ai_benchmark/
+/evaluation/

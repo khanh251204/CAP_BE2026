@@ -1,0 +1,23 @@
+{
+  "dataset_id": "DS-30006",
+  "voice_record_id": 30006,
+  "audio_source": "https://res.cloudinary.com/dc2tsiczp/video/upload/v1790427491/voice_cashbook/audio/cpwn1dkasilihzd3mfvu.m4a",
+  "transcript": "Bán 2 lốc sữa chua",
+  "intent": "ban_hang",
+  "entities": {
+    "customer": null,
+    "date": null,
+    "new_product_name": null,
+    "payment": null,
+    "price": null,
+    "product": "sữa chua",
+    "quantity": 2,
+    "supplier": null,
+    "unit": "lốc"
+  },
+  "confidence": null,
+  "user_correction": null,
+  "status": "SUCCESS",
+  "ingested_at": "2026-09-26T20:20:00.952808",
+  "data_classification": "RESEARCH_DATASET"
+}

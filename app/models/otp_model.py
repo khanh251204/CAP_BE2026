@@ -4,8 +4,10 @@ from sqlalchemy import (
     String,
     DateTime,
     Boolean,
+    ForeignKey,
     text
 )
+from sqlalchemy.orm import relationship
 
 from app.configs.database import Base
 
@@ -21,6 +23,7 @@ class OTPCode(Base):
 
     user_id = Column(
         Integer,
+        ForeignKey("User.user_id"),
         nullable=True
     )
 
@@ -56,4 +59,17 @@ class OTPCode(Base):
         DateTime,
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    # Thêm trường attempts theo ERD
+    attempts = Column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+
+    # Relationships (User 1-N OTP_Code)
+    user = relationship(
+        "User",
+        back_populates="otp_codes"
     )

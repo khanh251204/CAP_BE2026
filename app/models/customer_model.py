@@ -19,10 +19,12 @@ class Customer(Base):
         ForeignKey("User.user_id"), 
         nullable=True
         )
-    name = Column(String(255), nullable=False)
-    phone_number = Column(String(20),nullable=False)
-    note = Column(Text, nullable=False)
-    created_at = Column(DateTime,nullable=False)
+    customer_name = Column(String(255), nullable=False)
+    phone_number = Column(String(20), nullable=True)
+    email = Column(String(255), nullable=True)
+    address = Column(String(255), nullable=True)
+    customer_type = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
 
     transactions = relationship(

@@ -4,8 +4,10 @@ from sqlalchemy import (
     String,
     DateTime,
     Boolean,
+    ForeignKey,
     text
 )
+from sqlalchemy.orm import relationship
 
 from app.configs.database import Base
 
@@ -21,6 +23,7 @@ class RefreshToken(Base):
 
     user_id = Column(
         Integer,
+        ForeignKey("User.user_id"),
         nullable=False,
         index=True
     )
@@ -59,4 +62,10 @@ class RefreshToken(Base):
     revoked_at = Column(
         DateTime,
         nullable=True
+    )
+
+    # Relationships (User 1-N Refresh_Token)
+    user = relationship(
+        "User",
+        back_populates="refresh_tokens"
     )

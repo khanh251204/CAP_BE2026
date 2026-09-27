@@ -1,3 +1,5 @@
+from typing import Optional, List
+from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from app.services.product_service import ProductService
@@ -120,7 +122,7 @@ class ProductController:
         }
 
     # ==========================================
-    # XÓA PRODUCT - USER ĐĂNG NHẬP
+    # XÓA PRODUCT - THEO USER ĐĂNG NHẬP
     # ==========================================
     @staticmethod
     def delete_product(
@@ -128,15 +130,117 @@ class ProductController:
         user_id: int,
         db: Session
     ):
-        product = ProductService.delete_product(product_id, user_id, db)
+        result = ProductService.delete_product(product_id, user_id, db)
 
-        if not product:
+        if not result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Không tìm thấy Product hoặc bạn không có quyền xóa"
             )
 
-        return {
-            "success": True,
-            "message": "Xóa Product thành công"
-        }
+        return result
+
+    # ==========================================
+    # KIỂM KÊ TỒN KHO (INVENTORY CHECK / ADJUSTMENT)
+    # ==========================================
+    @staticmethod
+    def inventory_check(
+        product_id: int,
+        data: dict,
+        user_id: int,
+        db: Session
+    ):
+        actual_quantity = data.get("actual_quantity")
+        if actual_quantity is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Thiếu thông tin actual_quantity"
+            )
+
+        try:
+            actual_quantity_val = float(actual_quantity)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="actual_quantity phải là số"
+            )
+
+        note = data.get("note")
+        reason = data.get("reason") or "ADJUSTMENT"
+
+        return ProductService.inventory_check(
+            product_id=product_id,
+            actual_quantity=actual_quantity_val,
+            note=note,
+            reason=reason,
+            user_id=user_id,
+            db=db
+        )
+
+    # ==========================================
+    # NHẬP KHO / XUẤT KHO THỦ CÔNG
+    # ==========================================
+    @staticmethod
+    def manual_inventory_transaction(
+        product_id: int,
+        data: dict,
+        user_id: int,
+        db: Session
+    ):
+        inventory_type = data.get("inventory_type")
+        if not inventory_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Thiếu thông tin inventory_type (IN hoặc OUT)"
+            )
+
+        quantity = data.get("quantity")
+        if quantity is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Thiếu thông tin quantity"
+            )
+
+        try:
+            quantity_val = float(quantity)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="quantity phải là số"
+            )
+
+        note = data.get("note")
+
+        return ProductService.manual_inventory_transaction(
+            product_id=product_id,
+            inventory_type=inventory_type,
+            quantity=quantity_val,
+            note=note,
+            user_id=user_id,
+            db=db
+        )
+
+    # ==========================================
+    # LỊCH SỬ TỒN KHO (INVENTORY HISTORY)
+    # ==========================================
+    @staticmethod
+    def get_inventory_history(
+        product_id: int,
+        user_id: int,
+        from_date: Optional[datetime],
+        to_date: Optional[datetime],
+        types: Optional[List[str]],
+        page: int,
+        limit: int,
+        db: Session
+    ):
+        return ProductService.get_inventory_history(
+            product_id=product_id,
+            user_id=user_id,
+            from_date=from_date,
+            to_date=to_date,
+            types=types,
+            page=page,
+            limit=limit,
+            db=db
+        )

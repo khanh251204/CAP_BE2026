@@ -1,8 +1,10 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 from app.models.product_model import Product
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import  func, case
 from app.models.inventory_model import InventoryTransaction
 
 
@@ -33,13 +35,13 @@ def get_products_with_stock(db: Session, user_id: int):
             Product,
             func.coalesce(
                 func.sum(
-                    case((InventoryTransaction.type == 'IN', InventoryTransaction.quantity), else_=0)
+                    case((InventoryTransaction.inventory_type == 'IN', InventoryTransaction.quantity), else_=0)
                 ), 
                 0
             ).label("total_imported"),
             func.coalesce(
                 func.sum(
-                    case((InventoryTransaction.type == 'OUT', InventoryTransaction.quantity), else_=0)
+                    case((InventoryTransaction.inventory_type == 'OUT', InventoryTransaction.quantity), else_=0)
                 ), 
                 0
             ).label("total_sold"),
@@ -70,8 +72,9 @@ def get_products_with_stock(db: Session, user_id: int):
         data.append({
             "product_id": product.product_id,
             "user_id": product.user_id,
-            "name": product.name,
+            "name": product.product_name,
             "default_unit": product.default_unit,
+            "product_type": getattr(product, "product_type", "RESALE"),
             "unit_price": float(product.unit_price) if product.unit_price else 0.0,
             "min_quantity": float(product.min_quantity) if product.min_quantity else 0.0,
             "is_active": product.is_active,
@@ -81,12 +84,12 @@ def get_products_with_stock(db: Session, user_id: int):
         })
 
     return data
-def get_product_by_name(db: Session, user_id: int, name: str):
+def get_product_by_name(db: Session, user_id: int, product_name: str):
     return (
         db.query(Product)
         .filter(
             Product.user_id == user_id,
-            Product.name == name,
+            Product.product_name == product_name,
             Product.is_active == True
         )
         .first()
@@ -96,16 +99,21 @@ def get_product_by_name(db: Session, user_id: int, name: str):
 def create_product(
     db: Session,
     user_id: int,
-    name: str,
+    product_name: str,
     unit: str | None,
-    price: float
+    price: float,
+    product_type: str | None = "RESALE"
 ):
+    now = datetime.now()
     product = Product(
         user_id=user_id,
-        name=name,
+        product_name=product_name,
         default_unit=unit,
-        unit_price=price,
-        is_active=True
+        unit_price=str(price),
+        product_type=product_type or "RESALE",
+        is_active=True,
+        created_at=now,
+        updated_at=now
     )
     db.add(product)
     db.flush()
@@ -141,29 +149,74 @@ def search_products_by_name(db: Session, user_id: int, name: str):
         .filter(
             Product.user_id == user_id,
             Product.is_active == True,
-            Product.name.ilike(f"%{name}%")
+            Product.product_name.ilike(f"%{name}%")
         )
         .all()
     )
 
 
+def get_product_with_lock(db: Session, user_id: int, product_id: int):
+    """
+    Khóa dòng (row-level lock) để tránh race condition khi cập nhật tồn kho đồng thời.
+    """
+    return (
+        db.query(Product)
+        .filter(
+            Product.product_id == product_id,
+            Product.user_id == user_id,
+            Product.is_active == True
+        )
+        .with_for_update()
+        .first()
+    )
+
+
 def update_product(db: Session, product: Product, data: dict):
-    if "name" in data:
-        product.name = data["name"]
-    if "default_unit" in data:
+    if "product_name" in data and data["product_name"] is not None:
+        product.product_name = data["product_name"]
+
+    if "default_unit" in data and data["default_unit"] is not None:
         product.default_unit = data["default_unit"]
-    if "min_quantity" in data:
+
+    if "min_quantity" in data and data["min_quantity"] is not None:
         product.min_quantity = data["min_quantity"]
-    if "unit_price" in data:
-        product.unit_price = data["unit_price"]
+
+    if "unit_price" in data and data["unit_price"] is not None:
+        product.unit_price = str(data["unit_price"])
+
+    if "is_active" in data and data["is_active"] is not None:
+        product.is_active = data["is_active"]
+
+    if "product_type" in data and data["product_type"] is not None:
+        product.product_type = str(data["product_type"])
+
+    if "category_id" in data:
+        product.category_id = data["category_id"]
+
+    if "img" in data:
+        product.img = data["img"]
+
+    product.updated_at = datetime.now()
 
     db.commit()
     db.refresh(product)
+
     return product
 
 
-def delete_product(db: Session, product: Product):
+def soft_delete_product(db: Session, product: Product):
     product.is_active = False
+    product.updated_at = datetime.now()
+
     db.commit()
     db.refresh(product)
     return product
+
+
+def hard_delete_product(db: Session, product: Product):
+    db.delete(product)
+    db.commit()
+    return True
+
+
+delete_product = soft_delete_product

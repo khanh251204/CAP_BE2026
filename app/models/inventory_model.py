@@ -28,11 +28,11 @@ class InventoryTransaction(Base):
     transaction_id = Column(
         Integer,
         ForeignKey("Transaction.transaction_id"),
-        nullable=False
+        nullable=True
     )
 
-    type = Column(
-        Enum("IN", "OUT"),
+    inventory_type = Column(
+        Enum("IN", "OUT", "DAMAGE", "ADJUSTMENT", name="inventory_type_enum"),
         nullable=False
     )
 

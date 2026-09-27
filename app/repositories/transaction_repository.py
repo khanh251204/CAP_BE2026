@@ -1,8 +1,8 @@
+from typing import Optional
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc
+from sqlalchemy import desc, select, func
 
 from app.models.transaction_model import Transaction
-# from app.models.category_model import Category
 from app.models.customer_model import Customer
 from app.models.supplier_model import Supplier
 from app.models.account_model import Account
@@ -10,54 +10,47 @@ from app.models.product_model import Product
 from app.models.intent_model import Intent
 from app.models.debt_model import Debt
 from app.models.inventory_model import InventoryTransaction
-
 from app.models.transactionDetail_model import TransactionDetail
 
 
-
 class TransactionRepository:
-    # lưu
     @staticmethod
     def create_transaction(
         db: Session,
         transaction: Transaction
-    ):
-
+    ) -> Transaction:
         db.add(transaction)
-
         db.flush()
-
+        db.refresh(transaction)
         return transaction
 
     @staticmethod
     def create_transaction_detail(
         db: Session,
         detail: TransactionDetail
-    ):
-
+    ) -> TransactionDetail:
         db.add(detail)
-
         db.flush()
-
+        db.refresh(detail)
         return detail  
 
-    # list
     @staticmethod
     def get_transactions(
         db: Session,
         user_id: int,
-        page: int,
-        limit: int
+        page: int = 1,
+        limit: int = 20,
+        intent_type: Optional[str] = None,
+        intent_name: Optional[str] = None,
     ):
-        query = (
-            db.query(Transaction)
+        stmt = (
+            select(Transaction)
             .options(
-                 joinedload(
+                joinedload(
                     Transaction.transaction_detail
                 ).joinedload(
                     TransactionDetail.product
                 ),
-                # joinedload(Transaction.category),
                 joinedload(Transaction.customer),
                 joinedload(Transaction.supplier),
                 joinedload(Transaction.intent),
@@ -70,19 +63,46 @@ class TransactionRepository:
             )
         )
 
-        total = query.count()
+        count_stmt = (
+            select(func.count())
+            .select_from(Transaction)
+            .filter(Transaction.user_id == user_id)
+        )
+
+        if intent_type:
+            stmt = stmt.join(Transaction.intent).filter(
+                func.upper(Intent.intent_type) == intent_type.upper()
+            )
+            count_stmt = count_stmt.join(Transaction.intent).filter(
+                func.upper(Intent.intent_type) == intent_type.upper()
+            )
+
+        if intent_name:
+            if not intent_type:
+                stmt = stmt.join(Transaction.intent)
+                count_stmt = count_stmt.join(Transaction.intent)
+            stmt = stmt.filter(
+                Intent.intent_name.ilike(f"%{intent_name.strip()}%")
+            )
+            count_stmt = count_stmt.filter(
+                Intent.intent_name.ilike(f"%{intent_name.strip()}%")
+            )
+
+        total = db.scalar(count_stmt) or 0
 
         offset = (page - 1) * limit
 
-        transactions = (
-            query
+        paginated_stmt = (
+            stmt
             .order_by(
-                desc(Transaction.transaction_date)
+                desc(Transaction.transaction_date),
+                desc(Transaction.transaction_id)
             )
             .offset(offset)
             .limit(limit)
-            .all()
         )
+
+        transactions = db.scalars(paginated_stmt).unique().all()
 
         return transactions, total
 
@@ -92,15 +112,14 @@ class TransactionRepository:
         user_id: int,
         transaction_id: int
     ):
-        return (
-            db.query(Transaction)
+        stmt = (
+            select(Transaction)
             .options(
-                 joinedload(
+                joinedload(
                     Transaction.transaction_detail
                 ).joinedload(
                     TransactionDetail.product
                 ),
-                # joinedload(Transaction.category),
                 joinedload(Transaction.customer),
                 joinedload(Transaction.supplier),
                 joinedload(Transaction.intent),
@@ -110,5 +129,5 @@ class TransactionRepository:
                 Transaction.transaction_id == transaction_id,
                 Transaction.user_id == user_id
             )
-            .first()
         )
+        return db.scalars(stmt).unique().first()

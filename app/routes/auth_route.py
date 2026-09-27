@@ -2,10 +2,12 @@ from fastapi import (
     APIRouter,
     Cookie,
     Depends,
+    Request,
     Response,
     status
 )
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
 from app.configs.cookie import (
@@ -26,6 +28,9 @@ from app.schemas.auth_schema import (
     SendOTPRequest,
     VerifyOTPRequest,
     ResetPasswordRequest,
+    ForgotPasswordRequest,
+    ChangePasswordRequest,
+    UpdateProfileRequest,
     GoogleLoginRequest
 )
 
@@ -35,6 +40,9 @@ from app.controllers.auth_controller import (
     send_otp_controller,
     verify_otp_controller,
     reset_password_controller,
+    forgot_password_controller,
+    change_password_controller,
+    update_profile_controller,
     google_login_controller,
     refresh_token_controller,
     logout_controller,
@@ -86,17 +94,24 @@ def verify_otp(
     )
 
 
+# FORGOT PASSWORD / RESET PASSWORD
+@router.post("/forgot-password")
 @router.post("/reset-password")
-def reset_password(
-    request: ResetPasswordRequest,
-    response: Response,
+def forgot_password(
+    request: ForgotPasswordRequest,
+    request_obj: Request,
     db: Session = Depends(get_db)
 ):
-    return reset_password_controller(
+    auth_header = request_obj.headers.get("authorization")
+    return forgot_password_controller(
         request=request,
-        response=response,
-        db=db
+        db=db,
+        auth_header=auth_header
     )
+
+
+
+
     
 # LOGIN
 @router.post("/login")
@@ -169,6 +184,57 @@ def me(
     db: Session = Depends(get_db)
 ):
     return me_controller(
+        payload=payload,
+        db=db
+    )
+
+
+# PROFILE DETAILS (ALIAS TO /me)
+@router.get("/profile")
+def profile(
+    payload: dict = Depends(
+        authenticate_user
+    ),
+    db: Session = Depends(get_db)
+):
+    return me_controller(
+        payload=payload,
+        db=db
+    )
+
+
+# CHANGE PASSWORD
+@router.post("/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    response: Response,
+    payload: dict = Depends(
+        authenticate_user
+    ),
+    db: Session = Depends(get_db)
+):
+    return change_password_controller(
+        request=request,
+        payload=payload,
+        response=response,
+        db=db
+    )
+
+
+# UPDATE PROFILE
+@router.put("/profile")
+@router.patch("/profile")
+@router.put("/me")
+@router.patch("/me")
+def update_profile(
+    request: UpdateProfileRequest,
+    payload: dict = Depends(
+        authenticate_user
+    ),
+    db: Session = Depends(get_db)
+):
+    return update_profile_controller(
+        request=request,
         payload=payload,
         db=db
     )

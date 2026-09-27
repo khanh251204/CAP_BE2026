@@ -53,3 +53,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_db_session():
+    """
+    Lấy Session ngoài request FastAPI (dùng cho MCP server, background tasks, tests)
+    """
+    return SessionLocal()
