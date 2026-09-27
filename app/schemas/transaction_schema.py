@@ -64,6 +64,7 @@ class TransactionCreateRequest(BaseModel):
     input_text: Optional[str] = Field(None, description="Văn bản gốc / text đầu vào")
     note: Optional[str] = Field(None, description="Ghi chú giao dịch")
     transaction_date: Optional[datetime] = Field(None, description="Ngày giao dịch")
+    voice_id: Optional[int] = Field(None, description="ID bản ghi Voice_Record nếu giao dịch xuất phát từ giọng nói")
 
     # Danh sách chi tiết hàng hóa (1-N Transaction_Detail)
     details: Optional[List[TransactionDetailCreate]] = Field(

@@ -15,125 +15,105 @@ class VectorStore:
         collection_name: str = "business_knowledge",
         persist_path: str = "app/ai/rag/chroma_db"
     ):
-
         self.knowledge_path = Path(knowledge_path)
 
         # ====================================================
         # EMBEDDING MODEL
         # ====================================================
-
         print("Loading embedding model...")
-
-        self.embedding_model = SentenceTransformer(
-            "BAAI/bge-m3"
-        )
-
+        self.embedding_model = SentenceTransformer("BAAI/bge-m3")
         print("Embedding model loaded.")
 
         # ====================================================
         # CHROMA
         # ====================================================
-
-        self.client = chromadb.PersistentClient(
-            path=persist_path
-        )
-
+        self.client = chromadb.PersistentClient(path=persist_path)
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
-            metadata={
-                "hnsw:space": "cosine"
-            }
+            metadata={"hnsw:space": "cosine"}
         )
 
-        print(
-            f"Vector store contains "
-            f"{self.collection.count()} chunks."
-        )
+        print(f"Vector store contains {self.collection.count()} chunks.")
 
         # ====================================================
         # AUTO INGEST IF EMPTY
         # ====================================================
-
         if self.collection.count() == 0:
-
-            print("Vector store is empty.")
-            print("Starting knowledge ingestion...")
-
+            print("Vector store is empty. Starting knowledge ingestion...")
             self.ingest()
-
         else:
-
-            print(
-                "Knowledge already exists. "
-                "Skip ingestion."
-            )
+            print("Knowledge already exists. Skip ingestion.")
 
     # ========================================================
     # LOAD MARKDOWN
     # ========================================================
-
     def load_documents(self) -> list[dict[str, Any]]:
-
         documents = []
-
         for file_path in self.knowledge_path.rglob("*.md"):
-
-            text = file_path.read_text(
-                encoding="utf-8"
-            )
-
+            text = file_path.read_text(encoding="utf-8")
             if not text.strip():
                 continue
-
             documents.append({
                 "text": text,
                 "source": str(file_path)
             })
-
         return documents
 
     # ========================================================
     # CHUNK
     # ========================================================
-
     def chunk_text(
         self,
         text: str,
-        chunk_size: int = 1000,
-        overlap: int = 200
+        chunk_size: int = 600,
+        overlap: int = 50
     ) -> list[str]:
+        # Ưu tiên tách theo dấu phân tách chunk rõ ràng '---' nếu có
+        if "\n---\n" in text:
+            raw_parts = [p.strip() for p in text.split("\n---\n") if p.strip()]
+            chunks = []
+            for part in raw_parts:
+                if len(part) <= chunk_size:
+                    chunks.append(part)
+                else:
+                    subparts = [sp.strip() for sp in part.split("\n\n") if sp.strip()]
+                    chunks.extend(subparts)
+            return chunks
 
+        # Tách theo section markdown hoặc đoạn văn
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         chunks = []
-
-        start = 0
-
-        while start < len(text):
-
-            end = start + chunk_size
-
-            chunk = text[start:end].strip()
-
-            if chunk:
-                chunks.append(chunk)
-
-            start += chunk_size - overlap
-
+        current_chunk = ""
+        for p in paragraphs:
+            if not current_chunk:
+                current_chunk = p
+            elif len(current_chunk) + len(p) + 2 <= chunk_size:
+                current_chunk += "\n\n" + p
+            else:
+                chunks.append(current_chunk)
+                current_chunk = p
+        if current_chunk:
+            chunks.append(current_chunk)
         return chunks
+
+    # ========================================================
+    # REINGEST
+    # ========================================================
+    def reingest(self):
+        """Xóa sạch collection và ingest lại từ đầu với tài liệu mới nhất."""
+        existing = self.collection.get()
+        if existing and existing.get("ids"):
+            self.collection.delete(ids=existing["ids"])
+            print(f"[*] Da xoa {len(existing['ids'])} chunks cu.")
+        self.ingest()
 
     # ========================================================
     # INGEST KNOWLEDGE
     # ========================================================
-
     def ingest(self):
-
         documents = self.load_documents()
-
         if not documents:
-
-            print(
-                "Không tìm thấy file knowledge."
-            )
-
+            print("Không tìm thấy file knowledge.")
             return
 
         ids = []
@@ -141,62 +121,30 @@ class VectorStore:
         metadatas = []
 
         for document in documents:
-
-            chunks = self.chunk_text(
-                document["text"]
-            )
-
+            chunks = self.chunk_text(document["text"])
             source = document["source"]
 
             for index, chunk in enumerate(chunks):
-
-                # Dùng path tương đối để ID ổn định
                 relative_source = str(
-                    Path(source).relative_to(
-                        self.knowledge_path
-                    )
+                    Path(source).relative_to(self.knowledge_path)
                 )
-
-                chunk_id = (
-                    f"{relative_source}_{index}"
-                )
-
+                chunk_id = f"{relative_source}_{index}"
                 ids.append(chunk_id)
-
                 texts.append(chunk)
-
                 metadatas.append({
                     "source": relative_source,
                     "chunk_index": index
                 })
 
         if not texts:
-
-            print(
-                "Không có chunk nào để ingest."
-            )
-
+            print("Không có chunk nào để ingest.")
             return
 
-        # ====================================================
-        # EMBEDDING
-        # ====================================================
-
-        print(
-            f"Creating embeddings for "
-            f"{len(texts)} chunks..."
-        )
-
+        print(f"Creating embeddings for {len(texts)} chunks...")
         embeddings = self.embedding_model.encode(
             texts,
             normalize_embeddings=True
-        )
-
-        embeddings = embeddings.tolist()
-
-        # ====================================================
-        # SAVE CHROMA
-        # ====================================================
+        ).tolist()
 
         self.collection.upsert(
             ids=ids,
@@ -204,95 +152,52 @@ class VectorStore:
             embeddings=embeddings,
             metadatas=metadatas
         )
-
-        print(
-            f"Đã ingest {len(texts)} chunks."
-        )
+        print(f"[*] Da ingest {len(texts)} chunks thanh cong.")
 
     # ========================================================
     # SEARCH
     # ========================================================
-
     def search(
         self,
         query: str,
-        top_k: int = 3
+        top_k: int = 2,
+        similarity_threshold: float = 0.40
     ) -> list[dict]:
-
         if not query or not query.strip():
-
             return []
-
-        # ====================================================
-        # CHECK VECTOR STORE
-        # ====================================================
 
         if self.collection.count() == 0:
-
-            print(
-                "Vector store is empty."
-            )
-
             return []
-
-        # ====================================================
-        # EMBEDDING QUERY
-        # ====================================================
 
         query_embedding = self.embedding_model.encode(
             query,
             normalize_embeddings=True
-        )
-
-        query_embedding = query_embedding.tolist()
-
-        # ====================================================
-        # VECTOR SEARCH
-        # ====================================================
+        ).tolist()
 
         results = self.collection.query(
             query_embeddings=[query_embedding],
-            n_results=min(
-                top_k,
-                self.collection.count()
-            ),
-            include=[
-                "documents",
-                "metadatas",
-                "distances"
-            ]
+            n_results=min(top_k, self.collection.count()),
+            include=["documents", "metadatas", "distances"]
         )
 
-        documents = results.get(
-            "documents",
-            [[]]
-        )[0]
-
-        metadatas = results.get(
-            "metadatas",
-            [[]]
-        )[0]
-
-        distances = results.get(
-            "distances",
-            [[]]
-        )[0]
+        documents = results.get("documents", [[]])[0]
+        metadatas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
 
         output = []
-
         for document, metadata, distance in zip(
-            documents,
-            metadatas,
-            distances
+            documents, metadatas, distances
         ):
+            score = 1 - distance
+            # Chỉ lấy các chunk vượt qua ngưỡng tin cậy tương đồng
+            if score < similarity_threshold:
+                continue
 
             output.append({
                 "text": document,
                 "source": metadata.get("source"),
-                "chunk_index": metadata.get(
-                    "chunk_index"
-                ),
-                "score": 1 - distance
+                "chunk_index": metadata.get("chunk_index"),
+                "score": score
             })
 
         return output
@@ -300,7 +205,5 @@ class VectorStore:
     # ========================================================
     # COUNT
     # ========================================================
-
     def count(self) -> int:
-
         return self.collection.count()

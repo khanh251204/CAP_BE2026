@@ -17,11 +17,16 @@ class LiveSummary(BaseModel):
     total_purchase: Decimal = Decimal("0.00")
     total_income: Decimal = Decimal("0.00")
     total_expense: Decimal = Decimal("0.00")
-    cogs: Decimal = Decimal("0.00")
     operating_expense: Decimal = Decimal("0.00")
+    purchase_cash_paid: Decimal = Decimal("0.00")
+    supplier_debt_paid: Decimal = Decimal("0.00")
+    total_cash_outflow: Decimal = Decimal("0.00")
+    cogs: Decimal = Decimal("0.00")
     total_receivable: Decimal = Decimal("0.00")
     total_payable: Decimal = Decimal("0.00")
+    gross_profit: Optional[Decimal] = Decimal("0.00")
     profit: Optional[Decimal] = Decimal("0.00")
+    cash_profit: Optional[Decimal] = Decimal("0.00")
 
 
 class LiveInventory(BaseModel):
@@ -33,6 +38,7 @@ class LiveInventory(BaseModel):
 
 class LiveReportResponse(BaseModel):
     period: PeriodInfo
+    business_type: Optional[str] = "RESELLER"
     summary: LiveSummary
     transaction_count: int = 0
     inventory: LiveInventory
@@ -44,16 +50,21 @@ class RevenueSummary(BaseModel):
 
 class PurchaseSummary(BaseModel):
     total: Decimal = Decimal("0.00")
+    cash_paid: Decimal = Decimal("0.00")
 
 
 class ExpenseSummary(BaseModel):
     total: Decimal = Decimal("0.00")
+    operating: Decimal = Decimal("0.00")
+    supplier_debt_paid: Decimal = Decimal("0.00")
 
 
 class ProfitSummary(BaseModel):
     total: Optional[Decimal] = Decimal("0.00")
+    gross_profit: Optional[Decimal] = Decimal("0.00")
     cogs: Optional[Decimal] = Decimal("0.00")
     operating_expense: Optional[Decimal] = Decimal("0.00")
+    cash_profit: Optional[Decimal] = Decimal("0.00")
 
 
 class DebtSummary(BaseModel):
@@ -63,6 +74,7 @@ class DebtSummary(BaseModel):
 
 class SummaryReportResponse(BaseModel):
     period: PeriodInfo
+    business_type: Optional[str] = "RESELLER"
     revenue: RevenueSummary
     purchase: PurchaseSummary
     expense: ExpenseSummary
@@ -70,12 +82,26 @@ class SummaryReportResponse(BaseModel):
     debt: DebtSummary
 
 
+class ProductSalesDetail(BaseModel):
+    product_id: Optional[int] = None
+    product_name: str
+    quantity_sold: Decimal = Decimal("0.00")
+    unit: Optional[str] = None
+    revenue: Decimal = Decimal("0.00")
+    cost_price: Decimal = Decimal("0.00")
+    cogs: Decimal = Decimal("0.00")
+    gross_profit: Decimal = Decimal("0.00")
+
+
 class SalesReportResponse(BaseModel):
     period: PeriodInfo
     total_sales: Decimal = Decimal("0.00")
+    cogs: Decimal = Decimal("0.00")
+    gross_profit: Decimal = Decimal("0.00")
     transaction_count: int = 0
     average_order_value: Decimal = Decimal("0.00")
     payment_status: Dict[str, Decimal] = Field(default_factory=dict)
+    products: List[ProductSalesDetail] = Field(default_factory=list)
 
 
 class SupplierBreakdown(BaseModel):

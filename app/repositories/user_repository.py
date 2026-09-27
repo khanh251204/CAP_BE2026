@@ -116,3 +116,44 @@ def link_google_account(
     db.flush()
 
     return user
+
+
+# UPDATE USER PROFILE
+def update_user_profile(
+    db: Session,
+    user: User,
+    *,
+    full_name: str | None = None,
+    phone_number: str | None = None,
+    region: str | None = None,
+    account_type: str | None = None,
+    store_name: str | None = None,
+    business_type: str | None = None,
+    province_code: str | None = None,
+    ward_code: str | None = None,
+    ward_name: str | None = None,
+    address_detail: str | None = None
+) -> User:
+    if full_name is not None:
+        user.full_name = full_name.strip()
+    if phone_number is not None:
+        user.phone_number = phone_number.strip() if phone_number else None
+    if region is not None:
+        user.region = region.strip() if region else None
+    if account_type is not None:
+        user.account_type = account_type.strip()
+    if store_name is not None:
+        user.store_name = store_name.strip() if store_name else None
+    if business_type is not None:
+        user.business_type = business_type.strip().upper() if business_type else None
+    if province_code is not None:
+        user.province_code = province_code.strip() if province_code else None
+    if ward_code is not None:
+        user.ward_code = ward_code.strip() if ward_code else None
+    if ward_name is not None:
+        user.ward_name = ward_name.strip() if ward_name else None
+    if address_detail is not None:
+        user.address_detail = address_detail.strip() if address_detail else None
+
+    db.flush()
+    return user

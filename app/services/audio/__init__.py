@@ -20,6 +20,7 @@ from app.services.audio.speaker_verification import (
     SpeakerNotVerifiedError
 )
 from app.services.audio.audio_pipeline import AudioPipeline
+from app.services.audio.hallucination import is_speech_hallucination
 
 __all__ = [
     "AudioDecoder",
@@ -36,4 +37,6 @@ __all__ = [
     "DummySpeakerVerifier",
     "SpeakerNotVerifiedError",
     "AudioPipeline",
+    "is_speech_hallucination",
 ]
+

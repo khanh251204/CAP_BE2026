@@ -26,11 +26,18 @@ class ManualInventoryTransactionSchema(BaseModel):
     note: Optional[str] = Field(None, description="Ghi chú xuất/nhập kho")
 
 
+class ProductTypeEnum(str, Enum):
+    RESALE = "RESALE"
+    RAW_MATERIAL = "RAW_MATERIAL"
+    FINISHED_GOOD = "FINISHED_GOOD"
+
+
 class ProductCreateSchema(BaseModel):
     product_name: str = Field(..., min_length=1, max_length=255, description="Tên sản phẩm")
     default_unit: str = Field(..., min_length=1, max_length=50, description="Đơn vị tính mặc định")
     unit_price: float = Field(..., gt=0, description="Đơn giá bán lẻ (phải > 0)")
     min_quantity: Optional[float] = Field(0.0, ge=0, description="Ngưỡng tồn kho tối thiểu (phải >= 0)")
+    product_type: Optional[ProductTypeEnum] = Field(ProductTypeEnum.RESALE, description="Loại sản phẩm: RESALE, RAW_MATERIAL, FINISHED_GOOD")
     img: Optional[str] = Field(None, description="Link hình ảnh sản phẩm")
 
 
@@ -39,6 +46,7 @@ class ProductUpdateStrictSchema(BaseModel):
     default_unit: Optional[str] = Field(None, min_length=1, max_length=50)
     unit_price: Optional[float] = Field(None, gt=0)
     min_quantity: Optional[float] = Field(None, ge=0)
+    product_type: Optional[ProductTypeEnum] = None
     is_active: Optional[bool] = None
     category_id: Optional[int] = None
     img: Optional[str] = None

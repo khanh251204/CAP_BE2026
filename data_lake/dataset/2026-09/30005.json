@@ -1,0 +1,13 @@
+{
+  "dataset_id": "DS-30005",
+  "voice_record_id": 30005,
+  "audio_source": "https://res.cloudinary.com/dc2tsiczp/video/upload/v1790427473/voice_cashbook/audio/p6mxw4hms0af98y4fhoy.m4a",
+  "transcript": "Bán 2 lớp sữa chua",
+  "intent": null,
+  "entities": {},
+  "confidence": null,
+  "user_correction": null,
+  "status": "SUCCESS",
+  "ingested_at": "2026-09-26T19:57:55.675875",
+  "data_classification": "RESEARCH_DATASET"
+}

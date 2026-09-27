@@ -1,0 +1,13 @@
+{
+  "dataset_id": "DS-30003",
+  "voice_record_id": 30003,
+  "audio_source": "https://res.cloudinary.com/dc2tsiczp/video/upload/v1790427071/voice_cashbook/audio/oix2tb0rd5tb8drtlg0b.wav",
+  "transcript": "Bán 2 lon nước ngọt",
+  "intent": "ban_hang",
+  "entities": {},
+  "confidence": null,
+  "user_correction": null,
+  "status": "SUCCESS",
+  "ingested_at": "2026-09-26T19:53:04.770523",
+  "data_classification": "RESEARCH_DATASET"
+}

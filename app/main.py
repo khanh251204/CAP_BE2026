@@ -1,172 +1,143 @@
-# pyrefly: ignore [missing-import]
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes.hello_route import router as hello_router
-# from app.routes.category_route import router as category_router
+from app.configs.database import auth_db, Base, engine
+from app.configs.migrations.migrate_voice_record import (
+    migrate_voice_record_schema,
+)
+from app.services.closing_scheduler import ClosingScheduler
+from app.services.data_lake_service import DataLakeService
 
-from app.configs.database import auth_db
-
-from app.routes.transaction_route import transaction_router
-# from app.routes.groq_route import router as groq_router
-
-
-from app.routes.category_route import router as category_router
+# Core routers
+from app.api.stt import router as stt_router
+from app.routes import inventory_route
 from app.routes.auth_route import router as auth_router
+from app.routes.closing_route import router as closing_router
+from app.routes.customer_route import customer_router
+from app.routes.debt_route import debt_router
+from app.routes.groq_route import router as groq_router
 from app.routes.notification_route import router as notification_router
 from app.routes.product_route import router as product_router
-
-from app.routes.groq_route import router as groq_router
-from app.api.stt import router as stt_router
-
-from app.routes.auth_route import router as auth_router
-from app.routes import inventory_route
-from app.routes.debt_route import debt_router
-from app.routes.customer_route import customer_router
-from app.routes.supplier_route import supplier_router
 from app.routes.report_route import router as report_router
-from app.routes.closing_route import router as closing_router
-from app.services.closing_scheduler import ClosingScheduler
-from app.configs.database import Base, engine
+from app.routes.supplier_route import supplier_router
+from app.routes.transaction_route import transaction_router
+
+# Admin routers
+from app.routes.admin_dashboard_route import router as admin_dashboard_router
+from app.routes.admin_dataset_route import router as admin_dataset_router
+from app.routes.admin_product_route import router as admin_product_router
+from app.routes.admin_transaction_route import router as admin_transaction_router
+from app.routes.admin_user_route import router as admin_user_router
+from app.routes.admin_voice_route import router as admin_voice_router
 
 
-app = FastAPI(
-    title="Expense Tracker API",
-    version="1.0.0"
-)
-
-# =====================================================
-# CẤU HÌNH CORS (BẮT BUỘC ĐỂ NHẬN COOKIE TỪ FRONTEND)
-# =====================================================
-# Khai báo các địa chỉ Frontend được phép gọi API
-origins = [
-    "http://localhost:3000",       # Dành cho React (Create React App)
-    "http://localhost:5173",       # Dành cho React (Vite)
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-    # Quan trọng: Nếu bạn đang test trên điện thoại hoặc máy khác trong mạng LAN, 
-    # hãy thêm IP của máy chạy Frontend vào đây. Ví dụ:
-    # "http://192.168.10.XX:3000",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,         # KHÔNG được dùng ["*"] ở đây
-    allow_credentials=True,        # Cho phép nhận Cookie/Token
-    allow_methods=["*"],           # Cho phép mọi method (GET, POST, PUT, DELETE, OPTIONS)
-    allow_headers=["*"],           # Cho phép mọi headers
-)
-# =====================================================
-
-# STARTUP
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     auth_db()
-    # Tự động tạo các bảng mới (closing_period, closing_transaction, closing_setting, closing_report)
+
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as e:
-        print(f"Table creation check: {e}")
-    # Khởi động background closing scheduler
+        print(f"[DB] Table creation check: {e}")
+
+    try:
+        migrate_voice_record_schema()
+    except Exception as e:
+        print(f"[DB] Voice_Record migration error: {e}")
+
     try:
         ClosingScheduler.start()
     except Exception as e:
-        print(f"ClosingScheduler start error: {e}")
+        print(f"[Scheduler] Start error: {e}")
 
+    try:
+        DataLakeService.init_storage()
+    except Exception as e:
+        print(f"[DataLake] Init error: {e}")
 
-# SHUTDOWN
-@app.on_event("shutdown")
-def shutdown():
+    yield
+
     try:
         ClosingScheduler.stop()
     except Exception:
         pass
 
-# ROUTERS
-app.include_router(
-    hello_router,
-    prefix="/api/v1"
+
+app = FastAPI(
+    title="Expense Tracker API",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
-# app.include_router(
-#     category_router,
-#     prefix="/api/v1"
-# )
 
-app.include_router(
+# =====================================================
+# CORS
+# =====================================================
+
+ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# =====================================================
+# CORE ROUTERS
+# =====================================================
+
+CORE_ROUTERS = [
     transaction_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     inventory_route.router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     notification_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     auth_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     product_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     groq_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     debt_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     customer_router,
-    prefix="/api/v1"
-)
-
-app.include_router(
     supplier_router,
-    prefix="/api/v1"
-)
-
-# Reporting Router (hỗ trợ cả /api/v1/reports và alias trực tiếp /reports, /ws/reports)
-app.include_router(
     report_router,
-    prefix="/api/v1"
-)
-app.include_router(
-    report_router
-)
-
-# Closing Router (hỗ trợ cả /api/v1/closing-* và alias trực tiếp /closing-*, /ws/closing)
-app.include_router(
     closing_router,
-    prefix="/api/v1"
-)
-app.include_router(
-    closing_router
-)
-
-# Speech-to-Text Router (hỗ trợ cả /api/v1/stt/groq và alias trực tiếp /stt/groq)
-app.include_router(
     stt_router,
-    prefix="/api/v1"
-)
-app.include_router(
-    stt_router
-)
+]
 
+
+# =====================================================
+# ADMIN ROUTERS
+# =====================================================
+
+ADMIN_ROUTERS = [
+    admin_dashboard_router,
+    admin_dataset_router,
+    admin_product_router,
+    admin_transaction_router,
+    admin_user_router,
+    admin_voice_router,
+]
+
+
+for router in CORE_ROUTERS:
+    app.include_router(router, prefix="/api/v1")
+
+
+for router in ADMIN_ROUTERS:
+    app.include_router(router, prefix="/api/v1")
+
+
+# =====================================================
 # ROOT
+# =====================================================
+
 @app.get("/")
 def root():
     return {

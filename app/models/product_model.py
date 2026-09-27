@@ -1,3 +1,4 @@
+from enum import Enum as PyEnum
 from sqlalchemy import (
     Column,
     Integer,
@@ -6,11 +7,18 @@ from sqlalchemy import (
     ForeignKey,
     Numeric,
     Boolean,
-    DateTime
+    DateTime,
+    Enum
 )
 
 from app.configs.database import Base
 from sqlalchemy.orm import relationship
+
+
+class ProductType(str, PyEnum):
+    RESALE = "RESALE"
+    RAW_MATERIAL = "RAW_MATERIAL"
+    FINISHED_GOOD = "FINISHED_GOOD"
 
 
 class Product(Base):
@@ -51,6 +59,12 @@ class Product(Base):
     min_quantity = Column(
         Numeric(15, 2),
         nullable=True
+    )
+
+    product_type = Column(
+        Enum("RESALE", "RAW_MATERIAL", "FINISHED_GOOD", name="product_type_enum"),
+        nullable=True,
+        default="RESALE"
     )
 
     is_active = Column(

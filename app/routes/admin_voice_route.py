@@ -1,0 +1,100 @@
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import FileResponse, RedirectResponse
+from sqlalchemy.orm import Session
+
+from app.configs.database import get_db
+from app.configs.jwt import authorize_roles
+from app.schemas.admin_voice_schema import (
+    AdminVoiceListResponse,
+    AdminVoiceDetailResponse,
+    AdminVoiceAiResultResponse
+)
+from app.services.admin_voice_service import AdminVoiceService
+
+router = APIRouter(
+    prefix="/admin/voice-processing",
+    tags=["Admin - Voice Processing History"],
+    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+)
+
+
+@router.get(
+    "",
+    response_model=AdminVoiceListResponse,
+    summary="Xem danh sách lịch sử xử lý voice",
+    description="Truy vấn danh sách lịch sử xử lý voice có phân trang, tìm kiếm transcript và bộ lọc theo người dùng, intent, status, độ tin cậy, thời gian."
+)
+def list_voice_processing(
+    page: int = Query(1, ge=1, description="Trang hiện tại (bắt đầu từ 1)"),
+    limit: int = Query(20, ge=1, le=100, description="Số lượng bản ghi trên một trang"),
+    search: Optional[str] = Query(None, description="Từ khóa tìm kiếm trong transcript"),
+    user_id: Optional[int] = Query(None, description="Lọc theo ID người dùng"),
+    intent: Optional[str] = Query(None, description="Lọc theo mã intent"),
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái xử lý: SUCCESS, FAILED, PROCESSING, REVIEW"),
+    confidence_min: Optional[float] = Query(None, ge=0.0, le=1.0, description="Độ tin cậy tối thiểu"),
+    confidence_max: Optional[float] = Query(None, ge=0.0, le=1.0, description="Độ tin cậy tối đa"),
+    from_date: Optional[datetime] = Query(None, alias="from", description="Thời điểm bắt đầu (ISO 8601)"),
+    to_date: Optional[datetime] = Query(None, alias="to", description="Thời điểm kết thúc (ISO 8601)"),
+    db: Session = Depends(get_db)
+):
+    return AdminVoiceService.list_voice_records(
+        db=db,
+        page=page,
+        limit=limit,
+        search=search,
+        user_id=user_id,
+        intent=intent,
+        status_filter=status,
+        confidence_min=confidence_min,
+        confidence_max=confidence_max,
+        from_date=from_date,
+        to_date=to_date
+    )
+
+
+@router.get(
+    "/{id}",
+    response_model=AdminVoiceDetailResponse,
+    summary="Xem chi tiết một bản ghi xử lý voice",
+    description="Truy xuất đầy đủ thông tin chi tiết của một bản ghi voice processing: thông tin người dùng, file ghi âm, kết quả AI (transcript, intent, entities, confidence), validation, transaction liên kết và processing logs."
+)
+def get_voice_processing_detail(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    return AdminVoiceService.get_voice_record_detail(db=db, voice_id=id)
+
+
+@router.get(
+    "/{id}/ai-result",
+    response_model=AdminVoiceAiResultResponse,
+    summary="Xem kết quả AI của bản ghi xử lý voice",
+    description="Xem kết quả AI đã xử lý từ một Voice Record: transcript, intent, entities, confidence thực tế, validation, user correction, transaction và processing metadata."
+)
+def get_voice_ai_result(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    return AdminVoiceService.get_voice_ai_result(db=db, voice_id=id)
+
+
+@router.get(
+    "/{id}/audio",
+    summary="Nghe/tải file âm thanh ghi âm",
+    description="Endpoint stream file âm thanh gốc bảo mật dành riêng cho Admin, không làm lộ đường dẫn hệ thống nội bộ."
+)
+def stream_voice_audio(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    file_path, media_type, filename = AdminVoiceService.get_audio_file_path(db=db, voice_id=id)
+    if media_type == "url":
+        return RedirectResponse(url=file_path, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=filename
+    )

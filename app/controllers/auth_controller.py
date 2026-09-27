@@ -4,6 +4,7 @@ from fastapi import (
     status
 )
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
 from app.configs.cookie import (
@@ -18,6 +19,8 @@ from app.schemas.auth_schema import (
     SendOTPRequest,
     VerifyOTPRequest,
     ResetPasswordRequest,
+    ChangePasswordRequest,
+    UpdateProfileRequest,
     GoogleLoginRequest
 )
 
@@ -26,6 +29,8 @@ from app.services.auth_service import (
     send_auth_otp,
     verify_auth_otp,
     reset_password,
+    change_user_password,
+    update_user_profile_service,
     login_user,
     google_login,
     refresh_access_token,
@@ -106,22 +111,31 @@ def verify_otp_controller(
 
     return result
 
-# RESET PASSWORD
+# RESET PASSWORD / FORGOT PASSWORD
 def reset_password_controller(
     request: ResetPasswordRequest,
-    response: Response,
-    db: Session
+    db: Session,
+    auth_header: str | None = None
 ):
-    result = reset_password(
+    if not request.resetToken and auth_header:
+        token = auth_header.strip()
+        if token.lower().startswith("bearer "):
+            token = token[7:].strip()
+        if token.lower() not in ("cookie", "undefined", "null"):
+            request.resetToken = token
+
+    return reset_password(
         db=db,
         data=request
     )
 
-    delete_auth_cookies(
-        response=response
-    )
 
-    return result
+
+
+# FORGOT PASSWORD (ALIAS)
+forgot_password_controller = reset_password_controller
+
+
 
 # LOGIN
 def login_controller(
@@ -224,4 +238,53 @@ def me_controller(
     return get_current_user(
         db=db,
         payload=payload
+    )
+
+
+# CHANGE PASSWORD
+def change_password_controller(
+    request: ChangePasswordRequest,
+    payload: dict,
+    response: Response,
+    db: Session
+):
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token không hợp lệ"
+        )
+
+    result = change_user_password(
+        db=db,
+        user_id=user_id,
+        data=request
+    )
+
+    delete_auth_cookies(
+        response=response
+    )
+
+    return result
+
+
+# UPDATE PROFILE
+def update_profile_controller(
+    request: UpdateProfileRequest,
+    payload: dict,
+    db: Session
+):
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token không hợp lệ"
+        )
+
+    return update_user_profile_service(
+        db=db,
+        user_id=user_id,
+        data=request
     )

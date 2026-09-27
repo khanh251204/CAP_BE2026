@@ -1,5 +1,5 @@
 import calendar
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from typing import Optional, Dict, Any
 from zoneinfo import ZoneInfo
 # pyrefly: ignore [missing-import]
@@ -16,12 +16,13 @@ class PeriodService:
     DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
 
     @classmethod
-    def get_tz(cls, tz_str: Optional[str] = None) -> ZoneInfo:
+    def get_tz(cls, tz_str: Optional[str] = None):
         tz_name = tz_str or cls.DEFAULT_TIMEZONE
         try:
             return ZoneInfo(tz_name)
         except Exception:
-            return ZoneInfo(cls.DEFAULT_TIMEZONE)
+            from datetime import timezone, timedelta
+            return timezone(timedelta(hours=7))
 
     @classmethod
     def get_now(cls, tz_str: Optional[str] = None) -> datetime:
@@ -57,7 +58,14 @@ class PeriodService:
         # Chuẩn hóa period_type nếu có
         p_type = period_type.upper() if period_type else None
 
-        # Nếu không có period_type nhưng có from_date / to_date
+        # 1. Nếu có cả from_date và to_date (hoặc period_type == "CUSTOM"): ưu tiên theo khoảng ngày
+        if (from_date and to_date) or p_type == "CUSTOM":
+            res = cls._resolve_custom_range(from_date, to_date, tz)
+            if p_type:
+                res["period_type"] = p_type
+            return res
+
+        # 2. Nếu không có period_type nhưng có from_date hoặc to_date lẻ
         if not p_type and (from_date or to_date):
             return cls._resolve_custom_range(from_date, to_date, tz)
 
@@ -68,18 +76,23 @@ class PeriodService:
 
         if p_type == "DAY":
             return cls._resolve_day(date_val, tz, now)
+        elif p_type == "WEEK":
+            d = cls._parse_date(date_val) if date_val else now.date()
+            monday = d - timedelta(days=d.weekday())
+            sunday = monday + timedelta(days=6)
+            res = cls._resolve_custom_range(monday, sunday, tz)
+            res["period_type"] = "WEEK"
+            return res
         elif p_type == "MONTH":
             return cls._resolve_month(year, month, tz, now)
         elif p_type == "QUARTER":
             return cls._resolve_quarter(year, quarter, tz, now)
         elif p_type == "YEAR":
             return cls._resolve_year(year, tz, now)
-        elif p_type == "CUSTOM":
-            return cls._resolve_custom_range(from_date, to_date, tz)
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Loại kỳ '{period_type}' không hợp lệ. Chỉ chấp nhận: DAY, MONTH, QUARTER, YEAR."
+                detail=f"Loại kỳ '{period_type}' không hợp lệ. Chỉ chấp nhận: DAY, WEEK, MONTH, QUARTER, YEAR, CUSTOM."
             )
 
     @classmethod
@@ -122,20 +135,16 @@ class PeriodService:
     @classmethod
     def _resolve_month(cls, year: Optional[int], month: Optional[int], tz: ZoneInfo, now: datetime) -> Dict[str, Any]:
         y = year or now.year
-        if month is None:
+        m = month or now.month
+        if not (1 <= m <= 12):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="period_type = MONTH bắt buộc phải truyền 'month'."
-            )
-        if not (1 <= month <= 12):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tháng '{month}' không hợp lệ. Tháng phải nằm trong khoảng 1 đến 12."
+                detail=f"Tháng '{m}' không hợp lệ. Tháng phải nằm trong khoảng 1 đến 12."
             )
 
-        last_day = calendar.monthrange(y, month)[1]
-        start_d = date(y, month, 1)
-        end_d = date(y, month, last_day)
+        last_day = calendar.monthrange(y, m)[1]
+        start_d = date(y, m, 1)
+        end_d = date(y, m, last_day)
         start_dt = datetime.combine(start_d, time.min)
         end_dt = datetime.combine(end_d, time.max)
 
@@ -146,22 +155,18 @@ class PeriodService:
             "start_datetime": start_dt,
             "end_datetime": end_dt,
             "year": y,
-            "month": month,
-            "quarter": (month - 1) // 3 + 1
+            "month": m,
+            "quarter": (m - 1) // 3 + 1
         }
 
     @classmethod
     def _resolve_quarter(cls, year: Optional[int], quarter: Optional[int], tz: ZoneInfo, now: datetime) -> Dict[str, Any]:
         y = year or now.year
-        if quarter is None:
+        q = quarter or ((now.month - 1) // 3 + 1)
+        if not (1 <= q <= 4):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="period_type = QUARTER bắt buộc phải truyền 'quarter'."
-            )
-        if not (1 <= quarter <= 4):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Quý '{quarter}' không hợp lệ. Quý phải từ 1 đến 4."
+                detail=f"Quý '{q}' không hợp lệ. Quý phải từ 1 đến 4."
             )
 
         quarter_map = {
@@ -171,7 +176,7 @@ class PeriodService:
             4: (date(y, 10, 1), date(y, 12, 31))
         }
 
-        start_d, end_d = quarter_map[quarter]
+        start_d, end_d = quarter_map[q]
         start_dt = datetime.combine(start_d, time.min)
         end_dt = datetime.combine(end_d, time.max)
 
@@ -182,7 +187,7 @@ class PeriodService:
             "start_datetime": start_dt,
             "end_datetime": end_dt,
             "year": y,
-            "quarter": quarter
+            "quarter": q
         }
 
     @classmethod

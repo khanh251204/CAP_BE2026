@@ -5,9 +5,13 @@ import asyncio
 import tempfile
 from typing import Optional
 
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+
+from app.configs.database import get_db
+from app.configs.jwt import get_current_user_id_optional
 
 from app.services.audio import (
     AudioPipeline,
@@ -18,6 +22,7 @@ from app.services.audio import (
     ALLOWED_EXTENSIONS
 )
 from app.services.groq_service import groq_service
+from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +32,16 @@ MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
 pipeline = AudioPipeline()
 
 
-@router.post("/stt/groq")
-async def stt_groq(file: UploadFile = File(...)):
+async def _run_stt_pipeline(
+    file: UploadFile,
+    transcribe_func,
+    service_name: str,
+    user_id: Optional[int] = None,
+    db: Optional[Session] = None
+):
     """
-    Endpoint nhận file âm thanh (.m4a, .wav, .mp3, .webm, .aac, .ogg),
-    chạy qua Audio Preprocessing Pipeline (FFmpeg Decode -> Denoise -> VAD -> Optional SV)
-    trước khi gửi sang Groq Whisper STT.
+    Quy trình tiền xử lý và chuyển giọng nói thành văn bản dùng chung:
+    UploadFile -> Temp File -> Audio Preprocessing Pipeline (FFmpeg Decode -> Denoise -> VAD -> Speaker Verification) -> Transcribe -> Cleanup
     """
     start_time = time.time()
     filename = file.filename or "audio.m4a"
@@ -75,7 +84,7 @@ async def stt_groq(file: UploadFile = File(...)):
             }
         )
 
-    logger.info(f"STT audio received: filename='{filename}', size={file_size} bytes")
+    logger.info(f"{service_name} STT audio received: filename='{filename}', size={file_size} bytes")
 
     # 2. Lưu file gốc tạm thời
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
@@ -86,7 +95,6 @@ async def stt_groq(file: UploadFile = File(...)):
 
     try:
         # 3. Chạy qua Audio Preprocessing Pipeline (Decode -> Denoise -> VAD -> Speaker Verification)
-        # Sử dụng asyncio.to_thread để không block event loop
         preprocess_start = time.time()
         processed_wav_path = await asyncio.to_thread(
             pipeline.process,
@@ -95,20 +103,64 @@ async def stt_groq(file: UploadFile = File(...)):
         preprocess_time = time.time() - preprocess_start
         logger.info(f"Audio preprocessing completed in {preprocess_time:.3f}s")
 
-        # 4. Gửi file WAV đã lọc sạch tới Groq Whisper
-        whisper_start = time.time()
+        # 4. Gửi file WAV đã lọc sạch tới Transcription Service
+        stt_start = time.time()
         transcribed_text = await asyncio.to_thread(
-            groq_service.transcribe,
+            transcribe_func,
             processed_wav_path
         )
-        whisper_latency = time.time() - whisper_start
+        stt_latency = time.time() - stt_start
         total_time = time.time() - start_time
-        logger.info(f"Groq transcription completed in {whisper_latency:.3f}s. Total pipeline time: {total_time:.3f}s")
+        logger.info(f"{service_name} transcription completed in {stt_latency:.3f}s. Total pipeline time: {total_time:.3f}s")
+
+        # 5. Phân tích LLM trích xuất Intent và Thực thể
+        llm_output: Optional[dict] = None
+        extracted_intent: Optional[str] = None
+        if transcribed_text:
+            try:
+                llm_output = await asyncio.to_thread(groq_service.analyze_transaction, transcribed_text)
+                if isinstance(llm_output, dict):
+                    extracted_intent = llm_output.get("intent")
+            except Exception as le:
+                logger.warning(f"Lỗi khi phân tích LLM cho transcript: {le}")
+
+        # 6. Upload Cloudinary và tạo Voice_Record trong cơ sở dữ liệu (theo erd_new.md, trừ confidence)
+        audio_url: Optional[str] = None
+        voice_id: Optional[int] = None
+        try:
+            from app.services.cloudinary_service import upload_voice_audio
+            c_res = await asyncio.to_thread(upload_voice_audio, content, filename)
+            audio_url = c_res.get("secure_url") or c_res.get("url")
+        except Exception as ce:
+            logger.warning(f"Lỗi khi upload Cloudinary cho STT: {ce}")
+
+        if db is not None:
+            try:
+                from app.services.voice_record_service import create_voice_record
+                total_time = time.time() - start_time
+                record = create_voice_record(
+                    db=db,
+                    user_id=user_id,
+                    audio_url=audio_url,
+                    transcript=transcribed_text,
+                    intent=extracted_intent,
+                    llm_output=llm_output,
+                    confidence=None,
+                    processing_time=round(total_time, 3),
+                    status="SUCCESS"
+                )
+                voice_id = record.voice_id
+            except Exception as dbe:
+                logger.warning(f"Lỗi khi lưu Voice_Record: {dbe}")
 
         return {
             "success": True,
             "code": "STT_SUCCESS",
-            "text": transcribed_text
+            "text": transcribed_text,
+            "voice_id": voice_id,
+            "audio_url": audio_url,
+            "intent": extracted_intent,
+            "llm_output": llm_output
         }
 
     except NoSpeechError:
@@ -156,7 +208,7 @@ async def stt_groq(file: UploadFile = File(...)):
         )
 
     except Exception as e:
-        logger.error(f"Lỗi không xác định khi xử lý STT: {e}", exc_info=True)
+        logger.error(f"Lỗi không xác định khi xử lý {service_name} STT: {e}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
@@ -179,3 +231,31 @@ async def stt_groq(file: UploadFile = File(...)):
                 os.remove(processed_wav_path)
             except Exception as e:
                 logger.warning(f"Lỗi khi xóa file tạm WAV sau xử lý {processed_wav_path}: {e}")
+
+
+@router.post("/stt/groq")
+async def stt_groq(
+    file: UploadFile = File(...),
+    user_id: Optional[int] = Depends(get_current_user_id_optional),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint nhận file âm thanh (.m4a, .wav, .mp3, .webm, .aac, .ogg),
+    chạy qua Audio Preprocessing Pipeline (FFmpeg Decode -> Denoise -> VAD -> Optional SV)
+    trước khi gửi sang Groq Whisper STT, tự động upload Cloudinary và lưu Voice_Record.
+    """
+    return await _run_stt_pipeline(file, groq_service.transcribe, "Groq Whisper", user_id=user_id, db=db)
+
+
+@router.post("/stt/gemini")
+async def stt_gemini(
+    file: UploadFile = File(...),
+    user_id: Optional[int] = Depends(get_current_user_id_optional),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint nhận file âm thanh (.m4a, .wav, .mp3, .webm, .aac, .ogg),
+    chạy qua Audio Preprocessing Pipeline (FFmpeg Decode -> Denoise -> VAD -> Optional SV)
+    trước khi gửi sang Gemini STT, tự động upload Cloudinary và lưu Voice_Record.
+    """
+    return await _run_stt_pipeline(file, gemini_service.transcribe, "Gemini", user_id=user_id, db=db)

@@ -39,7 +39,7 @@ _bao_cao = BaoCaoHandler()
 HANDLERS = {
     "mua_hang": _mua_hang,
     "nhap_hang": _nhap_hang,
-    "nhap_kho": _nhap_kho,
+    "nhap_kho": _mua_hang,
     "xuat_kho": _xuat_kho,
     "ban_hang": _ban_hang,
     "khach_ghi_no": _khach_ghi_no,
@@ -78,7 +78,8 @@ class IntentRouter:
         intent: str,
         user_id: int,
         entities: dict[str, Any],
-        text: str
+        text: str,
+        business_type: str | None = None
     ) -> dict:
         handler = IntentRouter.get_handler(intent)
         if not handler:
@@ -88,12 +89,19 @@ class IntentRouter:
                 "intent": intent,
                 "message": f"Intent chưa được hỗ trợ: {intent}"
             }
-        return await handler.handle(
-            user_id=user_id,
-            entities=entities,
-            text=text,
-            intent=intent
-        )
+
+        import inspect
+        sig = inspect.signature(handler.handle)
+        kwargs = {
+            "user_id": user_id,
+            "entities": entities,
+            "text": text,
+            "intent": intent
+        }
+        if "business_type" in sig.parameters:
+            kwargs["business_type"] = business_type
+
+        return await handler.handle(**kwargs)
 
 
 # ============================================================

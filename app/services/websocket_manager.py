@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Dict, Set, Any, Optional
 # pyrefly: ignore [missing-import]
 from fastapi import WebSocket
+# pyrefly: ignore [missing-import]
 from starlette.websockets import WebSocketState
 from app.configs.jwt import decode_access_token
 

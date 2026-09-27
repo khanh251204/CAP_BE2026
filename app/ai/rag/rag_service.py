@@ -1,74 +1,67 @@
 # app/ai/rag/rag_service.py
 
+from typing import Optional, Dict, Tuple, List, Any
 from app.ai.rag.vector_store import VectorStore
+from app.ai.rag.normalization_service import NormalizationService
 
 
 class RAGService:
 
     def __init__(
         self,
-        vector_store: VectorStore
+        vector_store: VectorStore,
+        normalization_service: Optional[NormalizationService] = None
     ):
         self.vector_store = vector_store
+        self.normalizer = normalization_service or NormalizationService(vector_store=vector_store)
 
     # ========================================================
-    # SEARCH KNOWLEDGE
+    # NORMALIZATION LAYER (NEW ARCHITECTURE)
     # ========================================================
+    def retrieve_normalization_candidates(self, text: str) -> Dict[str, str]:
+        """Trích xuất mapping từ vựng/đơn vị/phương ngữ cho câu nói."""
+        return self.normalizer.retrieve_normalization_candidates(text)
 
+    def normalize(self, text: str) -> Tuple[str, Dict[str, str]]:
+        """
+        Chuẩn hóa câu văn bản trước khi đưa vào LLM:
+        Ví dụ: 'Bữa ni tui bán 5 cân cam' -> ('Hôm nay tôi bán 5 kg cam', {'bữa ni': 'hôm nay', 'tui': 'tôi', 'cân': 'kg'})
+        """
+        return self.normalizer.normalize(text)
+
+    # ========================================================
+    # SEARCH KNOWLEDGE (LEGACY COMPATIBILITY)
+    # ========================================================
     def search(
         self,
         query: str,
-        top_k: int = 3
+        top_k: int = 2,
+        similarity_threshold: float = 0.40
     ) -> list[dict]:
-
-        results = self.vector_store.search(
+        return self.vector_store.search(
             query=query,
-            top_k=top_k
+            top_k=top_k,
+            similarity_threshold=similarity_threshold
         )
 
-        return results
-
     # ========================================================
-    # BUILD CONTEXT FOR LLM
+    # BUILD CONTEXT FOR LLM (LEGACY COMPATIBILITY)
     # ========================================================
-
     def build_context(
-            self,
-            query: str,
-            top_k: int = 3
-        ) -> str:
+        self,
+        query: str,
+        top_k: int = 2,
+        similarity_threshold: float = 0.40
+    ) -> str:
+        results = self.search(
+            query=query,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold
+        )
 
-            results = self.search(
-                query=query,
-                top_k=top_k
-            )
+        if not results:
+            return ""
 
-            # print("\n========== RAG DEBUG ==========")
-            # print("QUERY:", query)
-            # print("RESULTS:", results)
-            # print("RESULT COUNT:", len(results))
-            # print("================================\n")
-
-            if not results:
-                return ""
-
-            context_parts = []
-
-            for index, result in enumerate(results, start=1):
-
-                context_parts.append(
-                    f"""
-        [Knowledge {index}]
-        Source: {result["source"]}
-
-        {result["text"]}
-        """
-                )
-
-            context = "\n".join(context_parts)
-
-            # print("========== RAG CONTEXT ==========")
-            # print(context)
-            # print("=================================\n")
-
-            return context
+        # Format context cực kỳ tinh gọn, không header rườm rà
+        context_parts = [r["text"].strip() for r in results if r.get("text")]
+        return "\n---\n".join(context_parts)

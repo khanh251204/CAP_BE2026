@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from groq import Groq
 
 from app.ai.prompts.main import get_system_prompt
+from app.services.audio.hallucination import is_speech_hallucination
+
 
 
 load_dotenv()
@@ -80,11 +82,18 @@ class GroqService:
 
                     language="vi",
 
+                    prompt="Giao dịch bán hàng, mua hàng, nhập kho, xuất kho, kiểm kho, ghi nợ, chi tiền, giá tiền, số lượng sản phẩm.",
+
                     temperature=0.0
                 )
             )
 
-        return transcription.text.strip()
+        text = transcription.text.strip()
+        if is_speech_hallucination(text):
+            return ""
+
+        return text
+
 
     
     
@@ -111,38 +120,13 @@ class GroqService:
         system_prompt = get_system_prompt()
 
         # ========================================================
-        # USER PROMPT & EXTRA GUIDANCE FOR KIỂM KHO / PRODUCTS
+        # USER PROMPT
         # ========================================================
 
-        intent_guidance = """
-        HƯỚNG DẪN BỔ SUNG CHO INTENT VÀ ENTITY:
-        - Nếu người dùng muốn kiểm tra tồn kho, xem hàng tồn (ví dụ: "kiểm kho", "check kho", "mặt hàng X còn không"), hãy gán intent là "kiem_kho".
-        - Bắt buộc trích xuất tên sản phẩm/mặt hàng vào entity có key là "product".
-        """
-
-        user_prompt = f"""
-        {intent_guidance.strip()}
-
-        USER INPUT:
-        {text}
-        """
+        user_prompt = f"USER INPUT:\n{text.strip()}"
 
         if knowledge and knowledge.strip():
-            user_prompt += f"""
-
-        RELEVANT KNOWLEDGE:
-        {knowledge}
-
-        Use the retrieved knowledge above when interpreting
-        Vietnamese dialects, slang, units, currency and
-        product packaging.
-
-        If a dialect/slang expression appears in the user input,
-        normalize it according to the retrieved knowledge.
-
-        Do not invent information that is not present
-        in the retrieved knowledge.
-        """
+            user_prompt += f"\n\nRELEVANT KNOWLEDGE:\n{knowledge.strip()}\n(Áp dụng kiến thức trên để chuẩn hóa từ lóng, phương ngữ hoặc quy cách đóng gói nếu có trong câu nói)."
 
         # ========================================================
         # CALL GROQ

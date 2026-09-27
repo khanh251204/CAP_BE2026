@@ -74,6 +74,7 @@ def get_products_with_stock(db: Session, user_id: int):
             "user_id": product.user_id,
             "name": product.product_name,
             "default_unit": product.default_unit,
+            "product_type": getattr(product, "product_type", "RESALE"),
             "unit_price": float(product.unit_price) if product.unit_price else 0.0,
             "min_quantity": float(product.min_quantity) if product.min_quantity else 0.0,
             "is_active": product.is_active,
@@ -100,7 +101,8 @@ def create_product(
     user_id: int,
     product_name: str,
     unit: str | None,
-    price: float
+    price: float,
+    product_type: str | None = "RESALE"
 ):
     now = datetime.now()
     product = Product(
@@ -108,6 +110,7 @@ def create_product(
         product_name=product_name,
         default_unit=unit,
         unit_price=str(price),
+        product_type=product_type or "RESALE",
         is_active=True,
         created_at=now,
         updated_at=now
@@ -183,6 +186,9 @@ def update_product(db: Session, product: Product, data: dict):
 
     if "is_active" in data and data["is_active"] is not None:
         product.is_active = data["is_active"]
+
+    if "product_type" in data and data["product_type"] is not None:
+        product.product_type = str(data["product_type"])
 
     if "category_id" in data:
         product.category_id = data["category_id"]

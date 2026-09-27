@@ -20,7 +20,8 @@ class ThemSanPhamHandler:
         user_id: int,
         entities: dict[str, Any],
         text: str,
-        intent: str = "them_san_pham"
+        intent: str = "them_san_pham",
+        business_type: str | None = None
     ) -> dict:
         val_result = validate(entities)
         if not val_result["success"]:
@@ -69,6 +70,12 @@ class ThemSanPhamHandler:
             }
 
         payload = build_payload(entities=entities, text=text)
+        if business_type:
+            bt_upper = str(business_type).strip().upper()
+            if bt_upper == "PRODUCER":
+                payload["product_type"] = "FINISHED_GOOD"
+            elif bt_upper == "RESELLER":
+                payload["product_type"] = "RESALE"
 
         return {
             "success": True,

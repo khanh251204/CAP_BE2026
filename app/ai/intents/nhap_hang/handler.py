@@ -3,6 +3,7 @@ from typing import Any
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
 from app.configs.database import get_db_session
 from app.models.supplier_model import Supplier
+from app.models.user_model import User
 from .validator import validate
 from .payload import build_payload
 
@@ -23,7 +24,8 @@ class NhapHangHandler:
         user_id: int,
         entities: dict[str, Any],
         text: str,
-        intent: str = "nhap_hang"
+        intent: str = "nhap_hang",
+        business_type: str | None = None
     ) -> dict:
         # 1. Validate
         val_result = validate(entities)
@@ -51,20 +53,49 @@ class NhapHangHandler:
             return result
 
         products = result.get("products", [])
-        if not products:
-            return {
-                "success": False,
-                "status": "product_not_found",
-                "intent": intent,
-                "product_name": product_name,
-                "message": f"Không tìm thấy sản phẩm '{product_name}' trong danh sách. Vui lòng tạo sản phẩm trước khi nhập hàng."
-            }
+        product = products[0] if products else None
 
-        product = products[0]
+        if not product:
+            # Kiểm tra mô hình kinh doanh của User (ưu tiên trực tiếp từ JWT business_type)
+            is_producer = False
+            if business_type:
+                is_producer = (str(business_type).strip().upper() == "PRODUCER")
+            else:
+                db = get_db_session()
+                try:
+                    user_obj = db.query(User).filter(User.user_id == user_id).first()
+                    raw_bt = getattr(user_obj, "business_type", "") or ""
+                    is_producer = (str(raw_bt).strip().upper() == "PRODUCER")
+                finally:
+                    db.close()
+
+            if is_producer:
+                # PRODUCER được phép mua/nhập nguyên liệu mới tự động
+                product = {
+                    "product_id": None,
+                    "product_name": product_name,
+                    "default_unit": entities.get("unit") or "",
+                    "unit_price": entities.get("price") or entities.get("unit_price") or 0.0,
+                    "is_new_raw_material": True
+                }
+            else:
+                return {
+                    "success": False,
+                    "status": "product_not_found",
+                    "intent": intent,
+                    "product_name": product_name,
+                    "message": f"Không tìm thấy sản phẩm '{product_name}' trong danh sách. Vui lòng tạo sản phẩm trước khi nhập hàng."
+                }
 
         # 3. Build payload cơ bản
         payload = build_payload(entities=entities, text=text)
-        payload["product_id"] = product["product_id"]
+        if product.get("product_id"):
+            payload["product_id"] = product["product_id"]
+        else:
+            payload["product_name"] = product["product_name"]
+
+        if not payload.get("unit") and product.get("default_unit"):
+            payload["unit"] = product["default_unit"]
 
         # 4. Trích xuất / tìm kiếm Nhà cung cấp - Không tự tạo mới
         supplier_name = (
@@ -200,6 +231,8 @@ class NhapHangHandler:
 
         supplier_info = f" từ nhà cung cấp '{supplier_name}'" if supplier_name else ""
 
+        raw_mat_label = " nguyên liệu mới" if product.get("is_new_raw_material") else ""
+
         return {
             "success": True,
             "status": "waiting_confirmation",
@@ -209,8 +242,8 @@ class NhapHangHandler:
             "message": (
                 f"Bạn có chắc muốn nhập "
                 f"{payload['quantity']} "
-                f"{payload['unit']} "
-                f"{product['product_name']}"
+                f"{payload.get('unit') or ''}"
+                f"{raw_mat_label} '{product['product_name']}'"
                 f"{supplier_info}"
                 f"{' với giá ' + price_text if price_text else ''}"
                 f"{debt_info} không?"

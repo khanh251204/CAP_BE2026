@@ -58,6 +58,40 @@ class TransactionController:
                 groq_result=groq_result_dict
             )
 
+        # Tự động liên kết Voice_Record nếu request có voice_id hoặc tự khớp bản ghi voice gần nhất
+        tx_id = result.get("transaction_id") if isinstance(result, dict) else getattr(result, "transaction_id", None)
+        voice_id = getattr(request, "voice_id", None)
+        if tx_id:
+            try:
+                from app.services.voice_record_service import link_voice_record_to_transaction
+                from app.models.voice_record_model import VoiceRecord
+                from app.models.transaction_model import Transaction
+                from datetime import datetime, timedelta
+
+                if not voice_id and user_id:
+                    cutoff = datetime.now() - timedelta(minutes=15)
+                    recent_voice = db.query(VoiceRecord).filter(
+                        VoiceRecord.user_id == user_id,
+                        VoiceRecord.transaction_id.is_(None),
+                        VoiceRecord.created_at >= cutoff
+                    ).order_by(VoiceRecord.created_at.desc()).first()
+                    if recent_voice:
+                        voice_id = recent_voice.voice_id
+
+                if voice_id:
+                    link_voice_record_to_transaction(
+                        db=db,
+                        voice_id=voice_id,
+                        transaction_id=tx_id,
+                        user_id=user_id
+                    )
+                    tx_obj = db.query(Transaction).filter(Transaction.transaction_id == tx_id).first()
+                    if tx_obj and tx_obj.input_method != "VOICE":
+                        tx_obj.input_method = "VOICE"
+                        db.commit()
+            except Exception:
+                pass
+
         # Kích hoạt sự kiện WebSocket realtime thông báo Dashboard & Report
         try:
             from app.services.websocket_manager import trigger_report_update

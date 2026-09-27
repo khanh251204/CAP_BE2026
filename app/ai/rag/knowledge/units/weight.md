@@ -1,64 +1,37 @@
-# Quy tắc đơn vị khối lượng
+# Domain Knowledge: Đơn vị khối lượng (Weight Units)
 
-## Đơn vị chuẩn
+## Bảng chuẩn hóa đơn vị khối lượng
+- "ký", "kí", "cân", "kí lô", "kg" -> chuẩn hóa thành: "kg".
+- "lạng": 1 lạng = 100g (ví dụ: 15 lạng -> quantity = 15, unit = "100g").
+- "gram", "gam", "g" -> chuẩn hóa thành: "g".
+- "yến": 1 yến = 10 kg.
+- "tạ": 1 tạ = 100 kg.
+- "tấn": 1 tấn = 1.000 kg.
 
-| Đơn vị | Quy đổi |
-|---|---:|
-| 1 gam (g) | 1 g |
-| 1 kg | 1.000 g |
-| 1 yến | 10 kg |
-| 1 tạ | 100 kg |
-| 1 tấn | 1.000 kg |
+---
 
-## Cách nói thường gặp
+## INTENT: nhap_hang (Ví dụ mua nguyên liệu có đơn vị khối lượng và đơn giá)
 
-| Cách nói | Chuẩn hóa |
-|---|---|
-| ký | kg |
-| kí | kg |
-| cân | kg |
-| ký lô | kg |
-| lạng | 100 g |
-| gram | g |
-| gam | g |
-| tạ | tạ |
-| yến | yến |
-| tấn | tấn |
+Example:
+"Nhập thêm 80 kg nước cốt dừa giá 1tr một ký"
 
-## Ví dụ
+Expected extraction:
+intent = "nhap_hang"
+product = "nước cốt dừa"
+quantity = 80
+unit = "kg"
+price = 1000000
 
-"5 ký gạo"
-→ quantity = 5
-→ unit = kg
+---
 
-"2 lạng thịt"
-→ quantity = 2
-→ unit = 100g
+## INTENT: nhap_hang (Ví dụ đơn vị lạng)
 
-"3 tấn gạo"
-→ quantity = 3
-→ unit = tấn
+Example:
+"Mua 15 lạng cúc áo của bác Hai"
 
-"500 gram đường"
-→ quantity = 500
-→ unit = g
-
-## Quy đổi
-
-1 kg = 10 lạng
-
-1 tạ = 100 kg
-
-1 tấn = 1.000 kg
-
-## Lưu ý
-
-Không được tự động chuyển đổi đơn vị nếu người dùng không nói rõ đơn vị.
-
-Ví dụ:
-
-"bán 5 gạo"
-→ quantity = 5
-→ unit = unknown
-
-Không được tự suy đoán thành 5 kg.
+Expected extraction:
+intent = "nhap_hang"
+product = "cúc áo"
+quantity = 15
+unit = "100g"
+supplier = "bác Hai"

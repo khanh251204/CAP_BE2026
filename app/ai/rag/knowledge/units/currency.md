@@ -1,51 +1,35 @@
-## Cách nói giá có hậu tố "k"
+# Domain Knowledge: Tiền tệ và Quy đổi Giá trị (Currency & Price)
 
-"K" hoặc "k" sau một số nghĩa là nghìn đồng.
+## Bảng quy đổi tiền tệ tiếng Việt thông dụng
+- "k", "K", "nghìn", "ngàn": 1k = 1.000 VNĐ (ví dụ: 25k = 25000, 50 nghìn = 50000, 100 ngàn = 100000).
+- "tr", "triệu", "chai": 1tr = 1.000.000 VNĐ (ví dụ: 1tr = 1000000, 2 triệu = 2000000, 1 triệu 500 = 1500000).
+- "lít", "loét": 1 lít = 100.000 VNĐ (ví dụ: 3 lít = 300000).
+- "củ": 1 củ = 1.000.000 VNĐ.
 
-| Cách nói | Giá trị |
-|---|---:|
-| 1k | 1.000 VNĐ |
-| 2k | 2.000 VNĐ |
-| 5k | 5.000 VNĐ |
-| 10k | 10.000 VNĐ |
-| 28k | 28.000 VNĐ |
-| 50k | 50.000 VNĐ |
-| 100k | 100.000 VNĐ |
+---
 
-Ví dụ:
+## INTENT: chi_phi (Ví dụ chi phí vận hành có số tiền)
 
-"nhập 3 lốc sữa chua giá 28k"
+Example:
+"Chi tiền phí dịch vụ hết 300k"
 
-→ quantity = 3
-→ unit = "lốc"
-→ product = "sữa chua"
-→ price = 28.000
+Expected extraction:
+intent = "chi_phi"
+price = 300000
+product = null
+quantity = null
+unit = null
 
-"bán 5 chai nước 12k"
+---
 
-→ quantity = 5
-→ unit = "chai"
-→ product = "nước"
-→ price = 12.000
+## INTENT: ban_hang (Ví dụ tính đơn giá từ tổng tiền)
 
-"nhập 10 hộp giá 15 nghìn"
+Example:
+"Bán 50 hộp bánh hết 700k"
 
-→ quantity = 10
-→ unit = "hộp"
-→ price = 15.000
-
-## Quy tắc extract giá
-
-Khi câu nói chứa số + "k", "K", "nghìn", "ngàn":
-
-→ phải chuẩn hóa thành số tiền VNĐ.
-
-Ví dụ:
-
-28k → 28000
-28K → 28000
-28 nghìn → 28000
-28 ngàn → 28000
-
-Không trả về "28k" trong price.
-Không trả về null nếu giá có thể xác định rõ.
+Expected extraction:
+intent = "ban_hang"
+product = "bánh"
+quantity = 50
+unit = "hộp"
+price = 14000

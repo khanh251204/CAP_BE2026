@@ -54,9 +54,11 @@ transaction_agent = TransactionAgent(
 # STT
 # ============================================================
 
-from app.api.stt import stt_groq
-router.add_api_route("/stt/groq", stt_groq, methods=["POST"], tags=["Speech to Text"])
+from app.api.stt import stt_groq, stt_gemini
+from app.services.gemini_service import gemini_service, gemini_transcribe
 
+router.add_api_route("/stt/groq", stt_groq, methods=["POST"], tags=["Speech to Text"])
+# router.add_api_route("/stt/groq", stt_gemini, methods=["POST"], tags=["Speech to Text"])
 
 # ============================================================
 # ANALYZE - TEST LLM
@@ -98,6 +100,23 @@ async def voice_transaction(
             text=request.text
         )
 
+        if request.voice_id:
+            try:
+                from app.models.voice_record_model import VoiceRecord
+                from app.configs.database import SessionLocal
+                with SessionLocal() as db_session:
+                    v_rec = db_session.query(VoiceRecord).filter(VoiceRecord.voice_id == request.voice_id).first()
+                    if v_rec:
+                        v_rec.intent = result.get("intent")
+                        v_rec.llm_output = result.get("analysis")
+                        if not v_rec.user_id:
+                            v_rec.user_id = current_user_id
+                        db_session.commit()
+            except Exception:
+                pass
+            if current_user_id in pending_confirmations:
+                pending_confirmations[current_user_id]["voice_id"] = request.voice_id
+
         return result
 
     except Exception as e:
@@ -138,133 +157,35 @@ async def confirm_action(
     intent = pending["intent"]
     payload = pending["payload"]
 
-    # ========================================================
-    # THÊM SẢN PHẨM
-    # ========================================================
-
     if intent == "them_san_pham":
-
-        result = ProductController.create_product(
-            data=payload,
-            user_id=current_user_id,
-            db=db
-        )
-
-    # ========================================================
-    # SỬA SẢN PHẨM
-    # ========================================================
-
+        result = ProductController.create_product(data=payload, user_id=current_user_id, db=db)
     elif intent == "sua_san_pham":
-
-        result = ProductController.update_product(
-            product_id=payload["product_id"],
-            data=payload["data"],
-            user_id=current_user_id,
-            db=db
-        )
-
-    # ========================================================
-    # XÓA SẢN PHẨM
-    # ========================================================
-
+        result = ProductController.update_product(product_id=payload["product_id"], data=payload["data"], user_id=current_user_id, db=db)
     elif intent == "xoa_san_pham":
-
-        result = ProductController.delete_product(
-            product_id=payload["product_id"],
-            user_id=current_user_id,
-            db=db
-        )
-
-    # ========================================================
-    # BÁN HÀNG
-    # ========================================================
-
+        result = ProductController.delete_product(product_id=payload["product_id"], user_id=current_user_id, db=db)
     elif intent == "ban_hang":
-
-        result = await call_mcp_tool(
-            "export_inventory",
-            {
-                "payload": payload,
-                "user_id": current_user_id
-            }
-        )
-
-        result = normalize_mcp_result(result)
-
-    # ========================================================
-    # MUA HÀNG / NHẬP HÀNG
-    # ========================================================
-
+        res = await call_mcp_tool("export_inventory", {"payload": payload, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
     elif intent in ("mua_hang", "nhap_hang"):
-
-        result = await call_mcp_tool(
-            "import_inventory",
-            {
-                "payload": payload,
-                "user_id": current_user_id
-            }
-        )
-
-        result = normalize_mcp_result(result)
-
-    # ========================================================
-    # NHẬP KHO
-    # ========================================================
-
+        res = await call_mcp_tool("import_inventory", {"payload": payload, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
     elif intent == "nhap_kho":
-
-        result = await call_mcp_tool(
-            "nhap_kho",
-            {
-                "payload": payload,
-                "user_id": current_user_id
-            }
-        )
-
-        result = normalize_mcp_result(result)
-
-    # ========================================================
-    # XUẤT KHO
-    # ========================================================
-
+        res = await call_mcp_tool("nhap_kho", {"payload": payload, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
     elif intent == "xuat_kho":
-
-        result = await call_mcp_tool(
-            "xuat_kho",
-            {
-                "payload": payload,
-                "user_id": current_user_id
-            }
-        )
-
-        result = normalize_mcp_result(result)
-
-    # ========================================================
-    # GHI NỢ KHÁCH HÀNG
-    # ========================================================
-
+        res = await call_mcp_tool("xuat_kho", {"payload": payload, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
     elif intent in ("ghi_no_khach_hang", "khach_ghi_no"):
-
-        result = await call_mcp_tool(
-            "ghi_no_khach_hang",
-            {
-                "input": {
-                    "customer_id": payload["customer_id"],
-                    "original_amount": payload["original_amount"],
-                    "transaction_id": payload.get("transaction_id"),
-                },
-                "user_id": current_user_id
-            }
-        )
-
-        result = normalize_mcp_result(result)
-
-    # ========================================================
-    # THU NỢ KHÁCH HÀNG
-    # ========================================================
-
+        res = await call_mcp_tool("ghi_no_khach_hang", {
+            "input": {
+                "customer_id": payload["customer_id"],
+                "original_amount": payload["original_amount"],
+                "transaction_id": payload.get("transaction_id"),
+            },
+            "user_id": current_user_id
+        })
+        result = normalize_mcp_result(res)
     elif intent in ("thu_no_khach_hang", "thu_no_khach"):
-
         input_data = {
             "account_id": payload.get("account_id") or 1,
             "amount": payload.get("amount") or payload.get("original_amount"),
@@ -273,49 +194,33 @@ async def confirm_action(
             input_data["debt_id"] = payload["debt_id"]
         elif payload.get("customer_id"):
             input_data["customer_id"] = payload["customer_id"]
-
-        result = await call_mcp_tool(
-            "thu_no_khach_hang",
-            {
-                "input": input_data,
-                "user_id": current_user_id
-            }
-        )
-
-        result = normalize_mcp_result(result)
-
-    # ========================================================
-    # CHI PHÍ (EXPENSE)
-    # ========================================================
-
+        res = await call_mcp_tool("thu_no_khach_hang", {"input": input_data, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
     elif intent in ("chi_phi", "chi_tien"):
-
-        result = await call_mcp_tool(
-            "create_expense",
-            {
-                "payload": payload,
-                "user_id": current_user_id
-            }
-        )
-
-        result = normalize_mcp_result(result)
-
-    # ========================================================
-    # CHƯA HỖ TRỢ
-    # ========================================================
-
+        res = await call_mcp_tool("create_expense", {"payload": payload, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
     else:
-
-        return {
-            "success": False,
-            "message": (
-                f"Chưa hỗ trợ xác nhận intent: {intent}"
-            )
-        }
+        return {"success": False, "message": f"Chưa hỗ trợ xác nhận intent: {intent}"}
 
     # ========================================================
-    # XÓA PENDING SAU KHI XỬ LÝ & TRIGGER REALTIME SOCKET
+    # LIÊN KẾT VOICE RECORD VỚI TRANSACTION NẾU CÓ VOICE_ID
     # ========================================================
+    voice_id = pending.get("voice_id")
+    if voice_id:
+        tx_id = None
+        if isinstance(result, dict):
+            tx_id = result.get("transaction_id") or result.get("data", {}).get("transaction_id")
+        if tx_id:
+            try:
+                from app.services.voice_record_service import link_voice_record_to_transaction
+                link_voice_record_to_transaction(
+                    db=db,
+                    voice_id=voice_id,
+                    transaction_id=tx_id,
+                    user_id=current_user_id
+                )
+            except Exception:
+                pass
 
     pending_confirmations.pop(
         current_user_id,

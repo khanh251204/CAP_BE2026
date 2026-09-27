@@ -42,7 +42,9 @@ firebase-service-account.json
 # Schemas
 # ========================================
 /app/schemas/analysis_schema.py
-/app/main.py
+main.py
 /docs
 AGENTS.md
 tests/
+/ai_benchmark/
+/evaluation/

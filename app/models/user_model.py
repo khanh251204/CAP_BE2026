@@ -1,3 +1,4 @@
+from enum import Enum as PyEnum
 from sqlalchemy import (
     Column,
     Integer,
@@ -9,6 +10,13 @@ from sqlalchemy import (
 
 from app.configs.database import Base
 from sqlalchemy.orm import relationship
+
+
+class BusinessType(str, PyEnum):
+    RESELLER = "RESELLER"
+    PRODUCER = "PRODUCER"
+    SERVICE = "SERVICE"
+
 
 class User(Base):
     __tablename__ = "User"
@@ -47,7 +55,7 @@ class User(Base):
         nullable=True
     )
 
-    # lĩnh vực kinh doanh
+    # Loại hình kinh doanh chuẩn: RESELLER (mua về bán lại) | PRODUCER (sản xuất/chế biến) | SERVICE (dịch vụ)
     business_type = Column(
         String(100),
         nullable=True
@@ -165,5 +173,11 @@ class User(Base):
     otp_codes = relationship(
         "OTPCode",
         back_populates="user"
+    )
+    voice_records = relationship(
+        "VoiceRecord",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="[VoiceRecord.user_id]"
     )
     

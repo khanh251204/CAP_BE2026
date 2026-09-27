@@ -23,7 +23,8 @@ class BanHangHandler:
         user_id: int,
         entities: dict[str, Any],
         text: str,
-        intent: str = "ban_hang"
+        intent: str = "ban_hang",
+        business_type: str | None = None
     ) -> dict:
         # 1. Validate
         val_result = validate(entities)
@@ -61,7 +62,34 @@ class BanHangHandler:
             qty_requested = 0
             qty_in_stock = 0
 
-        if qty_requested > qty_in_stock:
+        product_type = str(stock_result.get("product_type") or "RESALE").upper()
+        if not business_type:
+            business_type = str(stock_result.get("business_type") or "RESELLER").upper()
+        else:
+            business_type = str(business_type).strip().upper()
+
+        # Áp dụng Business Rule theo business_type và product_type:
+        # - SERVICE: Không kiểm tra tồn kho
+        # - PRODUCER: Không kiểm tra tồn kho khi bán hàng (ngoại trừ nguyên liệu RAW_MATERIAL)
+        #   Cho phép bán ngay cả khi stock = 0 vì sản xuất/chế biến theo nhu cầu.
+        # - RESELLER + RESALE: Bắt buộc tồn kho (qty_requested <= qty_in_stock)
+        if business_type == "PRODUCER" and product_type == "RAW_MATERIAL":
+            return {
+                "success": False,
+                "status": "cannot_sell_raw_material",
+                "intent": intent,
+                "product_name": product_name,
+                "message": f"Sản phẩm '{product_name}' là nguyên liệu sản xuất (RAW_MATERIAL), không thể bán trực tiếp dưới dạng thành phẩm."
+            }
+
+        should_check_stock = True
+        if business_type == "SERVICE":
+            should_check_stock = False
+        elif business_type == "PRODUCER":
+            # PRODUCER sản xuất/chế biến theo nhu cầu, không bắt buộc tồn kho khi bán
+            should_check_stock = False
+
+        if should_check_stock and qty_requested > qty_in_stock:
             return {
                 "success": False,
                 "status": "out_of_stock",
@@ -202,6 +230,13 @@ class BanHangHandler:
             else:
                 debt_info = f" (Chưa thanh toán - ghi nợ{cust_label})"
 
+        stock_suffix = ""
+        if business_type != "SERVICE":
+            if business_type == "PRODUCER" and qty_in_stock <= 0:
+                stock_suffix = " (chế biến/sản xuất theo yêu cầu)"
+            else:
+                stock_suffix = f" (còn {qty_in_stock} trong kho)"
+
         return {
             "success": True,
             "status": "waiting_confirmation",
@@ -214,7 +249,7 @@ class BanHangHandler:
                 f"{payload.get('unit') or ''} "
                 f"{payload['product_name']}"
                 f"{' với giá ' + price_text if price_text else ''}"
-                f"{debt_info} "
-                f"(còn {qty_in_stock} trong kho)?"
+                f"{debt_info}"
+                f"{stock_suffix}?"
             )
         }

@@ -1,0 +1,149 @@
+[
+  {
+    "term": "cân",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "kí",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "ký",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "kí lô",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "ký lô",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "kilô",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "kilo",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "kilogram",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "lạng",
+    "normalized": "100g",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "lít",
+    "normalized": "l",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "lit",
+    "normalized": "l",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "gam",
+    "normalized": "g",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "gram",
+    "normalized": "g",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "bữa ni",
+    "normalized": "hôm nay",
+    "type": "dialect",
+    "region": "central",
+    "confidence": 1.0
+  },
+  {
+    "term": "bữa nay",
+    "normalized": "hôm nay",
+    "type": "slang",
+    "region": "south",
+    "confidence": 1.0
+  },
+  {
+    "term": "tui",
+    "normalized": "tôi",
+    "type": "slang",
+    "region": "south",
+    "confidence": 1.0
+  },
+  {
+    "term": "mần",
+    "normalized": "làm",
+    "type": "dialect",
+    "region": "central",
+    "confidence": 1.0
+  },
+  {
+    "term": "mi",
+    "normalized": "bạn",
+    "type": "dialect",
+    "region": "central",
+    "confidence": 0.95
+  },
+  {
+    "term": "nớ",
+    "normalized": "đó",
+    "type": "dialect",
+    "region": "central",
+    "confidence": 0.95
+  },
+  {
+    "term": "bắp chuối",
+    "normalized": "hoa chuối",
+    "type": "dialect",
+    "region": "central",
+    "confidence": 1.0
+  },
+  {
+    "term": "đậu phụng",
+    "normalized": "lạc",
+    "type": "dialect",
+    "region": "central",
+    "confidence": 1.0
+  }
+]
