@@ -119,7 +119,7 @@ class TransactionReportMixin(ReportBase):
                 details.append({
                     "detail_id": d.detail_id,
                     "product_id": d.product_id,
-                    "product_name": d.product.product_name if d.product else "Sản phẩm không xác định",
+                    "product_name": d.product_name or (d.product.product_name if d.product else "Sản phẩm không xác định"),
                     "unit": d.unit or (d.product.default_unit if d.product else None),
                     "quantity": Decimal(str(d.quantity or 0)),
                     "unit_price": Decimal(str(d.unit_price or 0)),

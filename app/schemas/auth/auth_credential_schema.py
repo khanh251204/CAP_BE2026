@@ -58,6 +58,13 @@ class VerifyOTPRequest(BaseModel):
     purpose: Literal["verify_email", "forgot_password"]
 
 
+class VerifyForgotOTPRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
 # RESET PASSWORD / FORGOT PASSWORD
 class ResetPasswordRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")

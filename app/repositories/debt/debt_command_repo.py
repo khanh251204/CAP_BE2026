@@ -66,12 +66,16 @@ class DebtCommandRepository:
     def get_account_by_id_and_user(
         account_id: int,
         user_id: int,
-        db: Session
+        db: Session,
+        for_update: bool = False,
     ) -> Optional[Account]:
-        return db.query(Account).filter(
+        q = db.query(Account).filter(
             Account.account_id == account_id,
             Account.user_id == user_id
-        ).first()
+        )
+        if for_update and db.bind and db.bind.dialect.name != "sqlite":
+            q = q.with_for_update()
+        return q.first()
 
     @staticmethod
     def create_debt(

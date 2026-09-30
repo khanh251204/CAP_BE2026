@@ -25,14 +25,26 @@ class TransactionController:
             or (request.intent_id is not None and not request.product)
         )
 
+        # Xác định input_method: API tạo giao dịch mặc định là MANUAL
+        # Chỉ thành VOICE khi request có voice_id hoặc truyền rõ ràng input_method="VOICE"
+        voice_id = getattr(request, "voice_id", None)
+        raw_method = getattr(request, "input_method", None)
+        if voice_id:
+            input_method = "VOICE"
+        elif raw_method and str(raw_method).upper().strip() in {"VOICE", "MANUAL"}:
+            input_method = str(raw_method).upper().strip()
+        else:
+            input_method = "MANUAL"
+
         if is_direct:
+            request.input_method = input_method
             result = TransactionService.create_direct_transaction(
                 db=db,
                 user_id=user_id,
                 request=request
             )
         else:
-            # Chế độ tương thích ngược Flat NLP / Groq Voice
+            # Chế độ tương thích ngược Flat NLP / Quick Form
             groq_result_dict = {
                 "transaction_analysis": {
                     "text": request.text or request.input_text or "",
@@ -55,40 +67,21 @@ class TransactionController:
                 db=db,
                 user_id=user_id,
                 account_id=request.account_id,
-                groq_result=groq_result_dict
+                groq_result=groq_result_dict,
+                input_method=input_method
             )
 
-        # Tự động liên kết Voice_Record nếu request có voice_id hoặc tự khớp bản ghi voice gần nhất
+        # Chỉ liên kết Voice_Record khi request THỰC SỰ có truyền voice_id (luồng voice -> api)
         tx_id = result.get("transaction_id") if isinstance(result, dict) else getattr(result, "transaction_id", None)
-        voice_id = getattr(request, "voice_id", None)
-        if tx_id:
+        if tx_id and voice_id:
             try:
                 from app.services.voice_record_service import link_voice_record_to_transaction
-                from app.models.voice_record_model import VoiceRecord
-                from app.models.transaction_model import Transaction
-                from datetime import datetime, timedelta
-
-                if not voice_id and user_id:
-                    cutoff = datetime.now() - timedelta(minutes=15)
-                    recent_voice = db.query(VoiceRecord).filter(
-                        VoiceRecord.user_id == user_id,
-                        VoiceRecord.transaction_id.is_(None),
-                        VoiceRecord.created_at >= cutoff
-                    ).order_by(VoiceRecord.created_at.desc()).first()
-                    if recent_voice:
-                        voice_id = recent_voice.voice_id
-
-                if voice_id:
-                    link_voice_record_to_transaction(
-                        db=db,
-                        voice_id=voice_id,
-                        transaction_id=tx_id,
-                        user_id=user_id
-                    )
-                    tx_obj = db.query(Transaction).filter(Transaction.transaction_id == tx_id).first()
-                    if tx_obj and tx_obj.input_method != "VOICE":
-                        tx_obj.input_method = "VOICE"
-                        db.commit()
+                link_voice_record_to_transaction(
+                    db=db,
+                    voice_id=voice_id,
+                    transaction_id=tx_id,
+                    user_id=user_id
+                )
             except Exception:
                 pass
 
@@ -107,13 +100,15 @@ class TransactionController:
         db: Session,
         user_id: int,
         account_id: int | None,
-        groq_result: dict
+        groq_result: dict,
+        input_method: str | None = None
     ):
         result = TransactionService.save_groq_transaction(
             db=db,
             user_id=user_id,
             account_id=account_id,
-            groq_result=groq_result
+            groq_result=groq_result,
+            input_method=input_method
         )
         try:
             from app.services.websocket_manager import trigger_report_update
@@ -152,3 +147,15 @@ class TransactionController:
             user_id=user_id,
             transaction_id=transaction_id
         )
+
+    @staticmethod
+    def delete_transaction(
+        db: Session,
+        user_id: int,
+        transaction_id: int
+    ):
+        return TransactionService.delete_transaction(
+            db=db,
+            user_id=user_id,
+            transaction_id=transaction_id
+        )

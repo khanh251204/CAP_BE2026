@@ -112,6 +112,9 @@ class AdminVoiceAiResultProcessing(BaseModel):
     processing_time_ms: Optional[int] = Field(None, description="Thời gian xử lý (ms)")
     provider: Optional[str] = Field(None, description="Nhà cung cấp dịch vụ AI/STT (Groq/Whisper)")
     model: Optional[str] = Field(None, description="Model AI sử dụng")
+    model_version: Optional[str] = Field(None, description="Phiên bản model AI sử dụng")
+    prompt_version: Optional[str] = Field(None, description="Phiên bản prompt AI sử dụng")
+    pipeline_version: Optional[str] = Field(None, description="Phiên bản pipeline xử lý AI")
     error_message: Optional[str] = Field(None, description="Thông điệp lỗi nếu thất bại")
 
 
@@ -125,4 +128,23 @@ class AdminVoiceAiResultResponse(BaseModel):
     correction: Optional[Dict[str, Any]] = Field(None, description="User correction nếu có sự thay đổi so với AI result")
     transaction: Optional[AdminVoiceAiResultTransaction] = Field(None, description="Giao dịch được tạo từ AI result (nếu có)")
     processing: AdminVoiceAiResultProcessing = Field(..., description="Thông tin tiến trình xử lý kỹ thuật")
+
+
+class AdminUserCorrectionItem(BaseModel):
+    id: int = Field(..., description="ID bản ghi hiệu chỉnh")
+    user_id: Optional[int] = Field(None, description="ID người dùng")
+    voice_record_id: Optional[int] = Field(None, description="ID bản ghi voice liên kết")
+    transaction_id: Optional[int] = Field(None, description="ID giao dịch tài chính liên kết")
+    correction_type: str = Field(..., description="Loại hiệu chỉnh (MANUAL_EDIT, CONFIRM_NO_CHANGE...)")
+    original_ai_result: Dict[str, Any] = Field(default_factory=dict, description="Kết quả AI ban đầu")
+    corrected_result: Dict[str, Any] = Field(default_factory=dict, description="Kết quả sau khi người dùng sửa")
+    diff: Dict[str, Any] = Field(default_factory=dict, description="Sai khác chi tiết")
+    extra_metadata: Optional[Dict[str, Any]] = Field(None, description="Metadata bổ sung")
+    created_at: Optional[datetime] = Field(None, description="Thời điểm ghi nhận hiệu chỉnh")
+
+
+class AdminUserCorrectionListResponse(BaseModel):
+    items: List[AdminUserCorrectionItem] = Field(..., description="Danh sách bản ghi hiệu chỉnh")
+    pagination: AdminVoicePagination = Field(..., description="Thông tin phân trang")
+
 

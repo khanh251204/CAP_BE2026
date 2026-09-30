@@ -61,7 +61,7 @@ class AdminDatasetService:
         items: List[AdminDatasetItem] = []
         for record, user, transaction, intent_name in records:
             llm_data = AdminVoiceAiService._extract_llm_data(record.llm_output)
-            correction = AdminVoiceAiService._detect_user_correction(llm_data, transaction, db)
+            correction = AdminVoiceAiService._detect_user_correction(llm_data, transaction, db, voice_id=record.voice_id)
 
             # Phân loại dữ liệu Data Lake
             if correction:
@@ -187,10 +187,13 @@ class AdminDatasetService:
             .all()
         status_map = {row[0]: row[1] for row in status_rows if row[0]}
 
-        # Correction count: bản ghi có transaction liên kết và có sự khác biệt
-        corr_count = db.query(func.count(VoiceRecord.voice_id)).filter(
-            VoiceRecord.transaction_id.isnot(None)
-        ).scalar() or 0
+        # Correction count: bản ghi từ bảng User_Correction hoặc fallback
+        from app.models.user_correction_model import UserCorrection
+        corr_count = db.query(func.count(func.distinct(UserCorrection.voice_record_id))).scalar()
+        if not corr_count:
+            corr_count = db.query(func.count(VoiceRecord.voice_id)).filter(
+                VoiceRecord.transaction_id.isnot(None)
+            ).scalar() or 0
 
         return AdminDatasetSummaryResponse(
             total_records=total,

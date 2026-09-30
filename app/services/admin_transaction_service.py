@@ -263,14 +263,16 @@ def _serialize_transaction_detail(tx) -> Dict:
     details = []
     for d in (tx.transaction_detail or []):
         prod = d.product
+        pname = d.product_name or (prod.product_name if prod else None)
         details.append({
             "detail_id": d.detail_id, "product_id": d.product_id,
+            "product_name": pname,
             "quantity": float(d.quantity) if d.quantity is not None else 0.0,
             "unit": d.unit,
             "unit_price": float(d.unit_price) if d.unit_price is not None else 0.0,
             "subtotal": float(d.subtotal) if d.subtotal is not None else 0.0,
             "product": {
-                "product_id": prod.product_id, "product_name": prod.product_name,
+                "product_id": prod.product_id, "product_name": pname or prod.product_name,
                 "product_type": prod.product_type, "default_unit": prod.default_unit,
                 "image": prod.img,
             } if prod else None,

@@ -3,6 +3,7 @@ from app.schemas.auth.auth_credential_schema import (
     LoginRequest,
     SendOTPRequest,
     VerifyOTPRequest,
+    VerifyForgotOTPRequest,
     ResetPasswordRequest,
     ForgotPasswordRequest,
     ChangePasswordRequest,
@@ -15,9 +16,11 @@ __all__ = [
     "LoginRequest",
     "SendOTPRequest",
     "VerifyOTPRequest",
+    "VerifyForgotOTPRequest",
     "ResetPasswordRequest",
     "ForgotPasswordRequest",
     "ChangePasswordRequest",
     "GoogleLoginRequest",
     "UpdateProfileRequest",
 ]
+

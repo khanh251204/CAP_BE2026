@@ -132,49 +132,69 @@ class GroqService:
         # CALL GROQ
         # ========================================================
 
-        response = (
-            self.client.chat.completions.create(
-                model=self.analysis_model,
-
-                temperature=0,
-
-                response_format={
-                    "type": "json_object"
-                },
-
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt
+        try:
+            response = (
+                self.client.chat.completions.create(
+                    model=self.analysis_model,
+                    temperature=0,
+                    response_format={
+                        "type": "json_object"
                     },
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ]
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": system_prompt
+                        },
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                )
             )
-        )
 
-        # ========================================================
-        # GET RESULT
-        # ========================================================
-
-        result = (
-            response
-            .choices[0]
-            .message
-            .content
-            .strip()
-        )
+            result = (
+                response
+                .choices[0]
+                .message
+                .content
+                .strip()
+            )
+        except Exception as api_err:
+            from app.services.system_log_service import log_event
+            log_event(
+                level="ERROR",
+                step="LLM",
+                message=f"Groq API chat completion failed: {str(api_err)}",
+                detail={"model": self.analysis_model, "error": str(api_err)},
+                api_path="/ai/analyze"
+            )
+            raise api_err
 
         # ========================================================
         # PARSE JSON
         # ========================================================
 
         try:
-            return json.loads(result)
+            parsed = json.loads(result)
+            if isinstance(parsed, dict):
+                from app.ai.version import get_ai_metadata, PROMPT_VERSION, AI_PIPELINE_VERSION
+                parsed.setdefault("provider", "Groq")
+                parsed.setdefault("model", self.analysis_model)
+                parsed.setdefault("prompt_version", PROMPT_VERSION)
+                parsed.setdefault("pipeline_version", AI_PIPELINE_VERSION)
+                parsed.setdefault("_ai_metadata", get_ai_metadata())
+            return parsed
 
         except json.JSONDecodeError as error:
+            from app.services.system_log_service import log_event
+            log_event(
+                level="ERROR",
+                step="LLM",
+                message=f"Groq trả về JSON không hợp lệ: {result[:200]}",
+                detail={"model": self.analysis_model, "raw_result": result[:500], "error": str(error)},
+                api_path="/ai/analyze"
+            )
             raise ValueError(
                 f"Groq trả về JSON không hợp lệ: {result}"
             ) from error

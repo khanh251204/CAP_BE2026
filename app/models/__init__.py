@@ -17,6 +17,8 @@ from app.models.closing_period_model import ClosingPeriod
 from app.models.closing_transaction_model import ClosingTransaction
 from app.models.closing_setting_model import ClosingSetting
 from app.models.closing_report_model import ClosingReport
+from app.models.system_log_model import SystemLog
+from app.models.user_correction_model import UserCorrection
 
 __all__ = [
     "User",
@@ -38,4 +40,6 @@ __all__ = [
     "ClosingTransaction",
     "ClosingSetting",
     "ClosingReport",
+    "SystemLog",
+    "UserCorrection",
 ]

@@ -90,6 +90,12 @@ def get_transaction_by_id(
     status_code=status.HTTP_201_CREATED,
     summary="Tạo hoặc lưu giao dịch mới"
 )
+@transaction_router.post(
+    "/transactions",
+    status_code=status.HTTP_201_CREATED,
+    summary="Tạo hoặc lưu giao dịch mới (alias)",
+    include_in_schema=False
+)
 def save_transaction(
     request: TransactionCreateRequest,
     db: Session = Depends(get_db),
@@ -131,3 +137,30 @@ def save_transaction(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lưu database thất bại: {str(e)}"
         )
+
+
+@transaction_router.delete(
+    "/transaction/{transaction_id}",
+    summary="Xóa giao dịch và hoàn lại tồn kho, công nợ liên quan"
+)
+@transaction_router.delete(
+    "/transactions/{transaction_id}",
+    summary="Xóa giao dịch (alias)",
+    include_in_schema=False
+)
+def delete_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """
+    Xóa giao dịch theo transaction_id:
+    - Bắt buộc kiểm tra quyền sở hữu (user_id).
+    - Chặn xóa nếu giao dịch thuộc kỳ chốt sổ đã đóng (trả về 409).
+    - Hoàn lại toàn bộ biến động kho (Inventory_Transaction), công nợ (Debt, DebtPayment) và số dư tài khoản.
+    """
+    return TransactionController.delete_transaction(
+        db=db,
+        user_id=user_id,
+        transaction_id=transaction_id
+    )

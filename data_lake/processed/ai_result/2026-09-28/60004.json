@@ -1,0 +1,22 @@
+{
+  "voice_record_id": 60004,
+  "transcript": "Bán 3 lớp sữa chua. Cái gì dùng bốt mát?",
+  "intent": "ban_hang",
+  "entities": {
+    "customer": null,
+    "date": null,
+    "new_product_name": null,
+    "payment": null,
+    "price": null,
+    "product": "sữa chua",
+    "quantity": 3,
+    "supplier": null,
+    "unit": null
+  },
+  "confidence": null,
+  "processing_time": 4.117,
+  "status": "SUCCESS",
+  "error_message": null,
+  "created_at": "2026-09-28T21:33:35",
+  "data_classification": "PROCESSED_AI"
+}

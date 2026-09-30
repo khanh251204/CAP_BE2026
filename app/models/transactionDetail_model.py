@@ -20,6 +20,9 @@ class TransactionDetail(Base):
     # 2. Bắt buộc phải có product_id (nullable=False)
     product_id = Column(Integer, ForeignKey("Product.product_id"), nullable=False)
     
+    # Snapshot tên sản phẩm tại thời điểm giao dịch (bảo đảm hóa đơn bất biến)
+    product_name = Column(String(255), nullable=True)
+    
     quantity = Column(Numeric(15, 0), nullable=False)
     unit = Column(String(50), nullable=False)
     

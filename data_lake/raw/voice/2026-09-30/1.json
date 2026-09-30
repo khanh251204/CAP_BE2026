@@ -1,0 +1,15 @@
+{
+  "voice_record_id": 1,
+  "user_id": 100,
+  "audio_path": null,
+  "request_id": null,
+  "created_at": "2026-09-30T01:16:27.028432",
+  "data_classification": "RAW_SOURCE",
+  "intent": "ban_hang",
+  "entities": {
+    "product": null,
+    "quantity": null,
+    "unit": null,
+    "price": null
+  }
+}

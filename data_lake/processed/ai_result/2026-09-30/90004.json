@@ -1,0 +1,27 @@
+{
+  "voice_record_id": 90004,
+  "transcript": "Nhập 100 hộp bánh quy giá mỗi hộp 30.000 đồng.",
+  "intent": "mua_hang",
+  "entities": {
+    "customer": null,
+    "date": null,
+    "new_product_name": null,
+    "payment": null,
+    "price": 30000,
+    "product": "bánh quy",
+    "quantity": 100,
+    "supplier": null,
+    "unit": "hộp"
+  },
+  "confidence": null,
+  "processing_time": 4.39,
+  "provider": "Groq",
+  "model": "openai/gpt-oss-120b",
+  "prompt_version": "1.2.0",
+  "pipeline_version": "1.0.0",
+  "status": "SUCCESS",
+  "error_message": null,
+  "request_id": "59471e55ecb34762874e4e9f1f35efa4",
+  "created_at": "2026-09-30T01:14:30",
+  "data_classification": "PROCESSED_AI"
+}

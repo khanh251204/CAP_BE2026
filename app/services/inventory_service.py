@@ -97,8 +97,15 @@ class InventoryService:
                 subtotal = qty * price
                 total_amount += subtotal
                 
+                pname = item.get("product_name") or item.get("name")
+                if not pname:
+                    prod_obj = self.repo.get_product_by_id(user_id, item["product_id"])
+                    if prod_obj:
+                        pname = prod_obj.product_name
+
                 processed_items.append({
                     "product_id": item["product_id"],
+                    "product_name": pname,
                     "quantity": qty,
                     "unit": item.get("unit", ""),
                     "unit_price": price,
@@ -182,6 +189,7 @@ class InventoryService:
                     unit=item["unit"],
                     unit_price=item["unit_price"],
                     subtotal=item["subtotal"],
+                    product_name=item.get("product_name"),
                 )
 
                 qty_before = self.repo.get_latest_stock(user_id, item["product_id"])
@@ -278,8 +286,15 @@ class InventoryService:
                 subtotal = qty * price
                 total_amount += subtotal
 
+                pname = item.get("product_name") or item.get("name")
+                if not pname:
+                    prod_obj = self.repo.get_product_by_id(user_id, product_id)
+                    if prod_obj:
+                        pname = prod_obj.product_name
+
                 processed_items.append({
                     "product_id": product_id,
+                    "product_name": pname,
                     "quantity": qty,
                     "unit": item.get("unit", ""),
                     "unit_price": price,
@@ -366,6 +381,7 @@ class InventoryService:
                     unit=item["unit"],
                     unit_price=item["unit_price"],
                     subtotal=item["subtotal"],
+                    product_name=item.get("product_name"),
                 )
                 qty_before = item["stock_before"]
                 qty_after = qty_before - item["quantity"]

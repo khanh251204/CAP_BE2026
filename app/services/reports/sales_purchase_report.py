@@ -30,7 +30,7 @@ class SalesPurchaseReportMixin(ReportBase):
 
         sales_rows = db.query(
             TransactionDetail.product_id,
-            Product.product_name,
+            func.coalesce(TransactionDetail.product_name, Product.product_name).label("product_name"),
             TransactionDetail.unit,
             func.sum(TransactionDetail.quantity).label("total_sold_qty"),
             func.sum(TransactionDetail.subtotal).label("total_revenue")
@@ -44,7 +44,7 @@ class SalesPurchaseReportMixin(ReportBase):
              Transaction.transaction_date <= end_dt
          ).group_by(
              TransactionDetail.product_id,
-             Product.product_name,
+             func.coalesce(TransactionDetail.product_name, Product.product_name),
              TransactionDetail.unit
          ).all()
 

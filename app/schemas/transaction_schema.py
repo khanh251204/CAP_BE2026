@@ -8,6 +8,7 @@ class TransactionDetailCreate(BaseModel):
     Schema chi tiết hàng hóa (Transaction_Detail) theo docs/erd.md
     """
     product_id: int = Field(..., description="ID sản phẩm (FK -> Product)")
+    product_name: Optional[str] = Field(None, description="Tên sản phẩm snapshot tại thời điểm giao dịch")
     quantity: float = Field(..., gt=0, description="Số lượng")
     unit: str = Field(..., description="Đơn vị tính (hộp, lốc, chai...)")
     unit_price: float = Field(..., ge=0, description="Đơn giá")

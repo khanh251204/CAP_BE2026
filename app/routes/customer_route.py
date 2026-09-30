@@ -76,7 +76,12 @@ def get_customer_detail(
 @customer_router.patch(
     "/{customer_id}",
     response_model=CustomerResponse,
-    summary="Cập nhật thông tin khách hàng (Mục 15)",
+    summary="Cập nhật thông tin khách hàng (PATCH - Mục 15)",
+)
+@customer_router.put(
+    "/{customer_id}",
+    response_model=CustomerResponse,
+    summary="Cập nhật thông tin khách hàng (PUT)",
 )
 def update_customer(
     customer_id: int = Path(..., ge=1, description="ID khách hàng"),

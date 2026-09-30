@@ -55,17 +55,38 @@ def decode_access_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "access" or not payload.get("sub"):
+            from app.services.system_log_service import log_event
+            log_event(
+                level="WARNING",
+                step="AUTH",
+                message="JWT token invalid payload structure",
+                detail={"error": "Missing access type or sub claim"}
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token không hợp lệ"
             )
         return payload
     except ExpiredSignatureError:
+        from app.services.system_log_service import log_event
+        log_event(
+            level="WARNING",
+            step="AUTH",
+            message="JWT token expired",
+            detail={"error": "ExpiredSignatureError"}
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token đã hết hạn"
         )
-    except JWTError:
+    except JWTError as exc:
+        from app.services.system_log_service import log_event
+        log_event(
+            level="WARNING",
+            step="AUTH",
+            message=f"JWT token decode error: {str(exc)}",
+            detail={"error": str(exc), "error_type": type(exc).__name__}
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token không hợp lệ"
