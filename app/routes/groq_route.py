@@ -13,7 +13,6 @@ from fastapi import (
     Depends,
     Query
 )
-from requests import Session
 
 from app.ai.llm.groq_service import GroqService
 from app.ai.core.agent import Agent as TransactionAgent
@@ -56,31 +55,9 @@ transaction_agent = TransactionAgent(
 # STT
 # ============================================================
 
-from app.api.stt import stt_groq, stt_gemini
-from app.services.gemini_service import gemini_service, gemini_transcribe
+from app.api.stt import stt_groq
 
 router.add_api_route("/stt/groq", stt_groq, methods=["POST"], tags=["Speech to Text"])
-# router.add_api_route("/stt/groq", stt_gemini, methods=["POST"], tags=["Speech to Text"])
-
-# ============================================================
-# ANALYZE - TEST LLM
-# ============================================================
-
-@router.post("/analyze/groq1")
-async def analyze_groq(
-    request: AnalysisRequest
-):
-
-    result = await asyncio.to_thread(
-        groq_service.analyze_transaction,
-        request.text
-    )
-
-    return {
-        "success": True,
-        "service": "Groq NLP",
-        "transaction_analysis": result
-    }
 
 
 # ============================================================
