@@ -1,10 +1,13 @@
 from math import ceil
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
+from sqlalchemy.exc import SQLAlchemyError
 from decimal import Decimal
 from datetime import datetime, timedelta
 import unicodedata
 from typing import Optional, Dict, Any, List
+
+from app.services.system_log_service import log_event
 
 # IMPORT CÁC MODELS ĐỐI CHIẾU THEO docs/erd.md
 from app.models.transaction_model import Transaction
@@ -156,8 +159,11 @@ class TransactionService:
             payment_status = "PAID" if account_id is not None else "PENDING"
 
         # Chuẩn hóa input_method theo ERD: 'VOICE', 'MANUAL'
-        raw_input_method = (request.input_method or "MANUAL").upper().strip()
-        input_method = raw_input_method if raw_input_method in {"VOICE", "MANUAL"} else "MANUAL"
+        if getattr(request, "voice_id", None):
+            input_method = "VOICE"
+        else:
+            raw_input_method = (request.input_method or "MANUAL").upper().strip()
+            input_method = raw_input_method if raw_input_method in {"VOICE", "MANUAL"} else "MANUAL"
 
         transaction_date = request.transaction_date or datetime.now()
 
@@ -201,6 +207,7 @@ class TransactionService:
                 detail = TransactionDetail(
                     transaction_id=new_transaction.transaction_id,
                     product_id=prod.product_id,
+                    product_name=item.product_name or prod.product_name,
                     quantity=qty,
                     unit=item.unit or prod.default_unit or "cái",
                     unit_price=u_price,
@@ -223,10 +230,19 @@ class TransactionService:
                     account.balance += total_amount
                 elif category.category_type == "EXPENSE":
                     account.balance -= total_amount
-            account.updated_at = datetime.now()
-
-        db.commit()
-        db.refresh(new_transaction)
+        try:
+            db.commit()
+            db.refresh(new_transaction)
+        except SQLAlchemyError as exc:
+            db.rollback()
+            log_event(
+                level="ERROR",
+                step="DB",
+                message=f"Database commit error in create_direct_transaction: {str(exc)}",
+                detail={"error": str(exc), "error_type": type(exc).__name__, "user_id": user_id},
+                user_id=user_id,
+            )
+            raise
 
         intent_name = intent.intent_name if intent else None
         resolved_type = resolve_intent_type(intent, intent_name)
@@ -259,7 +275,8 @@ class TransactionService:
         db: Session,
         user_id: int,
         account_id: int | None,
-        groq_result: dict
+        groq_result: dict,
+        input_method: Optional[str] = None
     ):
         # ==========================================================
         # 1. LẤY KẾT QUẢ GROQ
@@ -502,9 +519,16 @@ class TransactionService:
         # ==========================================================
         payment_status = "PENDING" if is_pure_debt else "PAID"
 
-        # ==========================================================
-        # 11. TẠO TRANSACTION
-        # ==========================================================
+        # Xác định input_method chuẩn theo ERD: API thêm giao dịch là 'MANUAL', voice là 'VOICE'
+        if input_method and str(input_method).upper().strip() in {"VOICE", "MANUAL"}:
+            final_input_method = str(input_method).upper().strip()
+        elif groq_result.get("input_method") and str(groq_result["input_method"]).upper().strip() in {"VOICE", "MANUAL"}:
+            final_input_method = str(groq_result["input_method"]).upper().strip()
+        elif analysis.get("input_method") and str(analysis["input_method"]).upper().strip() in {"VOICE", "MANUAL"}:
+            final_input_method = str(analysis["input_method"]).upper().strip()
+        else:
+            final_input_method = "MANUAL"
+
         new_transaction = Transaction(
             user_id=user_id,
             intent_id=intent_id,
@@ -513,7 +537,7 @@ class TransactionService:
             supplier_id=supplier_id,
             total_amount=total_amount,
             payment_status=payment_status,
-            input_method="VOICE",
+            input_method=final_input_method,
             input_text=analysis.get("text", ""),
             transaction_date=transaction_date,
             created_at=datetime.now(),
@@ -553,6 +577,7 @@ class TransactionService:
             detail = TransactionDetail(
                 transaction_id=new_transaction.transaction_id,
                 product_id=product.product_id,
+                product_name=product.product_name,
                 quantity=qty,
                 unit=unit or product.default_unit or "cái",
                 unit_price=unit_price,
@@ -669,9 +694,20 @@ class TransactionService:
             )
             db.add(debt)
 
-        db.flush()
-        db.commit()
-        db.refresh(new_transaction)
+        try:
+            db.flush()
+            db.commit()
+            db.refresh(new_transaction)
+        except SQLAlchemyError as exc:
+            db.rollback()
+            log_event(
+                level="ERROR",
+                step="DB",
+                message=f"Database commit error in save_groq_transaction: {str(exc)}",
+                detail={"error": str(exc), "error_type": type(exc).__name__, "intent": groq_intent, "user_id": user_id},
+                user_id=user_id,
+            )
+            raise
 
         # ==========================================================
         # 16. RETURN
@@ -735,6 +771,7 @@ class TransactionService:
             raw_details = transaction.transaction_detail if transaction.transaction_detail else []
             for detail in raw_details:
                 prod = detail.product
+                resolved_prod_name = detail.product_name or (prod.product_name if prod else "Sản phẩm không xác định")
                 details.append({
                     "detail_id": detail.detail_id,
                     "quantity": float(detail.quantity) if detail.quantity is not None else 0.0,
@@ -742,11 +779,13 @@ class TransactionService:
                     "unit_price": float(detail.unit_price) if detail.unit_price is not None else 0.0,
                     "subtotal": float(detail.subtotal) if detail.subtotal is not None else 0.0,
                     "product_id": detail.product_id,
+                    "product_name": resolved_prod_name,
+                    "image": prod.img if prod else None,
                     "product": (
                         {
                             "product_id": prod.product_id,
-                            "product_name": prod.product_name,
-                            "name": prod.product_name,
+                            "product_name": resolved_prod_name,
+                            "name": resolved_prod_name,
                             "image": prod.img
                         }
                         if prod
@@ -850,9 +889,12 @@ class TransactionService:
         raw_details = transaction.transaction_detail if transaction.transaction_detail else []
         for detail in raw_details:
             prod = detail.product
+            resolved_prod_name = detail.product_name or (prod.product_name if prod else "Sản phẩm không xác định")
             details.append({
                 "detail_id": detail.detail_id,
                 "product_id": detail.product_id,
+                "product_name": resolved_prod_name,
+                "image": prod.img if prod else None,
                 "quantity": float(detail.quantity) if detail.quantity is not None else 0.0,
                 "unit": detail.unit,
                 "unit_price": float(detail.unit_price) if detail.unit_price is not None else 0.0,
@@ -860,8 +902,8 @@ class TransactionService:
                 "product": (
                     {
                         "product_id": prod.product_id,
-                        "product_name": prod.product_name,
-                        "name": prod.product_name,
+                        "product_name": resolved_prod_name,
+                        "name": resolved_prod_name,
                         "image": prod.img
                     }
                     if prod
@@ -934,3 +976,240 @@ class TransactionService:
             ),
             "details": details
         }
+
+    @staticmethod
+    def delete_transaction(
+        db: Session,
+        user_id: int,
+        transaction_id: int
+    ) -> Dict[str, Any]:
+        """
+        Xóa giao dịch theo transaction_id và user_id.
+        Yêu cầu:
+        1. Chỉ chủ giao dịch (user_id) mới được xóa. Không tìm thấy hoặc không phải chủ -> 404.
+        2. Không cho phép xóa nếu giao dịch thuộc kỳ chốt sổ đã đóng (CLOSED) -> 409 Conflict.
+        3. Trong CÙNG 1 database transaction (atomic commit/rollback):
+           - Hoàn lại tồn kho (Inventory_Transaction) cho các sản phẩm liên quan.
+           - Hoàn lại công nợ (Debt, Debt_Payment).
+           - Hoàn lại số dư tài khoản (Account.balance) nếu giao dịch đã phát sinh thu/chi tiền.
+           - Hủy liên kết VoiceRecord (nếu có).
+           - Xóa TransactionDetail và Transaction.
+        4. Ghi log qua log_event (step="TRANSACTION").
+        """
+        from fastapi import HTTPException, status
+        from app.models.closing_period_model import ClosingPeriod
+        from app.models.closing_transaction_model import ClosingTransaction
+        from app.models.debt_payment_model import DebtPayment
+        from app.models.voice_record_model import VoiceRecord
+
+        # 1. Tìm giao dịch
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.transaction_id == transaction_id,
+                Transaction.user_id == user_id
+            )
+            .first()
+        )
+        if not tx:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy giao dịch #{transaction_id} hoặc bạn không có quyền xóa"
+            )
+
+        # 2. Kiểm tra kỳ chốt sổ
+        # A: Kiểm tra qua ClosingTransaction
+        closed_link = (
+            db.query(ClosingPeriod)
+            .join(ClosingTransaction, ClosingTransaction.closing_id == ClosingPeriod.closing_id)
+            .filter(
+                ClosingTransaction.transaction_id == tx.transaction_id,
+                ClosingPeriod.status == "CLOSED"
+            )
+            .first()
+        )
+        # B: Kiểm tra theo ngày giao dịch trong kỳ CLOSED của user
+        if not closed_link and tx.transaction_date:
+            tx_d = tx.transaction_date.date() if isinstance(tx.transaction_date, datetime) else tx.transaction_date
+            closed_link = (
+                db.query(ClosingPeriod)
+                .filter(
+                    ClosingPeriod.user_id == user_id,
+                    ClosingPeriod.status == "CLOSED",
+                    ClosingPeriod.period_start <= tx_d,
+                    ClosingPeriod.period_end >= tx_d
+                )
+                .first()
+            )
+
+        if closed_link:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Giao dịch thuộc kỳ chốt sổ đã đóng (Kỳ ID: {closed_link.closing_id}). Không thể xóa giao dịch trong kỳ đã chốt."
+            )
+
+        try:
+            # 3. Hoàn lại tác động phụ (Side effects rollback)
+
+            # A. Hoàn lại TỒN KHO (Inventory_Transaction)
+            inv_txs = (
+                db.query(InventoryTransaction)
+                .filter(
+                    InventoryTransaction.transaction_id == tx.transaction_id,
+                    InventoryTransaction.user_id == user_id
+                )
+                .all()
+            )
+            for inv in inv_txs:
+                # Tìm các biến động kho sau giao dịch này của cùng sản phẩm để cập nhật lại chuỗi số dư kho
+                subsequent_invs = (
+                    db.query(InventoryTransaction)
+                    .filter(
+                        InventoryTransaction.user_id == user_id,
+                        InventoryTransaction.product_id == inv.product_id,
+                        InventoryTransaction.inventory_transaction_id > inv.inventory_transaction_id
+                    )
+                    .all()
+                )
+                # Nếu giao dịch bị xóa là xuất kho (OUT), tồn kho cần được cộng trả lại
+                if inv.inventory_type == "OUT":
+                    for sub in subsequent_invs:
+                        sub.quantity_before = Decimal(str(sub.quantity_before)) + Decimal(str(inv.quantity))
+                        sub.quantity_after = Decimal(str(sub.quantity_after)) + Decimal(str(inv.quantity))
+                # Nếu giao dịch bị xóa là nhập kho (IN), tồn kho cần được trừ đi
+                elif inv.inventory_type == "IN":
+                    for sub in subsequent_invs:
+                        sub.quantity_before = Decimal(str(sub.quantity_before)) - Decimal(str(inv.quantity))
+                        sub.quantity_after = Decimal(str(sub.quantity_after)) - Decimal(str(inv.quantity))
+
+                db.delete(inv)
+
+            # B. Hoàn lại SỐ DƯ TÀI KHOẢN (Account)
+            if tx.account_id and tx.payment_status in ("PAID", "PARTIAL") and tx.total_amount:
+                account = (
+                    db.query(Account)
+                    .filter(
+                        Account.account_id == tx.account_id,
+                        Account.user_id == user_id
+                    )
+                    .first()
+                )
+                if account:
+                    amount_to_revert = Decimal(str(tx.total_amount))
+                    is_income = False
+                    if tx.category and tx.category.category_type == "INCOME":
+                        is_income = True
+                    elif tx.intent and tx.intent.intent_name in ("ban_hang", "thu_no_khach_hang", "thu_no_khach"):
+                        is_income = True
+
+                    is_expense = False
+                    if tx.category and tx.category.category_type == "EXPENSE":
+                        is_expense = True
+                    elif tx.intent and tx.intent.intent_name in ("mua_hang", "nhap_hang", "chi_tien", "chi_phi", "tra_no_nha_cung_cap"):
+                        is_expense = True
+
+                    if is_income:
+                        account.balance = Decimal(str(account.balance)) - amount_to_revert
+                    elif is_expense:
+                        account.balance = Decimal(str(account.balance)) + amount_to_revert
+
+            # C. Hoàn lại CÔNG NỢ (Debt & DebtPayment)
+            # TH1: Giao dịch này tạo ra một khoản nợ (Debt)
+            created_debts = (
+                db.query(Debt)
+                .filter(
+                    Debt.transaction_id == tx.transaction_id,
+                    Debt.user_id == user_id
+                )
+                .all()
+            )
+            for d in created_debts:
+                # Xóa các khoản thanh toán gắn với khoản nợ này
+                payments_on_debt = db.query(DebtPayment).filter(DebtPayment.debt_id == d.debt_id).all()
+                for p in payments_on_debt:
+                    db.delete(p)
+                db.delete(d)
+
+            # TH2: Giao dịch này là thanh toán cho một khoản nợ đã có (DebtPayment)
+            debt_payments = (
+                db.query(DebtPayment)
+                .filter(DebtPayment.transaction_id == tx.transaction_id)
+                .all()
+            )
+            for dp in debt_payments:
+                parent_debt = db.query(Debt).filter(Debt.debt_id == dp.debt_id).first()
+                if parent_debt:
+                    parent_debt.remaining_debt = Decimal(str(parent_debt.remaining_debt)) + Decimal(str(dp.amount))
+                    if parent_debt.remaining_debt >= parent_debt.original_amount:
+                        parent_debt.status = "UNPAID"
+                    else:
+                        parent_debt.status = "PARTIAL"
+                db.delete(dp)
+
+            # D. Gỡ liên kết VoiceRecord
+            voice_records = (
+                db.query(VoiceRecord)
+                .filter(VoiceRecord.transaction_id == tx.transaction_id)
+                .all()
+            )
+            for vr in voice_records:
+                vr.transaction_id = None
+
+            # E. Gỡ liên kết ClosingTransaction (nếu kỳ OPEN / REOPENED)
+            open_closing_links = (
+                db.query(ClosingTransaction)
+                .filter(ClosingTransaction.transaction_id == tx.transaction_id)
+                .all()
+            )
+            for cl in open_closing_links:
+                db.delete(cl)
+
+            # F. Xóa TransactionDetail
+            details = (
+                db.query(TransactionDetail)
+                .filter(TransactionDetail.transaction_id == tx.transaction_id)
+                .all()
+            )
+            for det in details:
+                db.delete(det)
+
+            # G. Xóa Transaction
+            db.delete(tx)
+
+            # COMMIT trong cùng transaction
+            db.commit()
+
+            # Ghi log sự kiện
+            log_event(
+                level="INFO",
+                step="TRANSACTION",
+                message=f"Đã xóa thành công giao dịch #{transaction_id}",
+                detail={"transaction_id": transaction_id, "user_id": user_id},
+                user_id=user_id,
+                status_code=200,
+                api_path=f"/api/v1/transaction/{transaction_id}"
+            )
+
+            return {
+                "success": True,
+                "message": f"Đã xóa giao dịch #{transaction_id} và hoàn lại toàn bộ tồn kho, công nợ liên quan thành công"
+            }
+
+        except HTTPException:
+            db.rollback()
+            raise
+        except Exception as exc:
+            db.rollback()
+            log_event(
+                level="ERROR",
+                step="TRANSACTION",
+                message=f"Lỗi khi xóa giao dịch #{transaction_id}: {str(exc)}",
+                detail={"transaction_id": transaction_id, "error": str(exc)},
+                user_id=user_id,
+                status_code=500,
+                api_path=f"/api/v1/transaction/{transaction_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Lỗi hệ thống khi xóa giao dịch: {str(exc)}"
+            )

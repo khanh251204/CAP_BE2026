@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id_optional
+from app.configs.jwt import get_current_user_id
 
 from app.services.audio import (
     AudioPipeline,
@@ -23,6 +23,7 @@ from app.services.audio import (
 )
 from app.services.groq_service import groq_service
 from app.services.gemini_service import gemini_service
+from app.services.system_log_service import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +166,15 @@ async def _run_stt_pipeline(
 
     except NoSpeechError:
         logger.info("VAD detected NO speech in audio.")
+        log_event(
+            level="WARNING",
+            step="STT",
+            message=f"{service_name}: Không phát hiện giọng nói (VAD NoSpeech)",
+            detail={"service": service_name, "code": "NO_SPEECH"},
+            user_id=user_id,
+            status_code=200,
+            api_path=f"/stt/{service_name.lower().replace(' ', '_')}"
+        )
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
@@ -176,6 +186,15 @@ async def _run_stt_pipeline(
 
     except AudioTooShortError:
         logger.warning("Audio duration too short.")
+        log_event(
+            level="WARNING",
+            step="STT",
+            message=f"{service_name}: Đoạn ghi âm quá ngắn",
+            detail={"service": service_name, "code": "AUDIO_TOO_SHORT"},
+            user_id=user_id,
+            status_code=400,
+            api_path=f"/stt/{service_name.lower().replace(' ', '_')}"
+        )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -187,6 +206,15 @@ async def _run_stt_pipeline(
 
     except AudioInvalidError as e:
         logger.warning(f"Audio invalid: {e.message}")
+        log_event(
+            level="WARNING",
+            step="STT",
+            message=f"{service_name}: Audio invalid: {e.message}",
+            detail={"service": service_name, "code": "AUDIO_INVALID", "error": e.message},
+            user_id=user_id,
+            status_code=400,
+            api_path=f"/stt/{service_name.lower().replace(' ', '_')}"
+        )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -198,6 +226,15 @@ async def _run_stt_pipeline(
 
     except SpeakerNotVerifiedError:
         logger.warning("Speaker verification failed.")
+        log_event(
+            level="WARNING",
+            step="STT",
+            message=f"{service_name}: Không xác định được giọng nói người dùng",
+            detail={"service": service_name, "code": "SPEAKER_NOT_VERIFIED"},
+            user_id=user_id,
+            status_code=403,
+            api_path=f"/stt/{service_name.lower().replace(' ', '_')}"
+        )
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
             content={
@@ -209,6 +246,15 @@ async def _run_stt_pipeline(
 
     except Exception as e:
         logger.error(f"Lỗi không xác định khi xử lý {service_name} STT: {e}", exc_info=True)
+        log_event(
+            level="ERROR",
+            step="STT",
+            message=f"{service_name}: Lỗi không xác định khi xử lý STT: {str(e)}",
+            detail={"service": service_name, "error": str(e)},
+            user_id=user_id,
+            status_code=500,
+            api_path=f"/stt/{service_name.lower().replace(' ', '_')}"
+        )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
@@ -236,13 +282,27 @@ async def _run_stt_pipeline(
 @router.post("/stt/groq")
 async def stt_groq(
     file: UploadFile = File(...),
-    user_id: Optional[int] = Depends(get_current_user_id_optional),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """
     Endpoint nhận file âm thanh (.m4a, .wav, .mp3, .webm, .aac, .ogg),
     chạy qua Audio Preprocessing Pipeline (FFmpeg Decode -> Denoise -> VAD -> Optional SV)
     trước khi gửi sang Groq Whisper STT, tự động upload Cloudinary và lưu Voice_Record.
+    Bắt buộc đăng nhập.
+    """
+    return await _run_stt_pipeline(file, groq_service.transcribe, "Groq Whisper", user_id=user_id, db=db)
+
+
+@router.post("/voice/recognize")
+async def voice_recognize(
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint nhận diện giọng nói tương thích với Mobile và Web.
+    Bắt buộc đăng nhập.
     """
     return await _run_stt_pipeline(file, groq_service.transcribe, "Groq Whisper", user_id=user_id, db=db)
 
@@ -250,12 +310,13 @@ async def stt_groq(
 @router.post("/stt/gemini")
 async def stt_gemini(
     file: UploadFile = File(...),
-    user_id: Optional[int] = Depends(get_current_user_id_optional),
+    user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """
     Endpoint nhận file âm thanh (.m4a, .wav, .mp3, .webm, .aac, .ogg),
     chạy qua Audio Preprocessing Pipeline (FFmpeg Decode -> Denoise -> VAD -> Optional SV)
     trước khi gửi sang Gemini STT, tự động upload Cloudinary và lưu Voice_Record.
+    Bắt buộc đăng nhập.
     """
     return await _run_stt_pipeline(file, gemini_service.transcribe, "Gemini", user_id=user_id, db=db)

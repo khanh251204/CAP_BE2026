@@ -32,6 +32,7 @@ def ghi_no_khach_hang(input: GhiNoKhachHangInput, user_id: int) -> GhiNoKhachHan
             customer_id=input.customer_id,
             total_debt=input.original_amount,
             transaction_id=input.transaction_id,
+            input_method=getattr(input, "input_method", "MANUAL"),
         )
         return GhiNoKhachHangOutput(**result)
     finally:
@@ -55,6 +56,7 @@ def thu_no_khach_hang(input: ThuNoKhachHangInput, user_id: int) -> ThuNoKhachHan
             amount=input.amount,
             debt_id=input.debt_id,
             customer_id=input.customer_id,
+            input_method=getattr(input, "input_method", "MANUAL"),
         )
         return ThuNoKhachHangOutput(**result)
     finally:
@@ -76,6 +78,7 @@ def ghi_no_nha_cung_cap(input: GhiNoNhaCungCapInput, user_id: int) -> GhiNoNhaCu
             total_debt=input.original_amount,
             transaction_id=input.transaction_id,
             note=input.note,
+            input_method=getattr(input, "input_method", "MANUAL"),
         )
         return GhiNoNhaCungCapOutput(**result)
     finally:
@@ -100,6 +103,7 @@ def thu_no_nha_cung_cap(input: ThuNoNhaCungCapInput, user_id: int) -> ThuNoNhaCu
             debt_id=input.debt_id,
             supplier_id=input.supplier_id,
             note=input.note,
+            input_method=getattr(input, "input_method", "MANUAL"),
         )
         return ThuNoNhaCungCapOutput(**result)
     finally:

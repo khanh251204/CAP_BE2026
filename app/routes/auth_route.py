@@ -27,12 +27,14 @@ from app.schemas.auth_schema import (
     LoginRequest,
     SendOTPRequest,
     VerifyOTPRequest,
+    VerifyForgotOTPRequest,
     ResetPasswordRequest,
     ForgotPasswordRequest,
     ChangePasswordRequest,
     UpdateProfileRequest,
     GoogleLoginRequest
 )
+
 
 from app.controllers.auth_controller import (
     register_controller,
@@ -89,6 +91,29 @@ def verify_otp(
 ):
     return verify_otp_controller(
         request=request,
+        response=response,
+        db=db
+    )
+
+
+# VERIFY FORGOT PASSWORD OTP (ALIAS CHO MOBILE)
+@router.post("/verify-forgot-otp")
+def verify_forgot_otp(
+    request: VerifyForgotOTPRequest,
+    response: Response,
+    db: Session = Depends(get_db)
+):
+    """
+    Alias xác thực OTP quên mật khẩu (Bước 2):
+    Ép purpose = 'forgot_password', gọi chung verify_otp_controller và trả về reset_token.
+    """
+    verify_req = VerifyOTPRequest(
+        email=request.email,
+        code=request.code,
+        purpose="forgot_password"
+    )
+    return verify_otp_controller(
+        request=verify_req,
         response=response,
         db=db
     )

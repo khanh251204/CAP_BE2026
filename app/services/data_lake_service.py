@@ -67,19 +67,35 @@ class DataLakeService:
         Ingest một VoiceRecord vào Data Lake.
         Hoàn toàn độc lập (decoupled), không làm ảnh hưởng hay rollback giao dịch MySQL.
         """
+        if not record or not record.voice_id:
+            return {
+                "success": False,
+                "error": "Bản ghi VoiceRecord không hợp lệ: thiếu voice_id",
+                "storage_paths": {}
+            }
+
         try:
+            from app.middlewares.system_log_middleware import get_current_request_id
+            resolved_req_id = get_current_request_id()
+
             cls.init_storage()
             base = cls.get_base_dir()
 
             c_date = record.created_at or datetime.now()
-            month_folder = c_date.strftime("%Y-%m")
+            day_folder = c_date.strftime("%Y-%m-%d")
             voice_id = record.voice_id
 
             llm_data = cls._extract_llm_dict(record.llm_output)
+            ai_meta = llm_data.get("_ai_metadata") if isinstance(llm_data.get("_ai_metadata"), dict) else {}
+            provider = llm_data.get("provider") or ai_meta.get("llm", {}).get("provider") or ("Groq" if record.processing_time is not None else None)
+            model = llm_data.get("model") or ai_meta.get("llm", {}).get("model") or ("whisper-large-v3-turbo" if record.audio_path else None)
+            prompt_ver = llm_data.get("prompt_version") or ai_meta.get("prompt_version")
+            pipe_ver = llm_data.get("pipeline_version") or ai_meta.get("pipeline_version")
+
             storage_paths: Dict[str, str] = {}
 
             # 1. ZONE RAW: Lưu vết tham chiếu âm thanh và thông tin gốc
-            raw_dir = os.path.join(base, "raw", "voice", month_folder)
+            raw_dir = os.path.join(base, "raw", "voice", day_folder)
             os.makedirs(raw_dir, exist_ok=True)
             raw_file = os.path.join(raw_dir, f"{voice_id}.json")
 
@@ -87,6 +103,7 @@ class DataLakeService:
                 "voice_record_id": voice_id,
                 "user_id": record.user_id or (user.user_id if user else None),
                 "audio_path": record.audio_path,
+                "request_id": resolved_req_id,
                 "created_at": c_date.isoformat(),
                 "data_classification": "RAW_SOURCE"
             }
@@ -95,7 +112,7 @@ class DataLakeService:
             storage_paths["raw"] = os.path.relpath(raw_file, base).replace("\\", "/")
 
             # 2. ZONE PROCESSED: Lưu snapshot kết quả xử lý AI
-            proc_dir = os.path.join(base, "processed", "ai_result", month_folder)
+            proc_dir = os.path.join(base, "processed", "ai_result", day_folder)
             os.makedirs(proc_dir, exist_ok=True)
             proc_file = os.path.join(proc_dir, f"{voice_id}.json")
 
@@ -106,8 +123,13 @@ class DataLakeService:
                 "entities": llm_data.get("entities") or {},
                 "confidence": float(record.confidence) if record.confidence is not None else None,
                 "processing_time": record.processing_time,
+                "provider": provider,
+                "model": model,
+                "prompt_version": prompt_ver,
+                "pipeline_version": pipe_ver,
                 "status": record.status,
                 "error_message": record.error_message,
+                "request_id": resolved_req_id,
                 "created_at": c_date.isoformat(),
                 "data_classification": "PROCESSED_AI"
             }
@@ -119,16 +141,17 @@ class DataLakeService:
             from app.services.admin_voice_ai_service import AdminVoiceAiService
             correction = None
             if db:
-                correction = AdminVoiceAiService._detect_user_correction(llm_data, transaction, db)
+                correction = AdminVoiceAiService._detect_user_correction(llm_data, transaction, db, voice_id=voice_id)
 
             if correction:
-                fb_dir = os.path.join(base, "feedback", "correction", month_folder)
+                fb_dir = os.path.join(base, "feedback", "correction", day_folder)
                 os.makedirs(fb_dir, exist_ok=True)
                 fb_file = os.path.join(fb_dir, f"{voice_id}.json")
                 fb_payload = {
                     "voice_record_id": voice_id,
                     "transaction_id": record.transaction_id,
                     "correction": correction,
+                    "request_id": resolved_req_id,
                     "created_at": c_date.isoformat(),
                     "data_classification": "USER_FEEDBACK"
                 }
@@ -137,7 +160,7 @@ class DataLakeService:
                 storage_paths["feedback"] = os.path.relpath(fb_file, base).replace("\\", "/")
 
             # 4. ZONE DATASET: Mẫu dữ liệu hoàn chỉnh phục vụ nghiên cứu & AI evaluation
-            ds_dir = os.path.join(base, "dataset", month_folder)
+            ds_dir = os.path.join(base, "dataset", day_folder)
             os.makedirs(ds_dir, exist_ok=True)
             ds_file = os.path.join(ds_dir, f"{voice_id}.json")
 
@@ -149,8 +172,14 @@ class DataLakeService:
                 "intent": record.intent or llm_data.get("intent"),
                 "entities": llm_data.get("entities") or {},
                 "confidence": float(record.confidence) if record.confidence is not None else None,
+                "provider": provider,
+                "model": model,
+                "prompt_version": prompt_ver,
+                "pipeline_version": pipe_ver,
                 "user_correction": correction,
                 "status": record.status,
+                "request_id": resolved_req_id,
+                "created_at": c_date.isoformat(),
                 "ingested_at": datetime.now().isoformat(),
                 "data_classification": "RESEARCH_DATASET"
             }
@@ -179,21 +208,89 @@ class DataLakeService:
         """Tính toán metadata đường dẫn trong Data Lake cho bản ghi."""
         base = cls.get_base_dir()
         c_date = created_at or datetime.now()
+        day_folder = c_date.strftime("%Y-%m-%d")
         month_folder = c_date.strftime("%Y-%m")
 
-        raw_rel = f"raw/voice/{month_folder}/{voice_id}.json"
-        proc_rel = f"processed/ai_result/{month_folder}/{voice_id}.json"
-        fb_rel = f"feedback/correction/{month_folder}/{voice_id}.json"
-        ds_rel = f"dataset/{month_folder}/{voice_id}.json"
+        def resolve_path(zone_sub: str, fid: Any):
+            day_rel = f"{zone_sub}/{day_folder}/{fid}.json"
+            day_abs = os.path.join(base, zone_sub, day_folder, f"{fid}.json")
+            if os.path.exists(day_abs):
+                return day_rel, day_abs
+            month_rel = f"{zone_sub}/{month_folder}/{fid}.json"
+            month_abs = os.path.join(base, zone_sub, month_folder, f"{fid}.json")
+            if os.path.exists(month_abs):
+                return month_rel, month_abs
+            return day_rel, day_abs
 
-        raw_abs = os.path.join(base, "raw", "voice", month_folder, f"{voice_id}.json")
-        fb_abs = os.path.join(base, "feedback", "correction", month_folder, f"{voice_id}.json")
+        raw_rel, raw_abs = resolve_path(os.path.join("raw", "voice"), voice_id)
+        proc_rel, proc_abs = resolve_path(os.path.join("processed", "ai_result"), voice_id)
+        fb_rel, fb_abs = resolve_path(os.path.join("feedback", "correction"), voice_id)
+        ds_rel, ds_abs = resolve_path("dataset", voice_id)
 
         return {
             "storage_type": "LOCAL_FS",
-            "raw_path": raw_rel if os.path.exists(raw_abs) else None,
-            "processed_path": proc_rel,
-            "feedback_path": fb_rel if os.path.exists(fb_abs) else None,
-            "dataset_path": ds_rel,
+            "raw_path": raw_rel.replace("\\", "/") if os.path.exists(raw_abs) else None,
+            "processed_path": proc_rel.replace("\\", "/"),
+            "feedback_path": fb_rel.replace("\\", "/") if os.path.exists(fb_abs) else None,
+            "dataset_path": ds_rel.replace("\\", "/"),
             "ingested_at": c_date
         }
+
+    @classmethod
+    def save_correction_feedback(
+        cls,
+        voice_record_id: Optional[int],
+        ai_result: Dict[str, Any],
+        final_transaction: Dict[str, Any],
+        diff: Dict[str, Any],
+        correction_type: str = "MANUAL_EDIT",
+        transaction_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        created_at: Optional[datetime] = None
+    ) -> Optional[str]:
+        """
+        Ghi nhận bản hiệu chỉnh của người dùng vào Zone Feedback/Correction trong Data Lake.
+        Bảo toàn bản AI hiểu ban đầu (ai_result) và bản người dùng đã sửa (final_transaction),
+        kèm phần khác biệt (diff) và kiểu sửa đổi (correction_type).
+        """
+        try:
+            cls.init_storage()
+            base = cls.get_base_dir()
+            c_date = created_at or datetime.now()
+            day_folder = c_date.strftime("%Y-%m-%d")
+
+            fb_dir = os.path.join(base, "feedback", "correction", day_folder)
+            os.makedirs(fb_dir, exist_ok=True)
+
+            identifier = voice_record_id or (f"tx_{transaction_id}" if transaction_id else f"corr_{int(c_date.timestamp())}")
+            fb_file = os.path.join(fb_dir, f"{identifier}.json")
+
+            from app.middlewares.system_log_middleware import get_current_request_id
+            resolved_req_id = get_current_request_id()
+
+            correction_payload = {
+                "voice_record_id": voice_record_id,
+                "transaction_id": transaction_id,
+                "user_id": user_id,
+                "ai_result": ai_result,
+                "final_transaction": final_transaction,
+                "correction": {
+                    "ai": diff.get("ai", {}),
+                    "correction": diff.get("correction", {})
+                },
+                "diff": diff,
+                "correction_type": correction_type,
+                "request_id": resolved_req_id,
+                "created_at": c_date.isoformat(),
+                "data_classification": "USER_FEEDBACK"
+            }
+
+            with open(fb_file, "w", encoding="utf-8") as f:
+                json.dump(correction_payload, f, ensure_ascii=False, indent=2)
+
+            rel_path = os.path.relpath(fb_file, base).replace("\\", "/")
+            logger.info(f"Saved correction feedback to Data Lake: {rel_path}")
+            return rel_path
+        except Exception as e:
+            logger.warning(f"Không thể ghi nhận correction feedback vào Data Lake: {e}")
+            return None

@@ -1,0 +1,222 @@
+import copy
+import logging
+from typing import Dict, Any, Optional, Tuple
+from decimal import Decimal
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.schemas.agent_schema import AgentConfirmRequest, CorrectedTransactionSchema
+from app.services.data_lake_service import DataLakeService
+from app.models.voice_record_model import VoiceRecord
+from app.models.transaction_model import Transaction
+
+logger = logging.getLogger(__name__)
+
+
+class AgentConfirmService:
+    @staticmethod
+    def validate_and_prepare_payload(
+        pending_payload: Dict[str, Any],
+        intent: str,
+        corrected: CorrectedTransactionSchema,
+        user_id: int
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+        """
+        Xử lý bản sửa đổi của người dùng:
+        1. Validate theo intent validator hiện có (ban_hang, mua_hang...)
+        2. Tính toán lại subtotal và total_amount ở Backend (không tin client)
+        3. Tính diff và xác định correction_type
+        """
+        payload = copy.deepcopy(pending_payload)
+        corr_dict = corrected.model_dump(exclude_unset=True)
+
+        # 1. Chạy validator theo intent
+        if intent == "ban_hang":
+            from app.ai.intents.ban_hang.validator import validate as validate_ban_hang
+            # Lấy đúng giá trị người dùng vừa sửa nếu có truyền
+            prod_val = corr_dict["product_name"] if "product_name" in corr_dict else (corr_dict.get("product") if "product" in corr_dict else payload.get("product_name"))
+            qty_val = corr_dict["quantity"] if "quantity" in corr_dict else payload.get("quantity")
+            unit_val = corr_dict["unit"] if "unit" in corr_dict else payload.get("unit")
+            val_entities = {
+                "product": prod_val,
+                "quantity": qty_val,
+                "unit": unit_val
+            }
+            # Nếu có danh sách items
+            if corr_dict.get("items"):
+                for idx, it in enumerate(corr_dict["items"]):
+                    it_dict = it if isinstance(it, dict) else it.model_dump(exclude_unset=True)
+                    it_qty = it_dict.get("quantity")
+                    if it_qty is None or float(it_qty) <= 0:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Sản phẩm thứ {idx + 1} có số lượng không hợp lệ (phải > 0)"
+                        )
+                    it_ent = {
+                        "product": it_dict.get("product_name") or it_dict.get("product"),
+                        "quantity": it_qty,
+                        "unit": it_dict.get("unit")
+                    }
+                    val_res = validate_ban_hang(it_ent)
+                    if not val_res.get("success"):
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Sản phẩm thứ {idx + 1} thiếu thông tin bắt buộc: {', '.join(val_res.get('missing_fields', []))}"
+                        )
+            else:
+                if qty_val is not None:
+                    try:
+                        if float(qty_val) <= 0:
+                            raise HTTPException(
+                                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="Số lượng sản phẩm phải lớn hơn 0"
+                            )
+                    except (ValueError, TypeError):
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Số lượng sản phẩm không hợp lệ"
+                        )
+                val_res = validate_ban_hang(val_entities)
+                if not val_res.get("success"):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Dữ liệu bán hàng thiếu thông tin: {', '.join(val_res.get('missing_fields', []))}"
+                    )
+
+        elif intent in ("mua_hang", "nhap_hang"):
+            from app.ai.intents.mua_hang.validator import validate as validate_mua_hang
+            prod_val = corr_dict["product_name"] if "product_name" in corr_dict else (corr_dict.get("product") if "product" in corr_dict else payload.get("product_name"))
+            qty_val = corr_dict["quantity"] if "quantity" in corr_dict else payload.get("quantity")
+            unit_val = corr_dict["unit"] if "unit" in corr_dict else payload.get("unit")
+            val_entities = {
+                "product": prod_val,
+                "quantity": qty_val,
+                "unit": unit_val
+            }
+            if qty_val is not None:
+                try:
+                    if float(qty_val) <= 0:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Số lượng sản phẩm phải lớn hơn 0"
+                        )
+                except (ValueError, TypeError):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Số lượng sản phẩm không hợp lệ"
+                    )
+            val_res = validate_mua_hang(val_entities)
+            if not val_res.get("success"):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Dữ liệu nhập hàng thiếu thông tin: {', '.join(val_res.get('missing_fields', []))}"
+                )
+
+
+        # 2. Cập nhật và tính toán lại subtotal, total_amount ở Backend
+        if corr_dict.get("items"):
+            calc_total = 0.0
+            recalculated_items = []
+            for it in corr_dict["items"]:
+                it_dict = it if isinstance(it, dict) else it.model_dump(exclude_unset=True)
+                qty = float(it_dict.get("quantity") or 0)
+                price = float(it_dict.get("unit_price") if it_dict.get("unit_price") is not None else (it_dict.get("price") or 0))
+                # Backend tính lại subtotal - BỎ QUA subtotal client gửi
+                subtotal = qty * price
+                calc_total += subtotal
+                recalculated_items.append({
+                    "product_id": it_dict.get("product_id"),
+                    "product_name": it_dict.get("product_name") or it_dict.get("product"),
+                    "quantity": qty,
+                    "unit": it_dict.get("unit") or "",
+                    "unit_price": price,
+                    "subtotal": subtotal
+                })
+            payload["items"] = recalculated_items
+            payload["total_amount"] = calc_total
+        else:
+            # Giao dịch đơn sản phẩm
+            qty = float(corr_dict.get("quantity") if corr_dict.get("quantity") is not None else payload.get("quantity", 0))
+            price_val = corr_dict.get("unit_price") if corr_dict.get("unit_price") is not None else corr_dict.get("price")
+            if price_val is None:
+                price_val = payload.get("unit_price") if payload.get("unit_price") is not None else payload.get("price", 0)
+            price = float(price_val or 0)
+            # Backend tính lại subtotal
+            subtotal = qty * price
+            payload["product_name"] = corr_dict.get("product_name") or corr_dict.get("product") or payload.get("product_name")
+            if corr_dict.get("product_id"):
+                payload["product_id"] = corr_dict["product_id"]
+            payload["quantity"] = qty
+            payload["unit"] = corr_dict.get("unit") or payload.get("unit")
+            payload["unit_price"] = price
+            payload["subtotal"] = subtotal
+            payload["total_amount"] = subtotal
+
+        # Cập nhật thông tin đối tác & thanh toán
+        if "customer_name" in corr_dict or "customer" in corr_dict:
+            payload["customer_name"] = corr_dict.get("customer_name") or corr_dict.get("customer")
+        if "customer_id" in corr_dict:
+            payload["customer_id"] = corr_dict["customer_id"]
+        if "supplier_name" in corr_dict or "supplier" in corr_dict:
+            payload["supplier_name"] = corr_dict.get("supplier_name") or corr_dict.get("supplier")
+        if "supplier_id" in corr_dict:
+            payload["supplier_id"] = corr_dict["supplier_id"]
+        if "payment_status" in corr_dict or "payment" in corr_dict:
+            payload["payment_status"] = corr_dict.get("payment_status") or corr_dict.get("payment")
+        if "amount_paid" in corr_dict and corr_dict["amount_paid"] is not None:
+            payload["amount_paid"] = float(corr_dict["amount_paid"])
+        if "amount" in corr_dict and corr_dict["amount"] is not None:
+            payload["amount"] = float(corr_dict["amount"])
+            payload["total_amount"] = float(corr_dict["amount"])
+        if "note" in corr_dict:
+            payload["note"] = corr_dict["note"]
+
+        # 3. Tính diff và correction_type
+        diff_ai: Dict[str, Any] = {}
+        diff_corr: Dict[str, Any] = {}
+
+        fields_to_check = [
+            ("product_name", "product_name", "product"),
+            ("quantity", "quantity", "quantity"),
+            ("unit_price", "unit_price", "price"),
+            ("unit", "unit", "unit"),
+            ("customer_name", "customer_name", "customer"),
+            ("supplier_name", "supplier_name", "supplier"),
+            ("payment_status", "payment_status", "payment"),
+            ("amount_paid", "amount_paid", "amount_paid")
+        ]
+
+        for p_key, c_key, label in fields_to_check:
+            orig_val = pending_payload.get(p_key)
+            new_val = payload.get(c_key)
+            if orig_val is not None and new_val is not None:
+                if isinstance(orig_val, (int, float)) and isinstance(new_val, (int, float)):
+                    if abs(float(orig_val) - float(new_val)) > 1e-4:
+                        diff_ai[label] = orig_val
+                        diff_corr[label] = new_val
+                elif str(orig_val).strip().lower() != str(new_val).strip().lower():
+                    diff_ai[label] = orig_val
+                    diff_corr[label] = new_val
+
+        diff = {
+            "ai": diff_ai,
+            "correction": diff_corr
+        }
+
+        # Xác định correction_type
+        changed_keys = list(diff_ai.keys())
+        if len(changed_keys) == 1:
+            if "price" in changed_keys:
+                correction_type = "PRICE_CORRECTION"
+            elif "quantity" in changed_keys:
+                correction_type = "QUANTITY_CORRECTION"
+            elif "product" in changed_keys:
+                correction_type = "PRODUCT_CORRECTION"
+            else:
+                correction_type = "FIELD_CORRECTION"
+        elif len(changed_keys) > 1:
+            correction_type = "MULTI_FIELD_CORRECTION"
+        else:
+            correction_type = "CONFIRM_WITHOUT_CHANGE"
+
+        return payload, diff, correction_type

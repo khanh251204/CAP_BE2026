@@ -1,0 +1,24 @@
+{
+  "dataset_id": "DS-30004",
+  "voice_record_id": 30004,
+  "audio_source": "https://res.cloudinary.com/dc2tsiczp/video/upload/v1790427071/voice_cashbook/audio/oix2tb0rd5tb8drtlg0b.wav",
+  "transcript": "Bán 1 bao thuốc lá",
+  "intent": "ban_hang",
+  "entities": {
+    "product": "thuốc lá",
+    "quantity": 1,
+    "unit": "bao",
+    "price": null,
+    "customer": null,
+    "supplier": null,
+    "payment": null,
+    "date": null,
+    "new_product_name": null
+  },
+  "confidence": null,
+  "user_correction": null,
+  "status": "SUCCESS",
+  "ingested_at": "2026-09-26T19:52:03.984107",
+  "data_classification": "RESEARCH_DATASET",
+  "created_at": "2026-09-26T19:52:04.000000"
+}

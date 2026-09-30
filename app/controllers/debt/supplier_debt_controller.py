@@ -17,6 +17,7 @@ class SupplierDebtController:
         total_debt: float,
         transaction_id: Optional[int] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         res = DebtService.create_supplier_debt(
             db=db,
@@ -25,6 +26,7 @@ class SupplierDebtController:
             total_debt=total_debt,
             transaction_id=transaction_id,
             note=note,
+            input_method=input_method,
         )
         try:
             trigger_report_update(user_id=user_id, affected=["debt", "payable"])
@@ -42,6 +44,7 @@ class SupplierDebtController:
         supplier_id: Optional[int] = None,
         payment_date: Optional[datetime] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         res = DebtService.pay_supplier_debt(
             db=db,
@@ -52,6 +55,7 @@ class SupplierDebtController:
             amount=amount,
             payment_date=payment_date,
             note=note,
+            input_method=input_method,
         )
         try:
             trigger_report_update(user_id=user_id, affected=["debt", "payable", "balance"])

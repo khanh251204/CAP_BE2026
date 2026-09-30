@@ -13,6 +13,7 @@ class GhiNoKhachHangInput(BaseModel):
             "(payment_status='PENDING') để thỏa FK bắt buộc Debt.transaction_id theo erd.md."
         ),
     )
+    input_method: Optional[str] = Field("MANUAL", description="Phương thức nhập theo ERD: 'VOICE' | 'MANUAL'")
 
 
 class GhiNoKhachHangOutput(BaseModel):
@@ -26,6 +27,7 @@ class ThuNoKhachHangInput(BaseModel):
     amount: float = Field(..., gt=0, description="Số tiền khách vừa trả")
     debt_id: Optional[int] = Field(None, description="Chỉ truyền khi biết rõ khoản nợ cụ thể cần thu")
     customer_id: Optional[int] = Field(None, description="Chỉ truyền khi thu theo tổng tiền, để hệ thống tự phân bổ FIFO")
+    input_method: Optional[str] = Field("MANUAL", description="Phương thức nhập theo ERD: 'VOICE' | 'MANUAL'")
 
     def model_post_init(self, __context) -> None:
         if not self.debt_id and not self.customer_id:
@@ -71,6 +73,7 @@ class GhiNoNhaCungCapInput(BaseModel):
         ),
     )
     note: Optional[str] = Field(None, description="Ghi chú công nợ")
+    input_method: Optional[str] = Field("MANUAL", description="Phương thức nhập theo ERD: 'VOICE' | 'MANUAL'")
 
 
 class GhiNoNhaCungCapOutput(BaseModel):
@@ -85,6 +88,7 @@ class ThuNoNhaCungCapInput(BaseModel):
     debt_id: Optional[int] = Field(None, description="Chỉ truyền khi biết rõ khoản nợ cụ thể cần trả")
     supplier_id: Optional[int] = Field(None, description="Chỉ truyền khi trả theo tổng tiền, để hệ thống tự phân bổ FIFO")
     note: Optional[str] = Field(None, description="Ghi chú phiếu chi trả nợ")
+    input_method: Optional[str] = Field("MANUAL", description="Phương thức nhập theo ERD: 'VOICE' | 'MANUAL'")
 
     def model_post_init(self, __context) -> None:
         if not self.debt_id and not self.supplier_id:

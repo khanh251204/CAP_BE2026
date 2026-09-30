@@ -1,4 +1,5 @@
 from typing import Optional, Dict, Any
+# pyrefly: ignore [missing-import]
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -59,6 +60,9 @@ def create_expense(
         except Exception:
             tx_date = None
 
+    raw_method = p_data.get("input_method") or "MANUAL"
+    input_method = "VOICE" if str(raw_method).upper() == "VOICE" else "MANUAL"
+
     db: Session = get_db_session()
     try:
         result = ExpenseController.create_expense(
@@ -71,7 +75,8 @@ def create_expense(
             note=note_text,
             payment_status=pay_status,
             transaction_date=tx_date,
-            input_text=in_text
+            input_text=in_text,
+            input_method=input_method
         )
         return result
     finally:

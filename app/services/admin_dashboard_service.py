@@ -1,33 +1,55 @@
 """
 Admin Dashboard — Service Layer
 
-Pure SQL database aggregations for Web Admin KPIs, financial trends,
-top performing products, and expense category breakdown.
+Thực hiện các truy vấn aggregation trực tiếp trên Database cho Admin Dashboard:
+- System KPIs (người dùng, giao dịch, xử lý giọng nói)
+- Voice AI Processing & Voice Processing Trend
+- User & Transaction Activity & Activity Trend
+- Dataset / Data Lake Summary
+- Recent System Activity
+- System Health Check
 """
+import os
+from datetime import datetime
 from typing import Optional, Dict, List, Any
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, and_, or_
+from sqlalchemy import func, case, or_, text
 
-from app.models.transaction_model import Transaction
-from app.models.transactionDetail_model import TransactionDetail
-from app.models.product_model import Product
 from app.models.user_model import User
-from app.models.intent_model import Intent
-from app.models.category_model import Category
-from app.models.debt_model import Debt
+from app.models.transaction_model import Transaction
+from app.models.voice_record_model import VoiceRecord
 from app.services.period_service import PeriodService
 
 
 class AdminDashboardService:
 
-    @staticmethod
-    def get_summary(
+    @classmethod
+    def _validate_date_range(cls, from_date: Optional[str], to_date: Optional[str]) -> None:
+        if from_date and to_date:
+            try:
+                dt_from = datetime.fromisoformat(from_date.strip())
+                dt_to = datetime.fromisoformat(to_date.strip())
+                if dt_from > dt_to:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Ngày bắt đầu (from) không được lớn hơn ngày kết thúc (to)"
+                    )
+            except ValueError:
+                # Nếu format không chuẩn ISO, PeriodService sẽ xử lý parse
+                pass
+
+    @classmethod
+    def get_dashboard(
+        cls,
         db: Session,
         period_type: Optional[str] = None,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
         user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
+        cls._validate_date_range(from_date, to_date)
+
         period = PeriodService.resolve_period(
             period_type=period_type,
             from_date=from_date,
@@ -36,69 +58,192 @@ class AdminDashboardService:
         start_dt = period["start_datetime"]
         end_dt = period["end_datetime"]
 
-        # === 1. Revenue, Expense, Purchase, Tx Count ===
-        filter_exp = and_(
-            or_(Intent.intent_name == "chi_tien", Category.category_type == "EXPENSE"),
-            Intent.intent_name.notin_([
-                "mua_hang", "nhap_hang", "tra_no_cung_cap", "tra_no_nha_cung_cap", "thu_no_nha_cung_cap"
-            ])
+        # ========================================
+        # 1. SYSTEM KPIS (Toàn thời gian)
+        # ========================================
+        total_users = db.query(func.count(User.user_id)).scalar() or 0
+        active_users = db.query(func.count(User.user_id)).filter(
+            User.is_verified.is_(True),
+            or_(User.lock_until.is_(None), User.lock_until <= func.now())
+        ).scalar() or 0
+
+        total_tx = db.query(func.count(Transaction.transaction_id)).scalar() or 0
+
+        voice_all = db.query(
+            func.count(VoiceRecord.voice_id).label("total"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status) == "SUCCESS", 1), else_=0)), 0).label("success"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status) == "FAILED", 1), else_=0)), 0).label("failed"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status).in_(["REVIEW", "PENDING", "PROCESSING"]), 1), else_=0)), 0).label("pending_review")
+        ).first()
+
+        system_kpis = {
+            "total_users": int(total_users),
+            "active_users": int(active_users),
+            "total_transactions": int(total_tx),
+            "total_voice_processing": int(voice_all.total or 0) if voice_all else 0,
+            "successful_voice_processing": int(voice_all.success or 0) if voice_all else 0,
+            "failed_voice_processing": int(voice_all.failed or 0) if voice_all else 0,
+            "pending_review_voice_processing": int(voice_all.pending_review or 0) if voice_all else 0,
+        }
+
+        # ========================================
+        # 2. VOICE AI PROCESSING (Theo kỳ lọc)
+        # ========================================
+        voice_p_query = db.query(
+            func.count(VoiceRecord.voice_id).label("total"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status) == "SUCCESS", 1), else_=0)), 0).label("success"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status) == "FAILED", 1), else_=0)), 0).label("failed"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status).in_(["REVIEW", "PENDING", "PROCESSING"]), 1), else_=0)), 0).label("pending_review")
+        ).filter(VoiceRecord.created_at >= start_dt, VoiceRecord.created_at <= end_dt)
+
+        if user_id is not None:
+            voice_p_query = voice_p_query.filter(VoiceRecord.user_id == user_id)
+
+        voice_p_res = voice_p_query.first()
+        voice_processing_summary = {
+            "total": int(voice_p_res.total or 0) if voice_p_res else 0,
+            "success": int(voice_p_res.success or 0) if voice_p_res else 0,
+            "failed": int(voice_p_res.failed or 0) if voice_p_res else 0,
+            "pending_review": int(voice_p_res.pending_review or 0) if voice_p_res else 0,
+        }
+
+        # Voice processing trend (Group by ngày)
+        vr_date_col = func.date(VoiceRecord.created_at)
+        vr_trend_query = db.query(
+            vr_date_col.label("v_date"),
+            func.count(VoiceRecord.voice_id).label("total"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status) == "SUCCESS", 1), else_=0)), 0).label("success"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status) == "FAILED", 1), else_=0)), 0).label("failed"),
+            func.coalesce(func.sum(case((func.upper(VoiceRecord.status).in_(["REVIEW", "PENDING", "PROCESSING"]), 1), else_=0)), 0).label("pending_review")
+        ).filter(VoiceRecord.created_at >= start_dt, VoiceRecord.created_at <= end_dt)
+
+        if user_id is not None:
+            vr_trend_query = vr_trend_query.filter(VoiceRecord.user_id == user_id)
+
+        vr_trend_rows = vr_trend_query.group_by(vr_date_col).order_by(vr_date_col.asc()).all()
+
+        voice_processing_trend = [
+            {
+                "date": str(row[0]),
+                "total": int(row[1] or 0),
+                "success": int(row[2] or 0),
+                "failed": int(row[3] or 0),
+                "pending_review": int(row[4] or 0),
+            }
+            for row in vr_trend_rows if row[0] is not None
+        ]
+
+        # ========================================
+        # 3. USER & TRANSACTION ACTIVITY (Theo kỳ lọc)
+        # ========================================
+        u_period_q = db.query(func.count(User.user_id)).filter(
+            User.created_at >= start_dt, User.created_at <= end_dt
         )
-
-        tx_query = db.query(
-            func.count(Transaction.transaction_id).label("tx_count"),
-            func.coalesce(
-                func.sum(case((Intent.intent_name == "ban_hang", Transaction.total_amount), else_=0)), 0
-            ).label("revenue"),
-            func.coalesce(
-                func.sum(case((Intent.intent_name.in_(["mua_hang", "nhap_hang"]), Transaction.total_amount), else_=0)), 0
-            ).label("purchase"),
-            func.coalesce(
-                func.sum(case((filter_exp, Transaction.total_amount), else_=0)), 0
-            ).label("expense")
-        ).outerjoin(Intent, Transaction.intent_id == Intent.intent_id)\
-         .outerjoin(Category, Transaction.category_id == Category.category_id)\
-         .filter(
-             Transaction.transaction_date >= start_dt,
-             Transaction.transaction_date <= end_dt
-         )
-
         if user_id is not None:
-            tx_query = tx_query.filter(Transaction.user_id == user_id)
+            u_period_q = u_period_q.filter(User.user_id == user_id)
+        new_users = u_period_q.scalar() or 0
 
-        tx_res = tx_query.first()
-        revenue = float(tx_res.revenue or 0) if tx_res else 0.0
-        expense = float(tx_res.expense or 0) if tx_res else 0.0
-        purchase = float(tx_res.purchase or 0) if tx_res else 0.0
-        tx_count = int(tx_res.tx_count or 0) if tx_res else 0
-        profit = revenue - expense
-
-        # === 2. Active Debt (Receivable & Payable) ===
-        debt_query = db.query(
-            func.coalesce(
-                func.sum(case((and_(Debt.direction == "RECEIVABLE", Debt.status != "PAID"), Debt.remaining_debt), else_=0)), 0
-            ).label("receivable"),
-            func.coalesce(
-                func.sum(case((and_(Debt.direction == "PAYABLE", Debt.status != "PAID"), Debt.remaining_debt), else_=0)), 0
-            ).label("payable")
+        tx_period_q = db.query(func.count(Transaction.transaction_id)).filter(
+            Transaction.created_at >= start_dt, Transaction.created_at <= end_dt
         )
-
         if user_id is not None:
-            debt_query = debt_query.filter(Debt.user_id == user_id)
+            tx_period_q = tx_period_q.filter(Transaction.user_id == user_id)
+        period_tx = tx_period_q.scalar() or 0
 
-        debt_res = debt_query.first()
-        receivable = float(debt_res.receivable or 0) if debt_res else 0.0
-        payable = float(debt_res.payable or 0) if debt_res else 0.0
+        activity_summary = {
+            "new_users": int(new_users),
+            "transactions": int(period_tx),
+            "voice_processing": int(voice_processing_summary["total"]),
+        }
 
-        # === 3. System User Count & Product Count ===
-        user_count_q = db.query(func.count(User.user_id))
+        # Activity trend: Group by ngày cho new_users, transactions, voice
+        u_date_col = func.date(User.created_at)
+        u_trend_q = db.query(u_date_col, func.count(User.user_id)).filter(
+            User.created_at >= start_dt, User.created_at <= end_dt
+        )
         if user_id is not None:
-            user_count_q = user_count_q.filter(User.user_id == user_id)
-        user_count = user_count_q.scalar() or 0
+            u_trend_q = u_trend_q.filter(User.user_id == user_id)
+        u_trend_map = dict(u_trend_q.group_by(u_date_col).all())
 
-        prod_count_q = db.query(func.count(Product.product_id))
+        tx_date_col = func.date(Transaction.created_at)
+        tx_trend_q = db.query(tx_date_col, func.count(Transaction.transaction_id)).filter(
+            Transaction.created_at >= start_dt, Transaction.created_at <= end_dt
+        )
         if user_id is not None:
-            prod_count_q = prod_count_q.filter(Product.user_id == user_id)
-        prod_count = prod_count_q.scalar() or 0
+            tx_trend_q = tx_trend_q.filter(Transaction.user_id == user_id)
+        tx_trend_map = dict(tx_trend_q.group_by(tx_date_col).all())
+
+        vr_daily_map = {row[0]: int(row[1] or 0) for row in vr_trend_rows if row[0] is not None}
+
+        all_trend_dates = sorted(set(u_trend_map.keys()) | set(tx_trend_map.keys()) | set(vr_daily_map.keys()))
+        activity_trend = [
+            {
+                "date": str(d),
+                "new_users": int(u_trend_map.get(d, 0)),
+                "transactions": int(tx_trend_map.get(d, 0)),
+                "voice_processing": int(vr_daily_map.get(d, 0)),
+            }
+            for d in all_trend_dates if d is not None
+        ]
+
+        # ========================================
+        # 4. DATASET / DATA LAKE SUMMARY
+        # ========================================
+        total_vr = db.query(func.count(VoiceRecord.voice_id)).scalar() or 0
+        ds_records = db.query(func.count(VoiceRecord.voice_id)).filter(
+            VoiceRecord.transcript.isnot(None),
+            func.upper(VoiceRecord.status) == "SUCCESS"
+        ).scalar() or 0
+        corrections = db.query(func.count(VoiceRecord.voice_id)).filter(
+            VoiceRecord.transaction_id.isnot(None)
+        ).scalar() or 0
+
+        dataset_summary = {
+            "voice_records": int(total_vr),
+            "dataset_records": int(ds_records),
+            "corrections": int(corrections),
+            "evaluation_records": None,  # Hệ thống hiện chưa có bảng evaluation trong DB
+        }
+
+        # ========================================
+        # 5. RECENT SYSTEM ACTIVITY
+        # ========================================
+        recent_records = (
+            db.query(VoiceRecord)
+            .order_by(VoiceRecord.created_at.desc(), VoiceRecord.voice_id.desc())
+            .limit(10)
+            .all()
+        )
+        recent_activity = [
+            {
+                "id": r.voice_id,
+                "timestamp": r.created_at.isoformat() if r.created_at else None,
+                "module": "VOICE",
+                "action": f"PROCESS_{r.intent.upper()}" if r.intent else "PROCESS",
+                "status": r.status or "SUCCESS",
+                "description": r.transcript[:100] if r.transcript else None,
+            }
+            for r in recent_records
+        ]
+
+        # ========================================
+        # 6. SYSTEM HEALTH
+        # ========================================
+        db_status = "healthy"
+        try:
+            db.execute(text("SELECT 1"))
+        except Exception:
+            db_status = "unhealthy"
+
+        ai_status = "healthy"
+        if not (os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")):
+            ai_status = "degraded"
+
+        system_health = {
+            "api": "healthy",
+            "database": db_status,
+            "ai_service": ai_status,
+        }
 
         return {
             "period": {
@@ -106,182 +251,39 @@ class AdminDashboardService:
                 "start": period["start_datetime"].isoformat(),
                 "end": period["end_datetime"].isoformat(),
             },
+            "system": system_kpis,
+            "voice_processing": voice_processing_summary,
+            "voice_processing_trend": voice_processing_trend,
+            "activity": activity_summary,
+            "activity_trend": activity_trend,
+            "dataset": dataset_summary,
+            "recent_activity": recent_activity,
+            "system_health": system_health,
             "summary": {
-                "revenue": revenue,
-                "expense": expense,
-                "profit": profit,
-                "purchase": purchase,
-                "receivable": receivable,
-                "payable": payable,
-                "transaction_count": tx_count,
-                "user_count": user_count,
-                "product_count": prod_count,
-            }
+                "user_count": int(total_users),
+                "transaction_count": int(total_tx),
+                "voice_processing_count": int(system_kpis["total_voice_processing"]),
+            },
         }
 
-    @staticmethod
-    def get_trends(
-        db: Session,
-        period_type: Optional[str] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-        user_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        period = PeriodService.resolve_period(
-            period_type=period_type,
-            from_date=from_date,
-            to_date=to_date
-        )
-        start_dt = period["start_datetime"]
-        end_dt = period["end_datetime"]
+    # ========================================
+    # Backward Compatibility Methods
+    # ========================================
+    @classmethod
+    def get_summary(cls, db: Session, period_type: Optional[str] = None, from_date: Optional[str] = None, to_date: Optional[str] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
+        return cls.get_dashboard(db=db, period_type=period_type, from_date=from_date, to_date=to_date, user_id=user_id)
 
-        filter_exp = and_(
-            or_(Intent.intent_name == "chi_tien", Category.category_type == "EXPENSE"),
-            Intent.intent_name.notin_([
-                "mua_hang", "nhap_hang", "tra_no_cung_cap", "tra_no_nha_cung_cap", "thu_no_nha_cung_cap"
-            ])
-        )
+    @classmethod
+    def get_trends(cls, db: Session, period_type: Optional[str] = None, from_date: Optional[str] = None, to_date: Optional[str] = None, user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        dash = cls.get_dashboard(db=db, period_type=period_type, from_date=from_date, to_date=to_date, user_id=user_id)
+        return dash.get("activity_trend", [])
 
-        date_col = func.date(Transaction.transaction_date)
+    @classmethod
+    def get_top_products(cls, db: Session, **kwargs) -> List[Dict[str, Any]]:
+        # Admin Dashboard không quản lý Top Products kinh doanh
+        return []
 
-        trend_query = db.query(
-            date_col.label("tx_date"),
-            func.count(Transaction.transaction_id).label("tx_count"),
-            func.coalesce(
-                func.sum(case((Intent.intent_name == "ban_hang", Transaction.total_amount), else_=0)), 0
-            ).label("revenue"),
-            func.coalesce(
-                func.sum(case((filter_exp, Transaction.total_amount), else_=0)), 0
-            ).label("expense")
-        ).outerjoin(Intent, Transaction.intent_id == Intent.intent_id)\
-         .outerjoin(Category, Transaction.category_id == Category.category_id)\
-         .filter(
-             Transaction.transaction_date >= start_dt,
-             Transaction.transaction_date <= end_dt
-         )
-
-        if user_id is not None:
-            trend_query = trend_query.filter(Transaction.user_id == user_id)
-
-        rows = trend_query.group_by(date_col).order_by(date_col.asc()).all()
-
-        results = []
-        for r_date, r_count, r_rev, r_exp in rows:
-            rev = float(r_rev or 0)
-            exp = float(r_exp or 0)
-            results.append({
-                "date": str(r_date),
-                "revenue": rev,
-                "expense": exp,
-                "profit": rev - exp,
-                "transaction_count": int(r_count or 0),
-            })
-        return results
-
-    @staticmethod
-    def get_top_products(
-        db: Session,
-        period_type: Optional[str] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-        user_id: Optional[int] = None,
-        limit: int = 5,
-        sort_by: str = "revenue",
-    ) -> List[Dict[str, Any]]:
-        period = PeriodService.resolve_period(
-            period_type=period_type,
-            from_date=from_date,
-            to_date=to_date
-        )
-        start_dt = period["start_datetime"]
-        end_dt = period["end_datetime"]
-
-        query = db.query(
-            TransactionDetail.product_id,
-            Product.product_name,
-            TransactionDetail.unit,
-            func.coalesce(func.sum(TransactionDetail.quantity), 0).label("qty_sold"),
-            func.coalesce(func.sum(TransactionDetail.subtotal), 0).label("revenue")
-        ).join(Transaction, TransactionDetail.transaction_id == Transaction.transaction_id)\
-         .join(Intent, Transaction.intent_id == Intent.intent_id)\
-         .outerjoin(Product, TransactionDetail.product_id == Product.product_id)\
-         .filter(
-             Transaction.transaction_date >= start_dt,
-             Transaction.transaction_date <= end_dt,
-             Intent.intent_name == "ban_hang"
-         )
-
-        if user_id is not None:
-            query = query.filter(Transaction.user_id == user_id)
-
-        query = query.group_by(
-            TransactionDetail.product_id, Product.product_name, TransactionDetail.unit
-        )
-
-        if sort_by == "quantity":
-            query = query.order_by(func.sum(TransactionDetail.quantity).desc())
-        else:
-            query = query.order_by(func.sum(TransactionDetail.subtotal).desc())
-
-        rows = query.limit(limit).all()
-
-        results = []
-        for p_id, p_name, p_unit, qty, rev in rows:
-            results.append({
-                "product_id": p_id or 0,
-                "product_name": p_name or (f"Sản phẩm #{p_id}" if p_id else "Khác"),
-                "unit": p_unit or "",
-                "quantity_sold": float(qty or 0),
-                "revenue": float(rev or 0),
-            })
-        return results
-
-    @staticmethod
-    def get_expense_categories(
-        db: Session,
-        period_type: Optional[str] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-        user_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        period = PeriodService.resolve_period(
-            period_type=period_type,
-            from_date=from_date,
-            to_date=to_date
-        )
-        start_dt = period["start_datetime"]
-        end_dt = period["end_datetime"]
-
-        filter_exp = and_(
-            or_(Intent.intent_name == "chi_tien", Category.category_type == "EXPENSE"),
-            Intent.intent_name.notin_([
-                "mua_hang", "nhap_hang", "tra_no_cung_cap", "tra_no_nha_cung_cap", "thu_no_nha_cung_cap"
-            ])
-        )
-
-        query = db.query(
-            Transaction.category_id,
-            Category.category_name,
-            func.coalesce(func.sum(Transaction.total_amount), 0).label("amount")
-        ).outerjoin(Intent, Transaction.intent_id == Intent.intent_id)\
-         .outerjoin(Category, Transaction.category_id == Category.category_id)\
-         .filter(
-             Transaction.transaction_date >= start_dt,
-             Transaction.transaction_date <= end_dt,
-             filter_exp
-         )
-
-        if user_id is not None:
-            query = query.filter(Transaction.user_id == user_id)
-
-        rows = query.group_by(Transaction.category_id, Category.category_name)\
-                    .order_by(func.sum(Transaction.total_amount).desc()).all()
-
-        results = []
-        for c_id, c_name, amt in rows:
-            results.append({
-                "category_id": c_id,
-                "category_name": c_name or "Chi phí khác",
-                "amount": float(amt or 0),
-            })
-        return results
+    @classmethod
+    def get_expense_categories(cls, db: Session, **kwargs) -> List[Dict[str, Any]]:
+        # Admin Dashboard không quản lý cơ cấu chi phí kinh doanh
+        return []

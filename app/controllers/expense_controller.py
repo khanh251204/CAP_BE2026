@@ -21,7 +21,8 @@ class ExpenseController:
         note: Optional[str] = None,
         payment_status: Optional[str] = "PAID",
         transaction_date: Optional[datetime] = None,
-        input_text: Optional[str] = None
+        input_text: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL"
     ) -> Dict[str, Any]:
         return ExpenseService.create_expense(
             db=db,
@@ -33,5 +34,6 @@ class ExpenseController:
             note=note,
             payment_status=payment_status,
             transaction_date=transaction_date,
-            input_text=input_text
+            input_text=input_text,
+            input_method=input_method
         )

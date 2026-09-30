@@ -22,6 +22,7 @@ class SupplierDebtMixin:
         total_debt: float,
         transaction_id: Optional[int] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         supplier = DebtRepository.get_supplier_by_id_and_user(supplier_id=supplier_id, user_id=user_id, db=db)
         if not supplier:
@@ -34,6 +35,8 @@ class SupplierDebtMixin:
         if total_debt_dec <= 0:
             raise HTTPException(status_code=400, detail="Số tiền công nợ phải lớn hơn 0")
 
+        clean_method = "VOICE" if str(input_method or "").upper().strip() == "VOICE" else "MANUAL"
+
         try:
             if transaction_id is None:
                 intent_id = _get_intent_id(db, "ghi_no_nha_cung_cap")
@@ -45,7 +48,7 @@ class SupplierDebtMixin:
                     supplier_id=supplier_id,
                     total_amount=total_debt_dec,
                     payment_status="PENDING",
-                    input_method="MANUAL",
+                    input_method=clean_method,
                     input_text=note or "Ghi nợ nhà cung cấp",
                     transaction_date=datetime.now(),
                     created_at=datetime.now(),
@@ -95,6 +98,7 @@ class SupplierDebtMixin:
         supplier_id: Optional[int] = None,
         payment_date: Optional[datetime] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         if payment_date is None:
             payment_date = datetime.now()
@@ -102,6 +106,8 @@ class SupplierDebtMixin:
         amount_dec = Decimal(str(amount))
         if amount_dec <= 0:
             raise HTTPException(status_code=400, detail="Số tiền thanh toán phải lớn hơn 0")
+
+        clean_method = "VOICE" if str(input_method or "").upper().strip() == "VOICE" else "MANUAL"
 
         if not debt_id and not supplier_id:
             raise HTTPException(
@@ -167,7 +173,7 @@ class SupplierDebtMixin:
                 supplier_id=supplier_id if supplier_id else debts_to_pay[0].supplier_id,
                 total_amount=amount_dec,
                 payment_status="PAID",
-                input_method="MANUAL",
+                input_method=clean_method,
                 input_text=note or "Trả nợ nhà cung cấp",
                 transaction_date=payment_date,
                 created_at=datetime.now(),

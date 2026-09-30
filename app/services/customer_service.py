@@ -199,7 +199,7 @@ class CustomerService:
                 details = []
                 if hasattr(d.transaction, "transaction_detail") and d.transaction.transaction_detail:
                     for td in d.transaction.transaction_detail:
-                        pname = td.product.product_name if td.product else None
+                        pname = td.product_name or (td.product.product_name if td.product else None)
                         details.append({
                             "detail_id": td.detail_id,
                             "product_id": td.product_id,

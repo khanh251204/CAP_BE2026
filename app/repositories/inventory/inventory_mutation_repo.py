@@ -83,10 +83,12 @@ class InventoryMutationRepository:
         unit: str,
         unit_price: Decimal,
         subtotal: Decimal,
+        product_name: Optional[str] = None,
     ) -> TransactionDetail:
         detail = TransactionDetail(
             transaction_id=transaction_id,
             product_id=product_id,
+            product_name=product_name,
             quantity=quantity,
             unit=unit,
             unit_price=unit_price,

@@ -16,6 +16,7 @@ class CustomerDebtController:
         total_debt: float,
         transaction_id: Optional[int] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         res = DebtService.create_customer_debt(
             db=db,
@@ -24,6 +25,7 @@ class CustomerDebtController:
             total_debt=total_debt,
             transaction_id=transaction_id,
             note=note,
+            input_method=input_method,
         )
         try:
             trigger_report_update(user_id=user_id, affected=["debt", "receivable"])
@@ -41,6 +43,7 @@ class CustomerDebtController:
         customer_id: Optional[int] = None,
         payment_date: Optional[datetime] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         res = DebtService.collect_customer_debt(
             db=db,
@@ -51,6 +54,7 @@ class CustomerDebtController:
             amount=amount,
             payment_date=payment_date,
             note=note,
+            input_method=input_method,
         )
         try:
             trigger_report_update(user_id=user_id, affected=["debt", "receivable", "balance"])

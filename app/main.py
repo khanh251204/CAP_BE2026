@@ -7,6 +7,16 @@ from app.configs.database import auth_db, Base, engine
 from app.configs.migrations.migrate_voice_record import (
     migrate_voice_record_schema,
 )
+from app.configs.migrations.migrate_transaction_detail import (
+    migrate_transaction_detail_schema,
+)
+from app.configs.migrations.migrate_system_logs import (
+    migrate_system_logs,
+)
+from app.configs.migrations.migrate_user_correction import (
+    migrate_user_correction_schema,
+)
+from app.middlewares.system_log_middleware import SystemLogMiddleware
 from app.services.closing_scheduler import ClosingScheduler
 from app.services.data_lake_service import DataLakeService
 
@@ -31,6 +41,7 @@ from app.routes.admin_product_route import router as admin_product_router
 from app.routes.admin_transaction_route import router as admin_transaction_router
 from app.routes.admin_user_route import router as admin_user_router
 from app.routes.admin_voice_route import router as admin_voice_router
+from app.routes.admin_system_log_route import router as admin_system_log_router
 
 
 @asynccontextmanager
@@ -46,6 +57,21 @@ async def lifespan(app: FastAPI):
         migrate_voice_record_schema()
     except Exception as e:
         print(f"[DB] Voice_Record migration error: {e}")
+
+    try:
+        migrate_transaction_detail_schema()
+    except Exception as e:
+        print(f"[DB] Transaction_Detail migration error: {e}")
+
+    try:
+        migrate_system_logs()
+    except Exception as e:
+        print(f"[DB] System_Logs migration error: {e}")
+
+    try:
+        migrate_user_correction_schema()
+    except Exception as e:
+        print(f"[DB] User_Correction migration error: {e}")
 
     try:
         ClosingScheduler.start()
@@ -91,6 +117,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(SystemLogMiddleware)
+
 
 # =====================================================
 # CORE ROUTERS
@@ -123,6 +151,7 @@ ADMIN_ROUTERS = [
     admin_transaction_router,
     admin_user_router,
     admin_voice_router,
+    admin_system_log_router,
 ]
 
 

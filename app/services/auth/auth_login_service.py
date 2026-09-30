@@ -21,6 +21,7 @@ from app.services.refresh_token_service import (
     revoke_refresh_token_value
 )
 from app.services.auth.auth_registration_service import normalize_email, user_to_dict
+from app.services.system_log_service import log_event
 
 
 def create_session(db: Session, user) -> dict:
@@ -66,18 +67,38 @@ def login_user(db: Session, data: LoginRequest):
     user = get_user_by_email(db, email)
 
     if not user or not user.password_hash or not verify_password(data.password, user.password_hash):
+        log_event(
+            level="WARNING",
+            step="AUTH",
+            message=f"Login failed: invalid email or password for {email}",
+            detail={"reason": "INVALID_CREDENTIALS", "email": email}
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email hoặc mật khẩu không chính xác"
         )
 
     if user.lock_until and user.lock_until > datetime.utcnow():
+        log_event(
+            level="WARNING",
+            step="AUTH",
+            message=f"Login blocked: account is locked for {email}",
+            detail={"reason": "ACCOUNT_LOCKED", "email": email},
+            user_id=user.user_id
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên."
         )
 
     if not user.is_verified:
+        log_event(
+            level="WARNING",
+            step="AUTH",
+            message=f"Login blocked: unverified email for {email}",
+            detail={"reason": "EMAIL_NOT_VERIFIED", "email": email},
+            user_id=user.user_id
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tài khoản chưa được xác thực email"

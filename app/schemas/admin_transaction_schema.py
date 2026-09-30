@@ -39,6 +39,7 @@ class AdminTransactionDetailItem(BaseModel):
     """Chi tiết dòng hàng (Transaction_Detail) theo ERD."""
     detail_id: int
     product_id: int
+    product_name: Optional[str] = None
     quantity: float
     unit: str
     unit_price: float

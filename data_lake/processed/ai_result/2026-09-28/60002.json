@@ -1,0 +1,22 @@
+{
+  "voice_record_id": 60002,
+  "transcript": "Bán 3 lốc sữa chua",
+  "intent": "ban_hang",
+  "entities": {
+    "customer": null,
+    "date": null,
+    "new_product_name": null,
+    "payment": null,
+    "price": null,
+    "product": "sữa chua",
+    "quantity": 3,
+    "supplier": null,
+    "unit": "lốc"
+  },
+  "confidence": null,
+  "processing_time": 3.421,
+  "status": "SUCCESS",
+  "error_message": null,
+  "created_at": "2026-09-28T21:30:09",
+  "data_classification": "PROCESSED_AI"
+}

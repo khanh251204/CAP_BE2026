@@ -72,14 +72,20 @@ def link_voice_record_to_transaction(
     record.transaction_id = transaction_id
     if user_id is not None and not record.user_id:
         record.user_id = user_id
+
+    # Đảm bảo Transaction có input_method = 'VOICE' vì giao dịch phát sinh từ voice record
+    from app.models.transaction_model import Transaction
+    tx = db.query(Transaction).filter(Transaction.transaction_id == transaction_id).first()
+    if tx and tx.input_method != "VOICE":
+        tx.input_method = "VOICE"
+
     db.commit()
 
     # Cập nhật Data Lake snapshot sau khi giao dịch được liên kết
     try:
         from app.services.data_lake_service import DataLakeService
-        from app.models.transaction_model import Transaction
-        tx = db.query(Transaction).filter(Transaction.transaction_id == transaction_id).first()
-        DataLakeService.ingest_record(record, transaction=tx, db=db)
+        if tx:
+            DataLakeService.ingest_record(record, transaction=tx, db=db)
     except Exception:
         pass
 

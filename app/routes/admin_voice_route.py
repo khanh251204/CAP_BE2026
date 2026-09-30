@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import Optional
 
@@ -10,9 +11,13 @@ from app.configs.jwt import authorize_roles
 from app.schemas.admin_voice_schema import (
     AdminVoiceListResponse,
     AdminVoiceDetailResponse,
-    AdminVoiceAiResultResponse
+    AdminVoiceAiResultResponse,
+    AdminUserCorrectionListResponse,
+    AdminUserCorrectionItem,
+    AdminVoicePagination,
 )
 from app.services.admin_voice_service import AdminVoiceService
+from app.services.user_correction_service import UserCorrectionService
 
 router = APIRouter(
     prefix="/admin/voice-processing",
@@ -56,7 +61,54 @@ def list_voice_processing(
 
 
 @router.get(
+    "/corrections",
+    response_model=AdminUserCorrectionListResponse,
+    summary="Danh sách hiệu chỉnh người dùng (Human-in-the-Loop)",
+    description="Truy xuất danh sách bản ghi người dùng đã xác nhận hoặc chỉnh sửa kết quả AI, phục vụ đánh giá (Evaluation) và cải tiến mô hình."
+)
+def list_user_corrections(
+    page: int = Query(1, ge=1, description="Trang hiện tại"),
+    limit: int = Query(20, ge=1, le=100, description="Số lượng bản ghi trên một trang"),
+    user_id: Optional[int] = Query(None, description="Lọc theo ID người dùng"),
+    correction_type: Optional[str] = Query(None, description="Lọc theo loại hiệu chỉnh"),
+    db: Session = Depends(get_db)
+):
+    items, total = UserCorrectionService.list_corrections(
+        db=db,
+        page=page,
+        limit=limit,
+        user_id=user_id,
+        correction_type=correction_type
+    )
+    total_pages = math.ceil(total / limit) if total > 0 else 0
+    return AdminUserCorrectionListResponse(
+        items=[
+            AdminUserCorrectionItem(
+                id=c.id,
+                user_id=c.user_id,
+                voice_record_id=c.voice_record_id,
+                transaction_id=c.transaction_id,
+                correction_type=c.correction_type,
+                original_ai_result=c.original_ai_result or {},
+                corrected_result=c.corrected_result or {},
+                diff=c.diff or {},
+                extra_metadata=c.extra_metadata,
+                created_at=c.created_at
+            )
+            for c in items
+        ],
+        pagination=AdminVoicePagination(
+            page=page,
+            limit=limit,
+            total=total,
+            total_pages=total_pages
+        )
+    )
+
+
+@router.get(
     "/{id}",
+
     response_model=AdminVoiceDetailResponse,
     summary="Xem chi tiết một bản ghi xử lý voice",
     description="Truy xuất đầy đủ thông tin chi tiết của một bản ghi voice processing: thông tin người dùng, file ghi âm, kết quả AI (transcript, intent, entities, confidence), validation, transaction liên kết và processing logs."

@@ -1,0 +1,52 @@
+{
+  "voice_record_id": null,
+  "transaction_id": 1620002,
+  "user_id": 150002,
+  "ai_result": {
+    "product_name": "sữa chua",
+    "product_id": 930001,
+    "quantity": 3,
+    "unit": "lốc",
+    "unit_price": 28000.0,
+    "customer_name": null,
+    "customer_id": null,
+    "amount_paid": null,
+    "payment_status": null,
+    "date": null,
+    "input_text": "Bán 3 lốc sữa chua"
+  },
+  "final_transaction": {
+    "product_name": "sữa chua",
+    "product_id": 930001,
+    "quantity": 4.0,
+    "unit": "lốc",
+    "unit_price": 28000.0,
+    "customer_name": null,
+    "customer_id": null,
+    "amount_paid": null,
+    "payment_status": "cash",
+    "date": null,
+    "input_text": "Bán 3 lốc sữa chua",
+    "subtotal": 112000.0,
+    "total_amount": 112000.0
+  },
+  "correction": {
+    "ai": {
+      "quantity": 3
+    },
+    "correction": {
+      "quantity": 4.0
+    }
+  },
+  "diff": {
+    "ai": {
+      "quantity": 3
+    },
+    "correction": {
+      "quantity": 4.0
+    }
+  },
+  "correction_type": "QUANTITY_CORRECTION",
+  "created_at": "2026-09-28T21:30:25.833606",
+  "data_classification": "USER_FEEDBACK"
+}

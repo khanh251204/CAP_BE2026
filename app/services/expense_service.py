@@ -163,6 +163,7 @@ class ExpenseService:
         payment_status: Optional[str] = "PAID",
         transaction_date: Optional[datetime] = None,
         input_text: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         """
         Tạo giao dịch ghi nhận chi phí.
@@ -182,6 +183,9 @@ class ExpenseService:
         if status_clean not in ["PAID", "PENDING", "PARTIAL"]:
             status_clean = "PAID"
 
+        raw_method = (input_method or "MANUAL").upper().strip()
+        method_clean = raw_method if raw_method in {"VOICE", "MANUAL"} else "MANUAL"
+
         tx_date = transaction_date or datetime.now()
 
         # Tạo Transaction
@@ -194,7 +198,7 @@ class ExpenseService:
             supplier_id=None,
             total_amount=amount_dec,
             payment_status=status_clean,
-            input_method="VOICE" if input_text else "MANUAL",
+            input_method=method_clean,
             input_text=input_text or note or f"Chi phí: {category.category_name if category else 'Khác'}",
             note=note or (category.category_name if category else "Chi phí"),
             transaction_date=tx_date,

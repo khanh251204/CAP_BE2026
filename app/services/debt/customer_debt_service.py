@@ -22,6 +22,7 @@ class CustomerDebtMixin:
         total_debt: float,
         transaction_id: Optional[int] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         customer = DebtRepository.get_customer_by_id_and_user(customer_id=customer_id, user_id=user_id, db=db)
         if not customer:
@@ -34,6 +35,8 @@ class CustomerDebtMixin:
         if total_debt_dec <= 0:
             raise HTTPException(status_code=400, detail="Số tiền công nợ phải lớn hơn 0")
 
+        clean_method = "VOICE" if str(input_method or "").upper().strip() == "VOICE" else "MANUAL"
+
         try:
             if transaction_id is None:
                 intent_id = _get_intent_id(db, "ghi_no_khach_hang")
@@ -45,7 +48,7 @@ class CustomerDebtMixin:
                     supplier_id=None,
                     total_amount=total_debt_dec,
                     payment_status="PENDING",
-                    input_method="MANUAL",
+                    input_method=clean_method,
                     input_text=note or "Ghi nợ khách hàng",
                     transaction_date=datetime.now(),
                     created_at=datetime.now(),
@@ -95,6 +98,7 @@ class CustomerDebtMixin:
         customer_id: Optional[int] = None,
         payment_date: Optional[datetime] = None,
         note: Optional[str] = None,
+        input_method: Optional[str] = "MANUAL",
     ) -> Dict[str, Any]:
         if payment_date is None:
             payment_date = datetime.now()
@@ -102,6 +106,8 @@ class CustomerDebtMixin:
         amount_dec = Decimal(str(amount))
         if amount_dec <= 0:
             raise HTTPException(status_code=400, detail="Số tiền thu phải lớn hơn 0")
+
+        clean_method = "VOICE" if str(input_method or "").upper().strip() == "VOICE" else "MANUAL"
 
         if not debt_id and not customer_id:
             raise HTTPException(
@@ -160,7 +166,7 @@ class CustomerDebtMixin:
                 supplier_id=None,
                 total_amount=amount_dec,
                 payment_status="PAID",
-                input_method="MANUAL",
+                input_method=clean_method,
                 input_text=note or "Thu nợ khách hàng",
                 transaction_date=payment_date,
                 created_at=datetime.now(),

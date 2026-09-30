@@ -76,7 +76,12 @@ def get_supplier_detail(
 @supplier_router.patch(
     "/{supplier_id}",
     response_model=SupplierResponse,
-    summary="Cập nhật thông tin nhà cung cấp (Mục 18)",
+    summary="Cập nhật thông tin nhà cung cấp (PATCH - Mục 18)",
+)
+@supplier_router.put(
+    "/{supplier_id}",
+    response_model=SupplierResponse,
+    summary="Cập nhật thông tin nhà cung cấp (PUT)",
 )
 def update_supplier(
     supplier_id: int = Path(..., ge=1, description="ID nhà cung cấp"),

@@ -45,8 +45,23 @@ class AdminVoiceAiService:
         cls,
         llm_data: Dict[str, Any],
         transaction: Optional[Transaction],
-        db: Session
+        db: Session,
+        voice_id: Optional[int] = None
     ) -> Optional[Dict[str, Any]]:
+        # 0. Kiểm tra trực tiếp bảng User_Correction trong MySQL
+        try:
+            from app.models.user_correction_model import UserCorrection
+            query = db.query(UserCorrection)
+            corr_rec = None
+            if voice_id:
+                corr_rec = query.filter(UserCorrection.voice_record_id == voice_id).order_by(UserCorrection.id.desc()).first()
+            if not corr_rec and transaction:
+                corr_rec = query.filter(UserCorrection.transaction_id == transaction.transaction_id).order_by(UserCorrection.id.desc()).first()
+            if corr_rec and corr_rec.diff:
+                return corr_rec.diff
+        except Exception:
+            pass
+
         # 1. Nếu llm_data đã lưu rõ user correction từ Human-in-the-Loop
         if "correction" in llm_data and isinstance(llm_data["correction"], dict):
             return llm_data["correction"]
@@ -198,7 +213,7 @@ class AdminVoiceAiService:
         )
 
         # 6. User Correction
-        correction_obj = cls._detect_user_correction(llm_data, transaction, db)
+        correction_obj = cls._detect_user_correction(llm_data, transaction, db, voice_id=record.voice_id)
 
         # 7. Transaction
         tx_obj = None
@@ -218,14 +233,21 @@ class AdminVoiceAiService:
         # 8. Processing Metadata
         proc_status = (record.status or llm_data.get("status") or "SUCCESS").lower()
         proc_time_ms = cls._normalize_processing_time_ms(record.processing_time)
-        provider = llm_data.get("provider") or ("Groq" if record.processing_time is not None else None)
-        model = llm_data.get("model") or ("whisper-large-v3-turbo" if record.audio_path else None)
+        ai_meta = llm_data.get("_ai_metadata") if isinstance(llm_data.get("_ai_metadata"), dict) else {}
+        provider = llm_data.get("provider") or ai_meta.get("llm", {}).get("provider") or ("Groq" if record.processing_time is not None else None)
+        model = llm_data.get("model") or ai_meta.get("llm", {}).get("model") or ("whisper-large-v3-turbo" if record.audio_path else None)
+        model_ver = llm_data.get("model_version") or ai_meta.get("llm", {}).get("version")
+        prompt_ver = llm_data.get("prompt_version") or ai_meta.get("prompt_version")
+        pipe_ver = llm_data.get("pipeline_version") or ai_meta.get("pipeline_version")
 
         processing_obj = AdminVoiceAiResultProcessing(
             status=proc_status,
             processing_time_ms=proc_time_ms,
             provider=provider,
             model=model,
+            model_version=model_ver,
+            prompt_version=prompt_ver,
+            pipeline_version=pipe_ver,
             error_message=record.error_message
         )
 
