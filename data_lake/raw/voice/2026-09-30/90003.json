@@ -2,7 +2,7 @@
   "voice_record_id": 90003,
   "user_id": 150002,
   "audio_path": "https://res.cloudinary.com/dc2tsiczp/video/upload/v1790705648/voice_cashbook/audio/wtkd2igy6ciippsilcog.m4a",
-  "request_id": "69a41c98d8d248919f359221aa170bdf",
+  "request_id": null,
   "created_at": "2026-09-30T01:14:09",
   "data_classification": "RAW_SOURCE"
 }

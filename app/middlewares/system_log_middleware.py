@@ -71,14 +71,38 @@ EXCLUDED_PATHS = {
 }
 
 
-def _should_skip_logging(path: str) -> bool:
-    """Bỏ qua các đường dẫn không cần ghi log để tránh làm phình DB và tránh vòng lặp."""
+def _should_skip_logging(request: Request) -> bool:
+    """
+    Bỏ qua các đường dẫn hoặc method không cần ghi log để tránh làm phình DB
+    và triệt tiêu tình trạng nghẽn connection pool.
+    """
+    # 1. Bỏ qua CORS preflight OPTIONS request hoàn toàn
+    if request.method == "OPTIONS":
+        return True
+
+    # 2. Bỏ qua WebSocket connections
+    if request.scope.get("type") == "websocket":
+        return True
+
+    path = request.url.path
     clean_path = path.rstrip("/")
+
+    # 3. Bỏ qua tài liệu API và static
     if clean_path in EXCLUDED_PATHS or path in EXCLUDED_PATHS:
         return True
-    # Bỏ qua chính endpoint admin system-logs để tránh vòng lặp ghi log
+
+    # 4. Bỏ qua chính endpoint admin system-logs để tránh vòng lặp ghi log
     if "/admin/system-logs" in clean_path or "/admin/system_logs" in clean_path:
         return True
+
+    # 5. Bỏ qua WebSocket route reports
+    if "/reports/ws" in clean_path:
+        return True
+
+    # 6. Bỏ qua root và health checks
+    if clean_path in ("", "/", "/health", "/ping"):
+        return True
+
     return False
 
 
@@ -143,16 +167,43 @@ def _parse_device_info(request: Request) -> Optional[Dict[str, Any]]:
     return None
 
 
+def resolve_log_step(api_path: str = None, current_step: str = None) -> str:
+    """Tự động phân loại bước kỹ thuật (step) dựa vào api_path nếu chưa được chỉ định."""
+    if current_step and current_step != "OTHER":
+        return current_step
+
+    path = (api_path or "").lower()
+    # 1. STT: CHỈ API /api/v1/stt/groq (hoặc /stt/groq)
+    if "/stt/groq" in path or path.endswith("/stt"):
+        return "STT"
+
+    # 2. AI (NLP): phân tích ý định và bóc tách thực thể
+    if any(k in path for k in ("/analyze", "/agent", "/chat", "/llm", "/ai", "/predict")):
+        return "LLM"
+
+    # 3. AUTH: xác thực người dùng
+    if any(k in path for k in ("/login", "/register", "/auth", "/token", "/refresh", "/me", "/logout")):
+        return "AUTH"
+
+    # 4. ADMIN: các API quản trị admin
+    if "/admin" in path:
+        return "ADMIN"
+
+    # 5. KHÁC (OTHER): toàn bộ các API còn lại
+    return "OTHER"
+
+
 def _write_log_to_db_sync(log_data: dict):
     """Ghi bản ghi SystemLog vào DB một cách an toàn và độc lập."""
     db = None
     try:
         from app.configs.database import get_db_session
         db = get_db_session()
+        resolved_step = resolve_log_step(log_data.get("api_path"), log_data.get("step"))
         log_entry = SystemLog(
             created_at=log_data.get("created_at"),
             level=log_data.get("level", "INFO"),
-            step=log_data.get("step", "OTHER"),
+            step=resolved_step,
             api_path=log_data.get("api_path"),
             http_method=log_data.get("http_method"),
             status_code=log_data.get("status_code"),
@@ -190,8 +241,8 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
         token_ctx = current_request_id_var.set(req_id)
         request.state.request_id = req_id
 
-        # Kiểm tra bỏ qua log nếu đường dẫn thuộc danh sách loại trừ
-        if _should_skip_logging(path):
+        # Kiểm tra bỏ qua log nếu đường dẫn/method thuộc danh sách loại trừ
+        if _should_skip_logging(request):
             try:
                 response = await call_next(request)
                 response.headers["X-Request-ID"] = req_id

@@ -1,0 +1,10 @@
+test_id,fullName,email,password,accountType,province,storeName,businessField,expected,actual,note
+TC01,<MISSING>,valid_user@example.com,Password@123,personal,Ha Noi,,,422,Status 422 (PASSED),Thieu truong bat buoc fullName
+TC02,Nguyen Van A,<MISSING>,Password@123,personal,Ha Noi,,,422,Status 422 (PASSED),Thieu truong bat buoc email
+TC03,Nguyen Van A,invalid-email,Password@123,personal,Ha Noi,,,422,Status 422 (PASSED),Email sai dinh dang (khong co @)
+TC04,Nguyen Van A,valid_user@example.com,12345,personal,Ha Noi,,,422,Status 422 (PASSED),Mat khau qua ngan (< 8 ky tu)
+TC05,Nguyen Van A,buithinhu1408@gmail.com,Password@123,personal,Ha Noi,,,409,Status 409 (PASSED),Email da ton tai trong he thong
+TC06,Tran Thi B,biz_user@example.com,Password@123,business,Ho Chi Minh,<MISSING>,RESELLER,422,Status 422 (PASSED),Tai khoan business thieu storeName
+TC07,Tran Thi B,biz_user@example.com,Password@123,business,Ho Chi Minh,Cua Hang Hoa Binh,INVALID_TYPE,422,Status 422 (PASSED),businessField khong hop le (khong phai RESELLER/PRODUCER/SERVICE)
+TC08,Nguyen Van A,new_user_personal@example.com,Password@123,personal,Ha Noi,,,201,Status 201 (PASSED),Positive: Dang ky tai khoan personal hop le
+TC09,Tran Thi B,new_user_business@example.com,Password@123,business,Ho Chi Minh,Cua Hang Hoa Binh,RESELLER,201,Status 201 (PASSED),Positive: Dang ky tai khoan business RESELLER hop le

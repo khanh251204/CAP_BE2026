@@ -1,6 +1,71 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from enum import Enum
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Optional, List, Set, Dict
 from datetime import datetime
+
+
+class IntentTypeEnum(str, Enum):
+    INCOME = "INCOME"
+    EXPENSE = "EXPENSE"
+    TRANFER = "TRANFER"  # Theo đúng docs/erd_new.md và DB enum name
+    REFUND = "REFUND"
+    DEBT = "DEBT"
+    NONE = "NONE"
+
+
+class IntentNameEnum(str, Enum):
+    ban_hang = "ban_hang"
+    mua_hang = "mua_hang"
+    ghi_no_khach_hang = "ghi_no_khach_hang"
+    thu_no_khach_hang = "thu_no_khach_hang"
+    ghi_no_nha_cung_cap = "ghi_no_nha_cung_cap"
+    tra_no_nha_cung_cap = "tra_no_nha_cung_cap"
+    chi_tien = "chi_tien"
+    hang_hong = "hang_hong"
+    kiem_kho = "kiem_kho"
+    bao_cao = "bao_cao"
+    chot_so = "chot_so"
+
+
+VALID_INTENT_TYPE_COMBINATIONS: Dict[str, Set[str]] = {
+    "ban_hang": {"INCOME"},
+    "mua_hang": {"EXPENSE"},
+    "chi_tien": {"EXPENSE"},
+    "hang_hong": {"EXPENSE"},
+    "ghi_no_khach_hang": {"DEBT"},
+    "ghi_no_nha_cung_cap": {"DEBT"},
+    "thu_no_khach_hang": {"INCOME", "DEBT"},
+    "tra_no_nha_cung_cap": {"EXPENSE", "DEBT"},
+    "kiem_kho": {"NONE"},
+    "bao_cao": {"NONE"},
+    "chot_so": {"NONE"},
+}
+
+
+class TransactionQueryParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    page: int = Field(default=1, ge=1, description="Số trang (bắt đầu từ 1)")
+    limit: int = Field(default=10, ge=1, le=100, description="Số lượng bản ghi trên một trang")
+    intent_type: Optional[IntentTypeEnum] = Field(
+        default=None,
+        description="Lọc theo loại intent (INCOME, EXPENSE, DEBT, TRANFER, REFUND, NONE theo docs/erd_new.md)"
+    )
+    intent: Optional[IntentNameEnum] = Field(
+        default=None,
+        description="Lọc theo tên intent cụ thể chuẩn theo docs/erd_new.md"
+    )
+
+    @model_validator(mode="after")
+    def validate_intent_combination(self):
+        if self.intent is not None and self.intent_type is not None:
+            allowed_types = VALID_INTENT_TYPE_COMBINATIONS.get(self.intent.value)
+            if allowed_types and self.intent_type.value not in allowed_types:
+                raise ValueError(
+                    f"Intent '{self.intent.value}' không phù hợp với intent_type '{self.intent_type.value}'. "
+                    f"Các intent_type hợp lệ: {sorted(list(allowed_types))}"
+                )
+        return self
 
 
 class TransactionDetailCreate(BaseModel):

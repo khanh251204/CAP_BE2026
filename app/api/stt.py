@@ -148,7 +148,7 @@ async def _run_stt_pipeline(
                     llm_output=llm_output,
                     confidence=None,
                     processing_time=round(total_time, 3),
-                    status="SUCCESS"
+                    status="PROCESSING"
                 )
                 voice_id = record.voice_id
             except Exception as dbe:

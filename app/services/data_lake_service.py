@@ -160,34 +160,45 @@ class DataLakeService:
                 storage_paths["feedback"] = os.path.relpath(fb_file, base).replace("\\", "/")
 
             # 4. ZONE DATASET: Mẫu dữ liệu hoàn chỉnh phục vụ nghiên cứu & AI evaluation
-            ds_dir = os.path.join(base, "dataset", day_folder)
-            os.makedirs(ds_dir, exist_ok=True)
-            ds_file = os.path.join(ds_dir, f"{voice_id}.json")
+            # Chỉ ghi nhận vào Zone DATASET khi người dùng đã xác nhận đồng ý giao dịch (status == "SUCCESS")
+            if record.status == "SUCCESS":
+                ds_dir = os.path.join(base, "dataset", day_folder)
+                os.makedirs(ds_dir, exist_ok=True)
+                ds_file = os.path.join(ds_dir, f"{voice_id}.json")
 
-            dataset_payload = {
-                "dataset_id": f"DS-{voice_id}",
-                "voice_record_id": voice_id,
-                "audio_source": record.audio_path,
-                "transcript": record.transcript,
-                "intent": record.intent or llm_data.get("intent"),
-                "entities": llm_data.get("entities") or {},
-                "confidence": float(record.confidence) if record.confidence is not None else None,
-                "provider": provider,
-                "model": model,
-                "prompt_version": prompt_ver,
-                "pipeline_version": pipe_ver,
-                "user_correction": correction,
-                "status": record.status,
-                "request_id": resolved_req_id,
-                "created_at": c_date.isoformat(),
-                "ingested_at": datetime.now().isoformat(),
-                "data_classification": "RESEARCH_DATASET"
-            }
-            with open(ds_file, "w", encoding="utf-8") as f:
-                json.dump(dataset_payload, f, ensure_ascii=False, indent=2)
-            storage_paths["dataset"] = os.path.relpath(ds_file, base).replace("\\", "/")
+                dataset_payload = {
+                    "dataset_id": f"DS-{voice_id}",
+                    "voice_record_id": voice_id,
+                    "transaction_id": record.transaction_id,
+                    "audio_source": record.audio_path,
+                    "transcript": record.transcript,
+                    "intent": record.intent or llm_data.get("intent"),
+                    "entities": llm_data.get("entities") or {},
+                    "confidence": float(record.confidence) if record.confidence is not None else None,
+                    "provider": provider,
+                    "model": model,
+                    "prompt_version": prompt_ver,
+                    "pipeline_version": pipe_ver,
+                    "user_correction": correction,
+                    "status": "SUCCESS",
+                    "request_id": resolved_req_id,
+                    "created_at": c_date.isoformat(),
+                    "ingested_at": datetime.now().isoformat(),
+                    "data_classification": "RESEARCH_DATASET"
+                }
+                with open(ds_file, "w", encoding="utf-8") as f:
+                    json.dump(dataset_payload, f, ensure_ascii=False, indent=2)
+                storage_paths["dataset"] = os.path.relpath(ds_file, base).replace("\\", "/")
+            else:
+                # Nếu không phải SUCCESS (bị hủy hoặc chưa xác nhận), xóa file dataset nếu từng tồn tại
+                ds_file = os.path.join(base, "dataset", day_folder, f"{voice_id}.json")
+                if os.path.exists(ds_file):
+                    try:
+                        os.remove(ds_file)
+                    except Exception:
+                        pass
 
-            logger.info(f"Data Lake ingested voice_record_id={voice_id} successfully")
+            logger.info(f"Data Lake ingested voice_record_id={voice_id} successfully (status={record.status})")
             return {
                 "success": True,
                 "voice_record_id": voice_id,
@@ -230,9 +241,9 @@ class DataLakeService:
         return {
             "storage_type": "LOCAL_FS",
             "raw_path": raw_rel.replace("\\", "/") if os.path.exists(raw_abs) else None,
-            "processed_path": proc_rel.replace("\\", "/"),
+            "processed_path": proc_rel.replace("\\", "/") if os.path.exists(proc_abs) else None,
             "feedback_path": fb_rel.replace("\\", "/") if os.path.exists(fb_abs) else None,
-            "dataset_path": ds_rel.replace("\\", "/"),
+            "dataset_path": ds_rel.replace("\\", "/") if os.path.exists(ds_abs) else None,
             "ingested_at": c_date
         }
 

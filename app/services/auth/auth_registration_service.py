@@ -71,11 +71,13 @@ def register_user(db: Session, data: RegisterRequest):
         )
 
     store_name = None
-    business_type = None
+    business_type = "RESELLER"
 
     if data.accountType == "business":
         store_name = data.storeName.strip() if data.storeName else None
-        business_type = data.businessField.strip() if data.businessField else None
+        business_type = data.businessField.strip() if data.businessField else "RESELLER"
+    elif data.businessField:
+        business_type = data.businessField.strip()
 
     try:
         user = create_user(

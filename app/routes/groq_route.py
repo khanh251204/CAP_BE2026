@@ -2,6 +2,7 @@
 
 import os
 import asyncio
+import logging
 import tempfile
 import traceback
 
@@ -26,6 +27,7 @@ from app.ai.core.state import pending_confirmations
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -255,6 +257,17 @@ async def confirm_action(
             is_success = False
 
     if not is_success:
+        if voice_id:
+            try:
+                from app.services.voice_record_service import mark_voice_record_rejected
+                mark_voice_record_rejected(
+                    db=db,
+                    voice_id=voice_id,
+                    user_id=current_user_id,
+                    reason=result.get("message") if isinstance(result, dict) else "Xác nhận giao dịch không thành công"
+                )
+            except Exception:
+                pass
         return result
 
     # ========================================================
@@ -264,14 +277,15 @@ async def confirm_action(
     if isinstance(result, dict):
         tx_id = result.get("transaction_id") or result.get("data", {}).get("transaction_id")
 
-    if voice_id and tx_id:
+    if voice_id:
         try:
             from app.services.voice_record_service import link_voice_record_to_transaction
             link_voice_record_to_transaction(
                 db=db,
                 voice_id=voice_id,
                 transaction_id=tx_id,
-                user_id=current_user_id
+                user_id=current_user_id,
+                status="SUCCESS"
             )
         except Exception:
             pass
@@ -319,6 +333,39 @@ async def confirm_action(
         pass
 
     return result
+
+
+@router.post("/agent/cancel")
+@router.post("/agent/reject")
+async def cancel_action(
+    session_id: Optional[str] = Query(None),
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """
+    Xử lý khi người dùng KHÔNG ĐỒNG Ý hoặc BẤM HỦY giao dịch.
+    Cập nhật VoiceRecord trong DB và Data Lake sang trạng thái FAILED (không thành công).
+    """
+    session_key = session_id or current_user_id
+    pending = pending_confirmations.pop(session_key, None) or pending_confirmations.pop(current_user_id, None)
+
+    if pending and pending.get("voice_id"):
+        try:
+            from app.services.voice_record_service import mark_voice_record_rejected
+            mark_voice_record_rejected(
+                db=db,
+                voice_id=pending["voice_id"],
+                user_id=current_user_id,
+                reason="Người dùng đã hủy bỏ / không đồng ý xác nhận giao dịch"
+            )
+        except Exception as e:
+            logger.warning(f"Lỗi cập nhật trạng thái hủy bỏ voice record: {e}")
+
+    return {
+        "success": True,
+        "status": "cancelled",
+        "message": "Đã hủy thao tác giao dịch thành công"
+    }
 
 
 confirm_agent_endpoint = confirm_action

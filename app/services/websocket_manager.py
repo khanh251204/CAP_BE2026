@@ -101,23 +101,34 @@ class WebSocketManager:
 
         # Tự động tính toán số liệu realtime nếu chưa được truyền vào
         if not live_report:
+            sess_obj = None
+            is_own_session = False
             try:
                 from app.configs import database as db_config
                 from app.services.report_service import ReportService
-                sess_obj = db_session or db_config.get_db_session()
-                if hasattr(sess_obj, "__enter__"):
-                    with sess_obj as s:
-                        live_report = ReportService.get_live_report(s, user_id, {"period_type": "DAY"})
-                        dashboard_summary = ReportService.get_summary_report(s, user_id, {"period_type": "DAY"})
+                if db_session is not None:
+                    sess_obj = db_session
                 else:
-                    live_report = ReportService.get_live_report(sess_obj, user_id, {"period_type": "DAY"})
-                    dashboard_summary = ReportService.get_summary_report(sess_obj, user_id, {"period_type": "DAY"})
-                    if not db_session and hasattr(sess_obj, "close"):
-                        sess_obj.close()
+                    sess_obj = db_config.get_db_session()
+                    is_own_session = True
+
+                live_report = ReportService.get_live_report(sess_obj, user_id, {"period_type": "DAY"})
+                dashboard_summary = ReportService.get_summary_report(sess_obj, user_id, {"period_type": "DAY"})
             except Exception as err:
                 logger.warning(f"Could not compute live report for user {user_id}: {err}")
+                if is_own_session and sess_obj:
+                    try:
+                        sess_obj.rollback()
+                    except Exception:
+                        pass
                 live_report = None
                 dashboard_summary = None
+            finally:
+                if is_own_session and sess_obj:
+                    try:
+                        sess_obj.close()
+                    except Exception:
+                        pass
 
         serialized_live = serialize_ws_data(live_report)
         serialized_dashboard = serialize_ws_data(dashboard_summary)

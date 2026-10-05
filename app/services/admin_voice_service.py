@@ -100,6 +100,12 @@ class AdminVoiceService:
             confidence_val = float(record.confidence) if record.confidence is not None else None
             processing_time_ms = cls._normalize_processing_time_ms(record.processing_time)
 
+            audio_url = (
+                record.audio_path
+                if (record.audio_path and record.audio_path.startswith(("http://", "https://")))
+                else (f"/api/v1/admin/voice-processing/{record.voice_id}/audio" if record.audio_path else None)
+            )
+
             items.append(
                 AdminVoiceListItem(
                     id=record.voice_id,
@@ -110,6 +116,7 @@ class AdminVoiceService:
                     confidence=confidence_val,
                     status=resolved_status,
                     transaction_id=record.transaction_id or (transaction.transaction_id if transaction else None),
+                    audio_url=audio_url,
                     processing_time_ms=processing_time_ms,
                     created_at=record.created_at
                 )

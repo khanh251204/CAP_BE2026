@@ -1,0 +1,11 @@
+test_id,email,password,expected_status,expected_token,expected_message,note
+TC01,qa_user@example.com,Valid@1234,200,true,,Login hop le
+TC02,QA_USER@EXAMPLE.COM,Valid@1234,200,true,,Email viet hoa - tuy business rule
+TC03,qa_user@example.com,Wrong@1234,401,false,Invalid credentials,Sai password
+TC04,not_exist@example.com,Valid@1234,401,false,Invalid credentials,Email chua dang ky
+TC05,,Valid@1234,400,false,,Email de trong
+TC06,qa_user@example.com,,400,false,,Password de trong
+TC07,qa_user.example.com,Valid@1234,400,false,,Email sai format
+TC08,' OR '1'='1' --,Valid@1234,401,false,,SQL injection
+TC09,qa_user@example.com, Valid@1234 ,401,false,,Password co khoang trang dau/cuoi
+TC10,qa_user@example.com,AAAA...,400,false,,Password 300 ky tu

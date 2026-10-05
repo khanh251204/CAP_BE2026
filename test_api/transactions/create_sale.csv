@@ -1,0 +1,7 @@
+test_id,intent,product_name,price,quantity,unit,auth_type,expected,actual,note
+TC01,ban_hang,Coca Cola 330ml,10000,2,lon,NO_TOKEN,401,Status 401 (PASSED),[NO_TOKEN] Ban hang khong gui token
+TC02,ban_hang,Coca Cola 330ml,10000,2,lon,INVALID_TOKEN,401,Status 401 (PASSED),[INVALID_TOKEN] Ban hang voi token sai
+TC03,ban_hang,<MISSING>,10000,2,lon,VALID,400,Status 400 (PASSED),Ban hang thieu product
+TC04,ban_hang,Coca Cola 330ml,-5000,2,lon,VALID,400,Status 201 (FAILED: Expected 400),Ban hang gia tien am
+TC05,ban_hang,Coca Cola 330ml,10000,-1,lon,VALID,400,Status 400 (PASSED),Ban hang so luong am
+TC06,ban_hang,Coca Cola 330ml,10000,1,lon,VALID,201,Status 201 (PASSED),Positive: Tao giao dich ban hang hop le

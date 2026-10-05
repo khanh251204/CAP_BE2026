@@ -1,0 +1,5 @@
+test_id,supplier_id,total_debt,note,auth_type,expected,actual,note_tc
+TC01,EXISTING_ID,1000000,Ghi no nha cung cap tien hang,NO_TOKEN,401,Status 401 (PASSED),[NO_TOKEN] Ghi no NCC khong co token
+TC02,EXISTING_ID,1000000,Ghi no nha cung cap tien hang,INVALID_TOKEN,401,Status 401 (PASSED),[INVALID_TOKEN] Ghi no NCC voi token sai
+TC03,EXISTING_ID,-500000,So tien am,VALID,422,Status 422 (PASSED),Ghi no NCC so tien am khong hop le
+TC04,EXISTING_ID,1000000,Ghi no nha cung cap hop le,VALID,200,Status 200 (PASSED),Positive: Ghi no nha cung cap thanh cong

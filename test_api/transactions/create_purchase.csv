@@ -1,0 +1,6 @@
+test_id,intent,product_name,price,quantity,unit,auth_type,expected,actual,note
+TC01,mua_hang,Sua tuoi Vinamilk,2000000,100,loc,NO_TOKEN,401,Status 401 (PASSED),[NO_TOKEN] Mua hang khong gui token
+TC02,mua_hang,Sua tuoi Vinamilk,2000000,100,loc,INVALID_TOKEN,401,Status 401 (PASSED),[INVALID_TOKEN] Mua hang voi token sai
+TC03,mua_hang,<MISSING>,2000000,100,loc,VALID,400,Status 400 (PASSED),Mua hang thieu product
+TC04,mua_hang,Sua tuoi Vinamilk,-500000,100,loc,VALID,400,Status 201 (FAILED: Expected 400),Mua hang gia tien am
+TC05,mua_hang,Sua tuoi Vinamilk,2000000,100,loc,VALID,201,Status 201 (PASSED),Positive: Tao giao dich mua hang thanh cong

@@ -48,3 +48,10 @@ AGENTS.md
 tests/
 /ai_benchmark/
 /evaluation/
+
+# ========================================
+# Playwright Test API
+# ========================================
+test_api/node_modules/
+test_api/playwright-report/
+test_api/test-results/

@@ -1,0 +1,100 @@
+ID   1: [nhập_hàng] Mua thêm 80 ký tỏi băm hết 2 triệu
+ID   2: [chi_phi] Trả 300k tiền đá ướp lạnh
+ID   3: [bán_hàng] Giao 10 ký thịt mông cho cô Ba hết 20 triệu đồng
+ID   4: [bán_hàng] Khách lấy 100 lạng sườn già trả 200k
+ID   5: [chi_phi] Trả 50k tiền sửa tủ đông
+ID   6: [chi_phi] Chi tiền sửa tủ đông hết 10tr
+ID   7: [nhập_hàng] Nhập 15 kg heo hơi loại đẹp
+ID   8: [nhập_hàng] Nhập về 80 ký đá cây ướp lạnh
+ID   9: [nhập_hàng] Chi 8tr mua heo hơi về mổ bán
+ID  10: [nhập_hàng] Bắt 50 tạ heo thịt
+ID  11: [nhập_hàng] Đặt mua 6 con heo con giống giá 200k một con
+ID  12: [bán_hàng] Bán 60 ký thịt ba rọi giá 100 nghìn một ký
+ID  13: [bán_hàng] Xuất 15 cây nem chua
+ID  14: [bán_hàng] Xuất 5 lạng thịt mông cho chị Mai hết 100k
+ID  15: [bán_hàng] Cân bán 20 ký sườn non hết 1tr
+ID  16: [bán_hàng] Cân cho 100 kg thịt mông giá 300k một kg
+ID  17: [nhập_hàng] Vừa nhập 10 tạ heo hơi loại đẹp của chú Ba
+ID  18: [nhập_hàng] Mua 40 cái tỏi băm hết 5 triệu
+ID  19: [nhập_hàng] Vừa bắt 4 con heo con giống hết 3 triệu
+ID  20: [nhập_hàng] Nhập về 15 cái ruột heo làm dồi hết 150 nghìn
+ID  21: [bán_hàng] Giao 5 kg giò thủ giá 500 ngàn một kg
+ID  22: [chi_phi] Trả tiền chở heo cho thương lái hết 80 ngàn
+ID  23: [bán_hàng] Chốt đơn 5 cây chả lụa
+ID  24: [chi_phi] 1 triệu 500 tiền điện tháng này
+ID  25: [chi_phi] Chi tiền đá ướp lạnh hết 100 ngàn
+ID  26: [bán_hàng] Chốt đơn 2 cây chả lụa giá 2tr một cây
+ID  27: [bán_hàng] Bán cho 20 lạng thịt nạc vai
+ID  28: [bán_hàng] Khách lấy 20 lạng sườn non hết 8 triệu đồng
+ID  29: [chi_phi] Trả 300k tiền thuê xưởng giết mổ
+ID  30: [nhập_hàng] Nhập thêm 60 cái muối diêm của đầu mối heo hơi Long An hết 700k
+ID  31: [chi_phi] Tiền vận chuyển heo tháng này 20tr
+ID  32: [bán_hàng] Xuất 25 bộ lòng heo cho bếp ăn công ty hết 10 triệu đồng
+ID  33: [chi_phi] Mất tiền mặt bằng hết 50k
+ID  34: [nhập_hàng] Mua thêm 40 ký tiêu xay
+ID  35: [nhập_hàng] Lấy 25 ký heo hơi loại đẹp
+ID  36: [bán_hàng] Bán 3 kg sườn non hết 8 triệu
+ID  37: [bán_hàng] Giao 3 kg chân giò
+ID  38: [nhập_hàng] Nhập thêm 50 ký heo hơi
+ID  39: [chi_phi] Chi 15tr tiền phí chợ cho lò mổ
+ID  40: [nhập_hàng] Lấy về 2 kg túi nilon đóng gói của trại chăn nuôi anh Nam
+ID  41: [bán_hàng] Cân cho 5 kg thịt nạc đùi
+ID  42: [bán_hàng] Chốt đơn 10 lạng giò heo hết 50k
+ID  43: [nhập_hàng] Lấy về 5 con heo con giống
+ID  44: [bán_hàng] Bán cho em Trang 1 kg thịt nạc đùi hết 1tr
+ID  45: [bán_hàng] Khách lấy 100 ký xương heo trả 3 triệu
+ID  46: [nhập_hàng] Bắt 6 con heo hơi của trại giống Bình Minh
+ID  47: [nhập_hàng] Đặt mua 10 tạ heo con giống
+ID  48: [bán_hàng] Xuất 50 ký thịt mông cho bác Năm giá 500 nghìn một ký
+ID  49: [chi_phi] Trả tiền chở heo cho thương lái hết 700 ngàn
+ID  50: [chi_phi] 8 triệu tiền sửa tủ đông tháng này
+ID  51: [bán_hàng] Khách lấy 100 kg giò heo hết 20 triệu đồng
+ID  52: [nhập_hàng] Nhập thêm 20 bao gia vị ướp thịt
+ID  53: [bán_hàng] Giao 50 kg sườn già cho chị Hương giá 8 triệu đồng một kg
+ID  54: [chi_phi] Tiền điện tháng này 3 triệu
+ID  55: [bán_hàng] Cân bán 30 lạng mỡ heo giá 2 triệu đồng một lạng
+ID  56: [chi_phi] Trả 100 nghìn tiền phí chợ
+ID  57: [bán_hàng] Khách lấy 30 ký da heo
+ID  58: [chi_phi] Trả tiền chở heo cho thương lái hết 5tr
+ID  59: [nhập_hàng] Mua về 1 kg heo hơi loại đẹp của thương lái chú Sáu
+ID  60: [chi_phi] Tiền thú y tháng này 8 triệu
+ID  61: [nhập_hàng] Mua 60 kg heo con giống giá 20tr một kg
+ID  62: [nhập_hàng] Chi 20 triệu bắt heo hơi loại đẹp về giết mổ
+ID  63: [bán_hàng] Xuất 50 ký da heo cho chị Hương
+ID  64: [chi_phi] Thanh toán 700 ngàn tiền xử lý chất thải
+ID  65: [nhập_hàng] Chi 5 triệu bắt tem nhãn về giết mổ
+ID  66: [nhập_hàng] Vừa nhập 3 ký heo hơi loại đẹp của anh Hùng giá 8 triệu một ký
+ID  67: [bán_hàng] Xuất 2 kg thịt xay cho cô Hoa
+ID  68: [chi_phi] Chi 1 triệu 500 tiền xử lý chất thải
+ID  69: [nhập_hàng] Đặt mua 5 tạ heo thịt của trại giống Bình Minh hết 500k
+ID  70: [bán_hàng] Xuất 20 kg thịt ba rọi cho bác Tư
+ID  71: [chi_phi] Trả 150 ngàn tiền vận chuyển heo
+ID  72: [nhập_hàng] Mua 1 bao hành khô của trại chăn nuôi anh Nam
+ID  73: [chi_phi] Mất tiền quảng cáo bán hàng hết 300k
+ID  74: [chi_phi] Tiền phí chợ tháng này 3tr
+ID  75: [nhập_hàng] Chi 200 nghìn mua heo hơi loại đẹp về mổ bán
+ID  76: [chi_phi] Đóng 5tr tiền thú y
+ID  77: [chi_phi] Tiền thuê xưởng giết mổ tháng này 3 triệu
+ID  78: [bán_hàng] Cân cho bác Năm 60 kg xúc xích heo giá 200 ngàn một kg
+ID  79: [nhập_hàng] Lấy về 100 cuộn hành khô của anh Đạt
+ID  80: [bán_hàng] Bán cho chị Hương 60 kg mỡ heo giá 80k một kg
+ID  81: [chi_phi] Tiền phí chợ tháng này 3 triệu đồng
+ID  82: [nhập_hàng] Nhập thêm 60 cái hành khô hết 20 triệu đồng
+ID  83: [nhập_hàng] Chi 15tr mua túi nilon đóng gói về mổ bán
+ID  84: [chi_phi] 3tr tiền phí chợ tháng này
+ID  85: [nhập_hàng] Chi 10tr mua heo hơi về mổ bán
+ID  86: [bán_hàng] Bán cho cô Ba 1 con thịt heo nguyên con hết 150 nghìn
+ID  87: [chi_phi] 5 triệu đồng tiền kho lạnh tháng này
+ID  88: [chi_phi] Tiền mặt bằng tháng này 2 triệu
+ID  89: [chi_phi] Chi tiền kiểm dịch hết 50 nghìn
+ID  90: [bán_hàng] Xuất 80 kg xương heo cho chú Bảy giá 100k một kg
+ID  91: [nhập_hàng] Nhập về 100 cuộn muối diêm
+ID  92: [chi_phi] 700 ngàn tiền điện tháng này
+ID  93: [bán_hàng] Cân cho 100 kg xúc xích heo giá 2 triệu một kg
+ID  94: [chi_phi] Trả tiền chở heo cho thương lái hết 8 triệu đồng
+ID  95: [nhập_hàng] Mua 5 con heo thịt hết 50k
+ID  96: [bán_hàng] Cân bán 25 ký thịt ba rọi
+ID  97: [nhập_hàng] Lấy 15 cuộn thính gạo
+ID  98: [nhập_hàng] Lấy 3 bao tiêu xay của anh Đạt hết 100k
+ID  99: [bán_hàng] Bán cho anh Kiên 5 kg xúc xích heo hết 1 triệu
+ID 100: [bán_hàng] Bán 5 kg chả lụa hết 80 nghìn

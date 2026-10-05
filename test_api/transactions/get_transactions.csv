@@ -1,0 +1,23 @@
+test_id,intent_filter,intent_type,page,limit,raw_query,auth_type,expected,actual,note
+TC_TX01_001,,,1,10,,NO_TOKEN,401,,[NO_TOKEN] Lay danh sach giao dich khong co token
+TC_TX01_002,,,1,10,,INVALID_TOKEN,401,,[INVALID_TOKEN] Lay danh sach giao dich voi token sai
+TC_TX01_003,,,,,"intent_type=TRANSFER",NO_TOKEN,401,,[AUTH_FIRST] Khong co token va intent_type sai -> 401
+TC_TX01_004,,,,,"foo=1",NO_TOKEN,401,,[AUTH_FIRST] Khong co token va extra param foo=1 -> 401
+TC_TX01_005,,,1,10,,VALID,200,,Positive: Lay danh sach giao dich co phan trang mac dinh
+TC_TX01_006,,,,,"intent_type=TRANSFER",VALID,400,,Negative: intent_type=TRANSFER sai chinh ta (dung la TRANFER) -> 400
+TC_TX01_007,,,,,"intent_type=ABC",VALID,400,,Negative: intent_type=ABC khong ton tai trong enum -> 400
+TC_TX01_008,,,,,"intent_type=",VALID,200,,Positive: intent_type de rong thi khong loc va tra ve 200
+TC_TX01_009,,,,,"intent_type=income",VALID,400,,Negative: intent_type=income sai hoa thuong -> 400
+TC_TX01_010,,,,,"intent_type=INCOME",VALID,200,,Positive: intent_type=INCOME hop le -> 200
+TC_TX01_011,,,,,"intent_type=EXPENSE",VALID,200,,Positive: intent_type=EXPENSE hop le -> 200
+TC_TX01_012,,,,,"intent_type=TRANFER",VALID,200,,Positive: intent_type=TRANFER hop le theo ERD -> 200
+TC_TX01_013,,,,,"intent_type=REFUND",VALID,200,,Positive: intent_type=REFUND hop le -> 200
+TC_TX01_014,,,,,"intent_type=DEBT",VALID,200,,Positive: intent_type=DEBT hop le -> 200
+TC_TX01_015,,,,,"intent_type=NONE",VALID,200,,Positive: intent_type=NONE hop le -> 200
+TC_TX01_016,,,,,"intent=abc",VALID,400,,Negative: intent=abc khong ton tai trong enum -> 400
+TC_TX01_017,,,,,"intent=ban_hang",VALID,200,,Positive: intent=ban_hang hop le -> 200
+TC_TX01_018,,,,,"intent_type=ABC&intent=abc",VALID,400,,Negative: Ca hai tham so cung sai -> 400 co du 2 loi
+TC_TX01_019,,,,,"intent_typ=TRANSFER",VALID,400,,Negative: Tham so la intent_typ -> 400
+TC_TX01_020,,,,,"foo=1",VALID,400,,Negative: Tham so la foo=1 -> 400
+TC_TX01_021,,,,,"intent=ban_hang&intent_type=EXPENSE",VALID,400,,Negative: To hop ban_hang va EXPENSE khong hop le -> 400
+TC_TX01_022,,,,,"intent=ban_hang&intent_type=INCOME",VALID,200,,Positive: To hop ban_hang va INCOME hop le -> 200

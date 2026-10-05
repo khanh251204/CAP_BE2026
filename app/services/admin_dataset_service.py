@@ -64,9 +64,11 @@ class AdminDatasetService:
             correction = AdminVoiceAiService._detect_user_correction(llm_data, transaction, db, voice_id=record.voice_id)
 
             # Phân loại dữ liệu Data Lake
+            # DATASET chỉ tính các mẫu đã xác nhận thành công (SUCCESS)
+            is_success = (record.status == "SUCCESS") or (bool(record.transaction_id) and record.status != "FAILED")
             if correction:
                 classified_type = "FEEDBACK"
-            elif record.transcript and (record.intent or intent_name or llm_data.get("intent")):
+            elif is_success and record.transcript and (record.intent or intent_name or llm_data.get("intent")):
                 classified_type = "DATASET"
             elif record.transcript or record.llm_output:
                 classified_type = "PROCESSED"
@@ -78,6 +80,14 @@ class AdminDatasetService:
 
             storage_meta = DataLakeService.get_storage_meta(record.voice_id, record.created_at)
 
+            resolved_status = record.status or ("SUCCESS" if record.transaction_id else "PROCESSING")
+
+            audio_url = (
+                record.audio_path
+                if (record.audio_path and record.audio_path.startswith(("http://", "https://")))
+                else (f"/api/v1/admin/voice-processing/{record.voice_id}/audio" if record.audio_path else None)
+            )
+
             items.append(
                 AdminDatasetItem(
                     id=record.voice_id,
@@ -87,9 +97,10 @@ class AdminDatasetService:
                     transcript=record.transcript,
                     intent=record.intent or intent_name or llm_data.get("intent"),
                     confidence=float(record.confidence) if record.confidence is not None else None,
-                    status=record.status or "SUCCESS",
+                    status=resolved_status,
                     has_correction=bool(correction),
-                    storage_path=storage_meta.get("dataset_path"),
+                    audio_url=audio_url,
+                    storage_path=storage_meta.get("dataset_path") or storage_meta.get("processed_path"),
                     created_at=record.created_at,
                 )
             )
@@ -121,9 +132,10 @@ class AdminDatasetService:
         storage_meta = DataLakeService.get_storage_meta(record.voice_id, record.created_at)
 
         # Quyết định data_type
+        is_success = (record.status == "SUCCESS") or (bool(record.transaction_id) and record.status != "FAILED")
         if ai_result.correction:
             data_type = "FEEDBACK"
-        elif record.transcript and ai_result.intent:
+        elif is_success and record.transcript and ai_result.intent:
             data_type = "DATASET"
         elif record.transcript or record.llm_output:
             data_type = "PROCESSED"
@@ -138,11 +150,14 @@ class AdminDatasetService:
         if ai_result.transaction:
             tx_dict = ai_result.transaction.model_dump()
 
+        resolved_status = record.status or ("SUCCESS" if record.transaction_id else "PROCESSING")
+
         return AdminDatasetDetailResponse(
             id=record.voice_id,
             voice_record_id=record.voice_id,
             data_type=data_type,
             source_type="VOICE_PIPELINE",
+            status=resolved_status,
             user_id=user.user_id if user else record.user_id,
             user_name=user.full_name if user else None,
             audio_url=audio_url,
@@ -171,7 +186,10 @@ class AdminDatasetService:
         ).scalar() or 0
 
         dataset_count = db.query(func.count(VoiceRecord.voice_id)).filter(
-            and_(VoiceRecord.transcript.isnot(None), VoiceRecord.status == "SUCCESS")
+            and_(
+                VoiceRecord.transcript.isnot(None),
+                or_(VoiceRecord.status == "SUCCESS", and_(VoiceRecord.transaction_id.isnot(None), VoiceRecord.status != "FAILED"))
+            )
         ).scalar() or 0
 
         # Intent distribution

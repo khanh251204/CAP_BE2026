@@ -172,6 +172,8 @@ def authenticate_user(
     token = request.cookies.get(JWT_ACCESS_COOKIE_NAME)
     if not token and credentials:
         token = credentials.credentials
+    if not token:
+        token = request.query_params.get("token")
 
     if not token:
         raise HTTPException(

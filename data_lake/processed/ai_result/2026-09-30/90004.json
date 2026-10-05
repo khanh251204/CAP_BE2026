@@ -19,9 +19,9 @@
   "model": "openai/gpt-oss-120b",
   "prompt_version": "1.2.0",
   "pipeline_version": "1.0.0",
-  "status": "SUCCESS",
+  "status": "PROCESSING",
   "error_message": null,
-  "request_id": "59471e55ecb34762874e4e9f1f35efa4",
+  "request_id": null,
   "created_at": "2026-09-30T01:14:30",
   "data_classification": "PROCESSED_AI"
 }
