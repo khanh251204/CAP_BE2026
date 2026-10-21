@@ -66,10 +66,11 @@ class AdminProductService:
                 count_stmt = count_stmt.join(User, Product.user_id == User.user_id, isouter=True)
                 user_joined = True
 
+            from app.models.store_model import Store
             search_conditions.extend([
                 User.full_name.ilike(f"%{term}%"),
                 User.email.ilike(f"%{term}%"),
-                User.store_name.ilike(f"%{term}%"),
+                User.store_rel.has(Store.store_name.ilike(f"%{term}%")),
             ])
             stmt = stmt.filter(or_(*search_conditions))
             count_stmt = count_stmt.filter(or_(*search_conditions))

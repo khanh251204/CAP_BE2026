@@ -1,7 +1,0 @@
-he output ONNX model file. E.g. "model.onnx". This argument is kept for
-            backward compatibility. It is recommended to leave unspecified (None)
-            and use the returned :class:`torch.onnx.ONNXProgram` to serialize the model
-            to a file instead.
-        kwargs: Optional example keyword inputs.
-        verbose: Whether to enable verbose logging.
-        input_names: names

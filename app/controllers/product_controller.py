@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Any, Union, Dict
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -85,11 +85,12 @@ class ProductController:
     # ==========================================
     @staticmethod
     def create_product(
-        data: dict,
+        data: Any,
         user_id: int,
         db: Session
     ):
-        product = ProductService.create_product(data, user_id, db)
+        payload_dict = data.model_dump(exclude_unset=False) if hasattr(data, "model_dump") else (data.dict() if hasattr(data, "dict") else dict(data))
+        product = ProductService.create_product(payload_dict, user_id, db)
 
         return {
             "success": True,
@@ -103,11 +104,12 @@ class ProductController:
     @staticmethod
     def update_product(
         product_id: int,
-        data: dict,
+        data: Any,
         user_id: int,
         db: Session
     ):
-        product = ProductService.update_product(product_id, data, user_id, db)
+        payload_dict = data.model_dump(exclude_unset=True) if hasattr(data, "model_dump") else (data.dict(exclude_unset=True) if hasattr(data, "dict") else dict(data))
+        product = ProductService.update_product(product_id, payload_dict, user_id, db)
 
         if not product:
             raise HTTPException(
@@ -146,11 +148,12 @@ class ProductController:
     @staticmethod
     def inventory_check(
         product_id: int,
-        data: dict,
+        data: Any,
         user_id: int,
         db: Session
     ):
-        actual_quantity = data.get("actual_quantity")
+        payload_dict = data.model_dump() if hasattr(data, "model_dump") else (data.dict() if hasattr(data, "dict") else dict(data))
+        actual_quantity = payload_dict.get("actual_quantity")
         if actual_quantity is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -165,8 +168,9 @@ class ProductController:
                 detail="actual_quantity phải là số"
             )
 
-        note = data.get("note")
-        reason = data.get("reason") or "ADJUSTMENT"
+        note = payload_dict.get("note")
+        raw_reason = payload_dict.get("reason")
+        reason = getattr(raw_reason, "value", str(raw_reason)) if raw_reason else "ADJUSTMENT"
 
         return ProductService.inventory_check(
             product_id=product_id,
@@ -183,18 +187,20 @@ class ProductController:
     @staticmethod
     def manual_inventory_transaction(
         product_id: int,
-        data: dict,
+        data: Any,
         user_id: int,
         db: Session
     ):
-        inventory_type = data.get("inventory_type")
+        payload_dict = data.model_dump() if hasattr(data, "model_dump") else (data.dict() if hasattr(data, "dict") else dict(data))
+        raw_inv_type = payload_dict.get("inventory_type")
+        inventory_type = getattr(raw_inv_type, "value", str(raw_inv_type)) if raw_inv_type else None
         if not inventory_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Thiếu thông tin inventory_type (IN hoặc OUT)"
             )
 
-        quantity = data.get("quantity")
+        quantity = payload_dict.get("quantity")
         if quantity is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -209,7 +215,7 @@ class ProductController:
                 detail="quantity phải là số"
             )
 
-        note = data.get("note")
+        note = payload_dict.get("note")
 
         return ProductService.manual_inventory_transaction(
             product_id=product_id,

@@ -3,9 +3,27 @@ version: "3.9"
 services:
   api:
     build: .
-    container_name: fastapi_app
+    container_name: voicecashbook_api
     ports:
       - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - REDIS_URL=${REDIS_URL:-}
     volumes:
-      - .:/app
-    command: python -B -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+      - app_logs:/app/logs
+      - app_data_lake:/app/data_lake
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  app_logs:
+  app_data_lake:

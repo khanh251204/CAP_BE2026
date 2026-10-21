@@ -15,7 +15,11 @@ class RegisterRequest(BaseModel):
     businessField: Optional[str] = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
-    def validate_business(self):
+    def validate_fields(self):
+        if not self.fullName or not self.fullName.strip():
+            raise ValueError("Họ và tên không được để trống hoặc chỉ chứa khoảng trắng")
+        self.fullName = self.fullName.strip()
+
         if self.accountType == "business":
             if not self.storeName or not self.storeName.strip():
                 raise ValueError("Tên cửa hàng/doanh nghiệp là bắt buộc")

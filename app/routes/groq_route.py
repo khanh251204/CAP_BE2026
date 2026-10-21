@@ -23,7 +23,7 @@ from app.configs.jwt import get_current_user_id
 
 from app.ai.rag.rag_service import RAGService
 from app.ai.rag.vector_store import VectorStore
-from app.ai.core.state import pending_confirmations
+from app.services.session_store_service import SessionStoreService
 
 
 router = APIRouter()
@@ -86,29 +86,35 @@ async def voice_transaction(
         input_method_val = "VOICE" if is_voice else "MANUAL"
 
         if request.voice_id:
-            try:
-                from app.models.voice_record_model import VoiceRecord
-                from app.configs.database import SessionLocal
-                with SessionLocal() as db_session:
-                    v_rec = db_session.query(VoiceRecord).filter(VoiceRecord.voice_id == request.voice_id).first()
-                    if v_rec:
-                        v_rec.intent = result.get("intent")
-                        v_rec.llm_output = result.get("analysis")
-                        if not v_rec.user_id:
-                            v_rec.user_id = current_user_id
-                        db_session.commit()
-            except Exception:
-                pass
+            def _sync_update_vr():
+                try:
+                    from app.models.voice_record_model import VoiceRecord
+                    from app.configs.database import SessionLocal
+                    with SessionLocal() as db_session:
+                        v_rec = db_session.query(VoiceRecord).filter(VoiceRecord.voice_id == request.voice_id).first()
+                        if v_rec:
+                            v_rec.intent = result.get("intent")
+                            v_rec.llm_output = result.get("analysis")
+                            if not v_rec.user_id:
+                                v_rec.user_id = current_user_id
+                            db_session.commit()
+                except Exception as ex:
+                    logger.warning(f"Lỗi cập nhật VoiceRecord analysis: {ex}")
 
-        if current_user_id in pending_confirmations:
-            pending_confirmations[current_user_id]["voice_id"] = request.voice_id if request.voice_id else None
-            pending_confirmations[current_user_id]["input_method"] = input_method_val
+            await asyncio.to_thread(_sync_update_vr)
+
+        SessionStoreService.update_confirmation(
+            current_user_id,
+            {
+                "voice_id": request.voice_id if request.voice_id else None,
+                "input_method": input_method_val
+            }
+        )
 
         return result
 
     except Exception as e:
-
-        traceback.print_exc()
+        logger.error(f"Lỗi xử lý giao dịch giọng nói: {e}", exc_info=True)
 
         return {
             "success": False,
@@ -117,7 +123,6 @@ async def voice_transaction(
         }
 
 
-from app.ai.core.state import pending_confirmations
 from app.controllers.product_controller import ProductController
 from app.configs.database import get_db
 # pyrefly: ignore [missing-import]
@@ -140,7 +145,7 @@ async def confirm_action(
     db: Session = Depends(get_db)
 ):
     session_key = (body.session_id if body and body.session_id else None) or session_id or current_user_id
-    pending = pending_confirmations.get(session_key) or pending_confirmations.get(current_user_id)
+    pending = SessionStoreService.get_confirmation(session_key) or SessionStoreService.get_confirmation(current_user_id)
 
     if not pending:
         return {
@@ -179,11 +184,11 @@ async def confirm_action(
         payload["voice_id"] = voice_id
 
     if intent == "them_san_pham":
-        result = ProductController.create_product(data=payload, user_id=current_user_id, db=db)
+        result = await asyncio.to_thread(ProductController.create_product, data=payload, user_id=current_user_id, db=db)
     elif intent == "sua_san_pham":
-        result = ProductController.update_product(product_id=payload["product_id"], data=payload["data"], user_id=current_user_id, db=db)
+        result = await asyncio.to_thread(ProductController.update_product, product_id=payload["product_id"], data=payload["data"], user_id=current_user_id, db=db)
     elif intent == "xoa_san_pham":
-        result = ProductController.delete_product(product_id=payload["product_id"], user_id=current_user_id, db=db)
+        result = await asyncio.to_thread(ProductController.delete_product, product_id=payload["product_id"], user_id=current_user_id, db=db)
     elif intent == "ban_hang":
         res = await call_mcp_tool("export_inventory", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
@@ -260,83 +265,87 @@ async def confirm_action(
         if voice_id:
             try:
                 from app.services.voice_record_service import mark_voice_record_rejected
-                mark_voice_record_rejected(
+                await asyncio.to_thread(
+                    mark_voice_record_rejected,
                     db=db,
                     voice_id=voice_id,
                     user_id=current_user_id,
                     reason=result.get("message") if isinstance(result, dict) else "Xác nhận giao dịch không thành công"
                 )
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.warning(f"Lỗi đánh dấu voice record rejected: {ex}")
         return result
 
     # ========================================================
-    # LIÊN KẾT VOICE RECORD VỚI TRANSACTION & GHI DATA LAKE
+    # LIÊN KẾT VOICE RECORD VỚI TRANSACTION & GHI DATA LAKE (CHẠY TRÊN THREADPOOL)
     # ========================================================
     tx_id = None
     if isinstance(result, dict):
         tx_id = result.get("transaction_id") or result.get("data", {}).get("transaction_id")
 
-    if voice_id:
+    def _sync_post_confirm():
+        if voice_id:
+            try:
+                from app.services.voice_record_service import link_voice_record_to_transaction
+                link_voice_record_to_transaction(
+                    db=db,
+                    voice_id=voice_id,
+                    transaction_id=tx_id,
+                    user_id=current_user_id,
+                    status="SUCCESS"
+                )
+            except Exception as e:
+                logger.warning(f"Lỗi liên kết voice record: {e}")
+
+        # Ghi nhận User Correction Feedback vào MySQL & Data Lake nếu có thay đổi
+        if correction_diff and (correction_diff.get("ai") or correction_diff.get("correction")):
+            try:
+                from app.services.user_correction_service import UserCorrectionService
+                UserCorrectionService.save_user_correction(
+                    db=db,
+                    voice_record_id=voice_id,
+                    transaction_id=tx_id,
+                    user_id=current_user_id,
+                    ai_result=ai_result,
+                    corrected_result=payload,
+                    diff=correction_diff,
+                    correction_type=correction_type,
+                )
+            except Exception as uce:
+                logger.warning(f"Lỗi lưu UserCorrection DB: {uce}")
+
+            try:
+                DataLakeService.save_correction_feedback(
+                    voice_record_id=voice_id,
+                    ai_result=ai_result,
+                    final_transaction=payload,
+                    diff=correction_diff,
+                    correction_type=correction_type,
+                    transaction_id=tx_id,
+                    user_id=current_user_id
+                )
+            except Exception as dle:
+                logger.warning(f"Lỗi lưu Data Lake correction: {dle}")
+
         try:
-            from app.services.voice_record_service import link_voice_record_to_transaction
-            link_voice_record_to_transaction(
-                db=db,
-                voice_id=voice_id,
-                transaction_id=tx_id,
+            from app.services.websocket_manager import trigger_report_update
+            trigger_report_update(
                 user_id=current_user_id,
-                status="SUCCESS"
+                affected=["sales", "purchase", "expense", "debt", "inventory", "profit"]
             )
-        except Exception:
-            pass
+        except Exception as wse:
+            logger.warning(f"Lỗi trigger ws update: {wse}")
 
-    # Ghi nhận User Correction Feedback vào MySQL & Data Lake nếu có thay đổi
-    if correction_diff and (correction_diff.get("ai") or correction_diff.get("correction")):
-        try:
-            from app.services.user_correction_service import UserCorrectionService
-            UserCorrectionService.save_user_correction(
-                db=db,
-                voice_record_id=voice_id,
-                transaction_id=tx_id,
-                user_id=current_user_id,
-                ai_result=ai_result,
-                corrected_result=payload,
-                diff=correction_diff,
-                correction_type=correction_type,
-            )
-        except Exception as uce:
-            logger.warning(f"Lỗi lưu UserCorrection DB: {uce}")
+    await asyncio.to_thread(_sync_post_confirm)
 
-        try:
-            DataLakeService.save_correction_feedback(
-                voice_record_id=voice_id,
-                ai_result=ai_result,
-                final_transaction=payload,
-                diff=correction_diff,
-                correction_type=correction_type,
-                transaction_id=tx_id,
-                user_id=current_user_id
-            )
-        except Exception as dle:
-            logger.warning(f"Lỗi lưu Data Lake correction: {dle}")
-
-    pending_confirmations.pop(session_key, None)
-    pending_confirmations.pop(current_user_id, None)
-
-    try:
-        from app.services.websocket_manager import trigger_report_update
-        trigger_report_update(
-            user_id=current_user_id,
-            affected=["sales", "purchase", "expense", "debt", "inventory", "profit"]
-        )
-    except Exception:
-        pass
+    SessionStoreService.delete_confirmation(session_key)
+    SessionStoreService.delete_confirmation(current_user_id)
 
     return result
 
 
 @router.post("/agent/cancel")
-@router.post("/agent/reject")
+@router.post("/agent/reject", include_in_schema=False)
 async def cancel_action(
     session_id: Optional[str] = Query(None),
     current_user_id: int = Depends(get_current_user_id),
@@ -347,12 +356,13 @@ async def cancel_action(
     Cập nhật VoiceRecord trong DB và Data Lake sang trạng thái FAILED (không thành công).
     """
     session_key = session_id or current_user_id
-    pending = pending_confirmations.pop(session_key, None) or pending_confirmations.pop(current_user_id, None)
+    pending = SessionStoreService.pop_confirmation(session_key) or SessionStoreService.pop_confirmation(current_user_id)
 
     if pending and pending.get("voice_id"):
         try:
             from app.services.voice_record_service import mark_voice_record_rejected
-            mark_voice_record_rejected(
+            await asyncio.to_thread(
+                mark_voice_record_rejected,
                 db=db,
                 voice_id=pending["voice_id"],
                 user_id=current_user_id,

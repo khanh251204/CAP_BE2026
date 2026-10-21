@@ -1,56 +1,19 @@
 import os
-
-from dotenv import load_dotenv
 from fastapi import Response
+from app.configs.settings import settings
 
 
-load_dotenv()
+JWT_ACCESS_COOKIE_NAME = settings.JWT_ACCESS_COOKIE_NAME
+JWT_COOKIE_NAME = settings.JWT_COOKIE_NAME
+JWT_COOKIE_HTTPONLY = settings.JWT_COOKIE_HTTPONLY
 
+# Đặt JWT_COOKIE_SECURE = True khi ENVIRONMENT == "production" hoặc APP_ENV == "production"
+_env = (os.getenv("ENVIRONMENT") or os.getenv("APP_ENV") or settings.APP_ENV or "").strip().lower()
+JWT_COOKIE_SECURE = True if _env == "production" else settings.cookie_secure
 
-JWT_ACCESS_COOKIE_NAME = os.getenv(
-    "JWT_ACCESS_COOKIE_NAME",
-    "access_token"
-)
-
-JWT_COOKIE_NAME = os.getenv(
-    "JWT_COOKIE_NAME",
-    "refresh_token"
-)
-
-JWT_COOKIE_HTTPONLY = (
-    os.getenv(
-        "JWT_COOKIE_HTTPONLY",
-        "true"
-    ).lower()
-    == "true"
-)
-
-JWT_COOKIE_SECURE = (
-    os.getenv(
-        "JWT_COOKIE_SECURE",
-        "false"
-    ).lower()
-    == "true"
-)
-
-JWT_COOKIE_SAMESITE = os.getenv(
-    "JWT_COOKIE_SAMESITE",
-    "lax"
-)
-
-ACCESS_TOKEN_EXPIRE_MINUTES = int(
-    os.getenv(
-        "ACCESS_TOKEN_EXPIRE_MINUTES",
-        "5"
-    )
-)
-
-REFRESH_TOKEN_EXPIRE_DAYS = int(
-    os.getenv(
-        "REFRESH_TOKEN_EXPIRE_DAYS",
-        "15"
-    )
-)
+JWT_COOKIE_SAMESITE = settings.JWT_COOKIE_SAMESITE
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 
 # ACCESS COOKIE

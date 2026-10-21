@@ -30,9 +30,9 @@ router.include_router(ws_router)
 def extract_period_params(
     period_type: Optional[str] = Query(None, description="DAY, MONTH, QUARTER, YEAR"),
     date: Optional[str] = Query(None, description="YYYY-MM-DD (cho DAY)"),
-    year: Optional[int] = Query(None, description="Năm (cho MONTH, QUARTER, YEAR)"),
-    month: Optional[int] = Query(None, description="Tháng 1-12 (cho MONTH)"),
-    quarter: Optional[int] = Query(None, description="Quý 1-4 (cho QUARTER)"),
+    year: Optional[int] = Query(None, ge=1900, le=2100, description="Năm (cho MONTH, QUARTER, YEAR)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Tháng 1-12 (cho MONTH)"),
+    quarter: Optional[int] = Query(None, ge=1, le=4, description="Quý 1-4 (cho QUARTER)"),
     from_date: Optional[str] = Query(None, alias="from", description="Khoảng từ ngày YYYY-MM-DD"),
     to_date: Optional[str] = Query(None, alias="to", description="Khoảng đến ngày YYYY-MM-DD")
 ):
@@ -113,10 +113,10 @@ def get_inventory_report(
 @router.get("/reports/transactions", response_model=TransactionReportResponse)
 def get_transactions_report(
     params: dict = Depends(extract_period_params),
-    intent: Optional[str] = Query(None, description="Tên intent (vd: ban_hang, mua_hang, chi_tien)"),
+    intent: Optional[str] = Query(None, max_length=100, description="Tên intent (vd: ban_hang, mua_hang, chi_tien)"),
     category_id: Optional[int] = Query(None, description="ID danh mục"),
     payment_status: Optional[str] = Query(None, description="PAID, PARTIAL, PENDING"),
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=1000000),
     page_size: int = Query(20, ge=1, le=100),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)

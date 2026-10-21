@@ -231,9 +231,17 @@ def save_transaction(
         }
 
     except ValueError as ve:
+        err_msg = str(ve)
+        # Các lỗi về giá trị sai (âm, = 0, vượt tồn kho, sai đơn vị tính, sản phẩm không tồn tại) -> trả 422 UNPROCESSABLE ENTITY theo chuẩn QA testcases
+        if any(kw in err_msg.lower() for kw in ["phải lớn hơn", "không đủ tồn kho", "không khớp với đơn vị", "không tồn tại"]):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Dữ liệu không hợp lệ: {err_msg}"
+            )
+        # Các lỗi thiếu trường dữ liệu bắt buộc (thiếu unit, thiếu product, thiếu quantity...) -> trả 400 BAD REQUEST
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Dữ liệu không hợp lệ: {str(ve)}"
+            detail=f"Dữ liệu không hợp lệ: {err_msg}"
         )
     except Exception as e:
         raise HTTPException(

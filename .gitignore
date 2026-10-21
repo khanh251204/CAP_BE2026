@@ -46,7 +46,9 @@ main.py
 /docs
 AGENTS.md
 tests/
-/ai_benchmark/
+# Benchmark
+ai_benchmark*/
+ai_benchmark*
 /evaluation/
 
 # ========================================
@@ -55,3 +57,4 @@ tests/
 test_api/node_modules/
 test_api/playwright-report/
 test_api/test-results/
+test_api/

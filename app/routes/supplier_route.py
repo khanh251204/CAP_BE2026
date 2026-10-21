@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
@@ -25,6 +25,7 @@ supplier_router = APIRouter(prefix="/suppliers", tags=["Supplier Management"])
 @supplier_router.post(
     "",
     response_model=SupplierResponse,
+    status_code=status.HTTP_201_CREATED,
     summary="Tạo mới nhà cung cấp (Mục 18)",
 )
 def create_supplier(

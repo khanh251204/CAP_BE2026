@@ -41,6 +41,17 @@ class InventoryService:
 
             # 2. Lấy Object Product từ DB để truy xuất giá & đơn vị mặc định
             product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=p_id)
+            if not product_obj:
+                raise ValueError(f"Sản phẩm (ID: {p_id}) không tồn tại hoặc không thuộc quyền sở hữu của bạn.")
+
+            # Validate quantity > 0
+            raw_qty = item.get("quantity")
+            try:
+                qty_val = float(raw_qty) if raw_qty is not None else 1.0
+                if qty_val <= 0:
+                    raise ValueError()
+            except (ValueError, TypeError):
+                raise ValueError(f"Số lượng sản phẩm '{p_name or p_id}' phải lớn hơn 0.")
 
             # 3. Lấy đơn giá người dùng nhập
             input_price = item.get("unit_price") if item.get("unit_price") is not None else item.get("price")
@@ -58,7 +69,12 @@ class InventoryService:
 
             # TH3: Cả người dùng không nhập VÀ trong DB unit_price bị Null/0
             if not final_unit_price or final_unit_price <= 0:
-                display_name = p_name or (getattr(product_obj, "name", None) if product_obj else f"ID {p_id}")
+                display_name = (
+                    getattr(product_obj, "product_name", None)
+                    or getattr(product_obj, "name", None)
+                    or p_name
+                    or f"ID {p_id}"
+                )
                 raise ValueError(f"Sản phẩm '{display_name}' chưa có giá trong hệ thống. Vui lòng bổ sung giá.")
 
             # 4. Xác định đơn vị tính (Ưu tiên: Payload -> DB default_unit)
@@ -66,8 +82,13 @@ class InventoryService:
 
             normalized_items.append({
                 "product_id": p_id,
-                "product_name": p_name or (getattr(product_obj, "name", "") if product_obj else ""),
-                "quantity": item.get("quantity", 1),
+                "product_name": (
+                    getattr(product_obj, "product_name", None)
+                    or getattr(product_obj, "name", None)
+                    or p_name
+                    or ""
+                ),
+                "quantity": qty_val,
                 "unit": unit,
                 "unit_price": final_unit_price
             })
@@ -465,27 +486,43 @@ class InventoryService:
                     "message": f"Không tìm thấy sản phẩm '{product_name}'."
                 }
 
+            product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
+            if not product_obj:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Không tìm thấy sản phẩm hoặc sản phẩm không thuộc quyền sở hữu (ID: {product_id})."
+                }
+
             stock = self.repo.get_latest_stock(
                 user_id=user_id,
                 product_id=product_id
             )
 
-            product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
-            
             unit_price = 0.0
             default_unit = ""
-            if product_obj:
-                if hasattr(product_obj, "unit_price") and product_obj.unit_price is not None:
+            if hasattr(product_obj, "unit_price") and product_obj.unit_price is not None:
+                try:
                     unit_price = float(product_obj.unit_price)
-                elif hasattr(product_obj, "price") and product_obj.price is not None:
+                except (ValueError, TypeError):
+                    unit_price = 0.0
+            elif hasattr(product_obj, "price") and product_obj.price is not None:
+                try:
                     unit_price = float(product_obj.price)
+                except (ValueError, TypeError):
+                    unit_price = 0.0
 
-                if hasattr(product_obj, "default_unit") and product_obj.default_unit is not None:
-                    default_unit = str(product_obj.default_unit)
-                elif hasattr(product_obj, "unit") and product_obj.unit is not None:
-                    default_unit = str(product_obj.unit)
-            
-            actual_product_name = product_name or (getattr(product_obj, "name", "") if product_obj else "")
+            if hasattr(product_obj, "default_unit") and product_obj.default_unit is not None:
+                default_unit = str(product_obj.default_unit)
+            elif hasattr(product_obj, "unit") and product_obj.unit is not None:
+                default_unit = str(product_obj.unit)
+
+            actual_product_name = (
+                getattr(product_obj, "product_name", None)
+                or getattr(product_obj, "name", None)
+                or product_name
+                or ""
+            )
 
             return {
                 "status": "success",

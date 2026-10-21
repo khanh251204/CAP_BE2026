@@ -10,16 +10,12 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError, ExpiredSignatureError
 
 from app.configs.cookie import JWT_ACCESS_COOKIE_NAME
+from app.configs.settings import settings
 
-load_dotenv()
-
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
-PASSWORD_RESET_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_EXPIRE_MINUTES", "10"))
-
-if not SECRET_KEY:
-    raise RuntimeError("JWT_SECRET_KEY chưa được cấu hình trong .env")
+SECRET_KEY = settings.JWT_SECRET_KEY
+ALGORITHM = settings.JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+PASSWORD_RESET_EXPIRE_MINUTES = settings.PASSWORD_RESET_EXPIRE_MINUTES
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -197,6 +193,40 @@ def authorize_roles(*roles):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Bạn không có quyền truy cập"
             )
+        return user
+
+    return wrapper
+
+
+def require_permission(permission_code: str):
+    """
+    Kiểm tra người dùng có quyền cụ thể (permission_code) hay không.
+    ADMIN luôn có toàn quyền bỏ qua kiểm tra mã lẻ.
+    """
+    def wrapper(user=Depends(authenticate_user)):
+        user_role = str(user.get("role", "")).strip().upper()
+        if user_role == "ADMIN":
+            return user
+
+        user_id = int(user.get("sub", 0))
+        from app.configs.database import SessionLocal
+        from app.models.user_model import User
+        db = SessionLocal()
+        try:
+            db_user = db.query(User).filter(User.user_id == user_id).first()
+            if not db_user or not db_user.role_rel:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Tài khoản chưa được gán vai trò hoặc quyền thực hiện '{permission_code}'"
+                )
+            user_perm_codes = {p.code for p in db_user.role_rel.permissions}
+            if permission_code not in user_perm_codes:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Bạn không có quyền '{permission_code}' để thực hiện hành động này"
+                )
+        finally:
+            db.close()
         return user
 
     return wrapper

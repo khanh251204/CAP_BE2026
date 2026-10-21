@@ -41,9 +41,17 @@ def create_user(
     business_type: str | None = None,
     google_id: str | None = None,
     apple_id: str | None = None,
-    role: str = "user",
+    role: str = "OWNER",
+    role_id: int | None = None,
     is_verified: bool = False
 ) -> User:
+    if not role_id:
+        from app.models.role_permission_model import Role
+        target_role = db.query(Role).filter(Role.role_name == role.upper()).first()
+        if not target_role:
+            target_role = db.query(Role).filter(Role.role_name == "OWNER").first()
+        if target_role:
+            role_id = target_role.role_id
 
     user = User(
         full_name=full_name,
@@ -55,7 +63,7 @@ def create_user(
         business_type=business_type,
         google_id=google_id,
         apple_id=apple_id,
-        role=role,
+        role_id=role_id,
         is_verified=is_verified
     )
 
@@ -143,9 +151,20 @@ def update_user_profile(
     if account_type is not None:
         user.account_type = account_type.strip()
     if store_name is not None:
-        user.store_name = store_name.strip() if store_name else None
+        clean_name = store_name.strip() if store_name else None
+        if clean_name:
+            if user.store_rel:
+                user.store_rel.store_name = clean_name
+            else:
+                from app.models.store_model import Store
+                new_store = Store(user_id=user.user_id, store_name=clean_name, business_type=user.business_type)
+                db.add(new_store)
+                db.flush()
+                user.store_id = new_store.store_id
     if business_type is not None:
         user.business_type = business_type.strip().upper() if business_type else None
+        if user.store_rel and user.business_type:
+            user.store_rel.business_type = user.business_type
     if province_code is not None:
         user.province_code = province_code.strip() if province_code else None
     if ward_code is not None:
@@ -153,7 +172,9 @@ def update_user_profile(
     if ward_name is not None:
         user.ward_name = ward_name.strip() if ward_name else None
     if address_detail is not None:
-        user.address_detail = address_detail.strip() if address_detail else None
+        clean_addr = address_detail.strip() if address_detail else None
+        if user.store_rel:
+            user.store_rel.address_detail = clean_addr
 
     db.flush()
     return user

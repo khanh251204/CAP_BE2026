@@ -5,6 +5,7 @@ from sqlalchemy import (
     String,
     DateTime,
     Boolean,
+    ForeignKey,
     text
 )
 
@@ -68,9 +69,10 @@ class User(Base):
         default="personal"
     )
 
-    # Chỉ dành cho business
-    store_name = Column(
-        String(255),
+    # Liên kết với Cửa hàng hiện tại
+    store_id = Column(
+        Integer,
+        ForeignKey("Store.store_id", ondelete="SET NULL"),
         nullable=True
     )
 
@@ -90,11 +92,23 @@ class User(Base):
         default=False
     )
 
-    role = Column(
-        String(30),
-        nullable=False,
-        default="user"
+    role_id = Column(
+        Integer,
+        ForeignKey("Role.role_id", ondelete="SET NULL"),
+        nullable=True
     )
+
+    @property
+    def role(self) -> str:
+        if self.role_rel and self.role_rel.role_name:
+            return self.role_rel.role_name
+        return "USER"
+
+    @property
+    def store_name(self) -> str | None:
+        if self.store_rel and self.store_rel.store_name:
+            return self.store_rel.store_name
+        return None
 
     province_code = Column(
         String(20),
@@ -111,10 +125,11 @@ class User(Base):
         nullable=True
     )
 
-    address_detail = Column(
-        String(255),
-        nullable=True
-    )
+    @property
+    def address_detail(self) -> str | None:
+        if self.store_rel and self.store_rel.address_detail:
+            return self.store_rel.address_detail
+        return None
 
     failed_attempts = Column(
         Integer,
@@ -179,5 +194,21 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         foreign_keys="[VoiceRecord.user_id]"
+    )
+    role_rel = relationship(
+        "Role",
+        back_populates="users",
+        lazy="joined"
+    )
+    store_rel = relationship(
+        "Store",
+        foreign_keys=[store_id],
+        lazy="joined"
+    )
+    owned_stores = relationship(
+        "Store",
+        back_populates="owner",
+        foreign_keys="[Store.user_id]",
+        cascade="all, delete-orphan"
     )
     

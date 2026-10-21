@@ -227,6 +227,14 @@ def verify_otp(
             detail="Mã OTP không hợp lệ"
         )
 
+    if getattr(otp, "attempts", 0) >= 5:
+        otp.is_used = True
+        db.flush()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mã OTP đã vượt quá số lần thử cho phép (tối đa 5 lần). Vui lòng yêu cầu mã mới."
+        )
+
     incoming_hash = _hash_otp(
         email,
         purpose,
@@ -237,6 +245,11 @@ def verify_otp(
         incoming_hash,
         otp.otp_hash
     ):
+        otp.attempts = getattr(otp, "attempts", 0) + 1
+        if otp.attempts >= 5:
+            otp.is_used = True
+        db.flush()
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Mã OTP không chính xác"

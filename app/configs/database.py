@@ -1,13 +1,12 @@
+import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
-from dotenv import load_dotenv
-import os
 
+from app.configs.settings import settings
 
-load_dotenv()
+logger = logging.getLogger(__name__)
 
-
-DATABASE_URL = os.getenv("MYSQL_TRACKER_URL")
+DATABASE_URL = settings.MYSQL_TRACKER_URL
 
 
 engine = create_engine(
@@ -56,10 +55,24 @@ def auth_db():
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            print("✅ Kết nối Database thành công!")
+            logger.info("Kết nối Database thành công!")
 
     except Exception as err:
-        print(f"❌ Lỗi Database: {err}")
+        logger.error(f"Lỗi Database: {err}")
+
+
+def check_db_health() -> bool:
+    """
+    Ping kiểm tra kết nối Database bằng lệnh SELECT 1.
+    Phục vụ cho Docker/Kubernetes Liveness & Readiness probe.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            return True
+    except Exception as err:
+        logger.error(f"[Health] Lỗi Database ping: {err}")
+        return False
 
 
 def get_db():

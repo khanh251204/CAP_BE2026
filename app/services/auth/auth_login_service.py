@@ -130,7 +130,7 @@ def login_user(db: Session, data: LoginRequest):
         raise
     except Exception as e:
         db.rollback()
-        print("❌ Login error:", e)
+        logger.error(f"Login error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng nhập"

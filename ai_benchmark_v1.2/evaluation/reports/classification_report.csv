@@ -1,4 +1,0 @@
-intent,precision,recall,f1,support
-ban_hang,0.9231,1.0,0.96,12
-chi_phi,1.0,1.0,1.0,3
-nhap_hang,1.0,0.8,0.8889,5

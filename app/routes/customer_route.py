@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
@@ -25,6 +25,7 @@ customer_router = APIRouter(prefix="/customers", tags=["Customer Management"])
 @customer_router.post(
     "",
     response_model=CustomerResponse,
+    status_code=status.HTTP_201_CREATED,
     summary="Tạo mới khách hàng (Mục 15)",
 )
 def create_customer(
