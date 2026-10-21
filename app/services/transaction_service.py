@@ -1284,4 +1284,4 @@ class TransactionService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Lỗi hệ thống khi xóa giao dịch: {str(exc)}"
-            )
+            )

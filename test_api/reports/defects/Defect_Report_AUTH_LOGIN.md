@@ -12,21 +12,21 @@
 | **Tính năng (Feature)** | Auth - Login |
 | **Người báo cáo (Tester)** | Khánh Hoàng |
 | **Môi trường (Environment)** | Localhost / Backend FastAPI (Playwright API Automation) |
-| **Ngày tạo (Date)** | 1/10/2026 |
+| **Ngày tạo (Date)** | 21/10/2026 |
 
 ## 2. DEFECT INFORMATION
 | Trường thông tin | Chi tiết |
 | :--- | :--- |
 | **Defect ID** | **BUG_AUTH_-_LOGIN_001** |
-| **Tiêu đề (Summary)** | [TC02] Email viet hoa - tuy business rule |
+| **Tiêu đề (Summary)** | [TC08] Password 300 ky tu |
 | **Mức độ nghiêm trọng (Severity)** | **MEDIUM** |
 | **Độ ưu tiên (Priority)** | **MEDIUM** |
 | **Trạng thái (Status)** | **OPEN** |
 | **Người xử lý (Assignee)** | Dev Backend |
-| **Giải thích** | API Đăng nhập phản hồi HTTP 401 khác với mong đợi 200. |
+| **Giải thích** | API Đăng nhập phản hồi HTTP 400 khác với mong đợi 422. |
 
 ## 3. DESCRIPTION
-Khi gọi API `/api/v1/login` với testcase **TC02 - Email viet hoa - tuy business rule**, kết quả trả về HTTP Status **401**, không đúng với mã kỳ vọng **200**.
+Khi gọi API `/api/v1/login` với testcase **TC08 - Password 300 ky tu**, kết quả trả về HTTP Status **400**, không đúng với mã kỳ vọng **422**.
 
 ## 4. STEPS TO REPRODUCE
 1. Chuẩn bị môi trường kiểm thử Backend.
@@ -34,20 +34,36 @@ Khi gọi API `/api/v1/login` với testcase **TC02 - Email viet hoa - tuy busin
 4. Request Payload:
 ```json
 {
-  "email": "QA_USER@EXAMPLE.COM",
-  "password": "Valid@1234"
+  "email": "buithinhu1408@gmail.com",
+  "password": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 }
 ```
 
 ## 5. EXPECTED RESULT
-API phản hồi HTTP Status Code: **200**.
+API phản hồi HTTP Status Code: **422**.
 
 ## 6. ACTUAL RESULT
-- **HTTP Status Code thực tế**: **401**
+- **HTTP Status Code thực tế**: **400**
 - **Response Body**:
 ```json
 {
-  "detail": "Email hoặc mật khẩu không chính xác"
+  "status": "error",
+  "success": false,
+  "message": "Dữ liệu không hợp lệ",
+  "detail": [
+    {
+      "type": "string_too_long",
+      "loc": [
+        "body",
+        "password"
+      ],
+      "msg": "String should have at most 128 characters",
+      "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "ctx": {
+        "max_length": 128
+      }
+    }
+  ]
 }
 ```
 
@@ -58,10 +74,26 @@ Backend validation logic hoặc exception handling chưa bắt và trả về m�
 ## 8. API RESPONSE
 ```json
 {
-  "detail": "Email hoặc mật khẩu không chính xác"
+  "status": "error",
+  "success": false,
+  "message": "Dữ liệu không hợp lệ",
+  "detail": [
+    {
+      "type": "string_too_long",
+      "loc": [
+        "body",
+        "password"
+      ],
+      "msg": "String should have at most 128 characters",
+      "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "ctx": {
+        "max_length": 128
+      }
+    }
+  ]
 }
 ```
-- **HTTP Status**: 401
+- **HTTP Status**: 400
 - **Endpoint**: `/api/v1/login`
 
 ## 9. IMPACT (Business/User Impact)
@@ -72,12 +104,12 @@ Backend validation logic hoặc exception handling chưa bắt và trả về m�
 Developer kiểm tra controller/service xử lý API tương ứng để trả về đúng HTTP Status Code và message thân thiện.
 
 ## 11. ATTACHMENT & NOTES
-- Testcase ID: `TC02`
-- Chi tiết Payload kiểm thử: `{"email":"QA_USER@EXAMPLE.COM","password":"Valid@1234"}`
+- Testcase ID: `TC08`
+- Chi tiết Payload kiểm thử: `{"email":"buithinhu1408@gmail.com","password":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}`
 
 ## 12. ACCEPTANCE CRITERIA / VERIFICATION
-☐  Gửi lại request với cùng payload ➔ API trả về đúng HTTP Status **200**.
-☐  Chạy lại kịch bản test Playwright `TC02` đạt PASSED.
+☐  Gửi lại request với cùng payload ➔ API trả về đúng HTTP Status **422**.
+☐  Chạy lại kịch bản test Playwright `TC08` đạt PASSED.
 
 ## 13. DEFECT LIFECYCLE
 | Thuộc tính | Trạng thái |
@@ -87,7 +119,7 @@ Developer kiểm tra controller/service xử lý API tương ứng để trả v
 | **Retest Required** | Yes |
 | **Regression Test Required** | Yes |
 | **Reported by** | Khánh Hoàng |
-| **Date** | 1/10/2026 |
+| **Date** | 21/10/2026 |
 | **Status** | Open |
 
 ---

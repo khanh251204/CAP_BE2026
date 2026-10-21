@@ -1,0 +1,27 @@
+{
+  "voice_record_id": 150002,
+  "transcript": "Nhập 20 lốc sữa chua từ Nguyễn Văn An 500.000",
+  "intent": "nhap_hang",
+  "entities": {
+    "customer": null,
+    "date": null,
+    "new_product_name": null,
+    "payment": null,
+    "price": 25000,
+    "product": "sữa chua",
+    "quantity": 20,
+    "supplier": "Nguyễn Văn An",
+    "unit": "lốc"
+  },
+  "confidence": null,
+  "processing_time": 9.264,
+  "provider": "GroqModel",
+  "model": "openai/gpt-oss-20b",
+  "prompt_version": "1.2.0",
+  "pipeline_version": "1.0.0",
+  "status": "PROCESSING",
+  "error_message": null,
+  "request_id": "e367214880304930951fd1d83b81c966",
+  "created_at": "2026-10-21T20:35:05",
+  "data_classification": "PROCESSED_AI"
+}

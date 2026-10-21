@@ -1,0 +1,17 @@
+{
+  "voice_record_id": 180001,
+  "transcript": "",
+  "intent": null,
+  "entities": {},
+  "confidence": null,
+  "processing_time": 5.508,
+  "provider": "Groq",
+  "model": "whisper-large-v3-turbo",
+  "prompt_version": null,
+  "pipeline_version": null,
+  "status": "PROCESSING",
+  "error_message": null,
+  "request_id": "412a2895776a4012bcb4722af9ac3a3c",
+  "created_at": "2026-10-22T01:26:57",
+  "data_classification": "PROCESSED_AI"
+}

@@ -58,3 +58,27 @@ def mark_notification_as_read(
         notification_id,
         str(user_id)
     )
+
+
+class FCMTokenRegisterSchema(BaseModel):
+    fcmToken: str
+    deviceType: Optional[str] = "mobile"
+
+
+# REGISTER FCM TOKEN
+@router.post("/notifications/fcm-token")
+def register_fcm_token(
+    data: FCMTokenRegisterSchema,
+    payload: dict = Depends(authenticate_user)
+):
+    user_id = payload.get("sub")
+    from app.services.fcm_service import FCMService
+    success = FCMService.register_device_token(
+        user_id=str(user_id),
+        fcm_token=data.fcmToken,
+        device_type=data.deviceType
+    )
+    return {
+        "success": success,
+        "message": "Đã lưu FCM device token thành công" if success else "Lưu token thất bại"
+    }

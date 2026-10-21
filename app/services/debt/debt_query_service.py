@@ -51,7 +51,7 @@ class DebtQueryMixin:
             page=page,
             limit=limit,
         )
-        total_pages = (total + limit - 1) // limit if total > 0 else 1
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
 
         items = []
         for debt in debts:
@@ -200,19 +200,19 @@ class DebtQueryMixin:
                         "unit_price": float(td.unit_price or 0),
                         "subtotal": float(td.subtotal or 0),
                     })
-                tx_intent_name = debt.transaction.intent.intent_name if debt.transaction.intent else None
-                tx_intent_type = str(debt.transaction.intent.intent_type) if (debt.transaction.intent and debt.transaction.intent.intent_type) else None
-                tx_info = {
-                    "transaction_id": debt.transaction.transaction_id,
-                    "transaction_date": debt.transaction.transaction_date,
-                    "intent_name": tx_intent_name,
-                    "intent_type": tx_intent_type,
-                    "type": tx_intent_type,
-                    "input_text": debt.transaction.input_text,
-                    "total_amount": float(debt.transaction.total_amount or 0),
-                    "payment_status": str(debt.transaction.payment_status) if debt.transaction.payment_status else None,
-                    "details": details,
-                }
+            tx_intent_name = debt.transaction.intent.intent_name if debt.transaction.intent else None
+            tx_intent_type = str(debt.transaction.intent.intent_type) if (debt.transaction.intent and debt.transaction.intent.intent_type) else None
+            tx_info = {
+                "transaction_id": debt.transaction.transaction_id,
+                "transaction_date": debt.transaction.transaction_date,
+                "intent_name": tx_intent_name,
+                "intent_type": tx_intent_type,
+                "type": tx_intent_type,
+                "input_text": debt.transaction.input_text,
+                "total_amount": float(debt.transaction.total_amount or 0),
+                "payment_status": str(debt.transaction.payment_status) if debt.transaction.payment_status else None,
+                "details": details,
+            }
 
         payments_list = []
         if debt.payments:

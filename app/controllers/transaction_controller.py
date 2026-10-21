@@ -93,6 +93,27 @@ class TransactionController:
         except Exception:
             pass
 
+        # Gửi thông báo & FCM khi giao dịch ở trạng thái chờ (PENDING / ghi nợ chưa thanh toán)
+        try:
+            p_status = result.get("payment_status") if isinstance(result, dict) else getattr(result, "payment_status", None)
+            total_amt = result.get("total_amount") if isinstance(result, dict) else getattr(result, "total_amount", 0)
+            intent_n = result.get("intent_name") or result.get("intent") or "giao dịch"
+            if p_status == "PENDING":
+                from app.services.notification_service import NotificationService
+                amt_str = f"{int(float(total_amt)):,}đ" if total_amt else "0đ"
+                NotificationService.create_notification({
+                    "userId": str(user_id),
+                    "title": "Giao dịch chờ thanh toán ⏳",
+                    "description": f"Giao dịch '{intent_n}' trị giá {amt_str} đang ở trạng thái chờ xử lý/chưa thanh toán.",
+                    "notificationType": "TRANSACTION_PENDING",
+                    "icon": "clock-outline",
+                    "iconColor": "#FFFFFF",
+                    "borderColor": "#F59E0B",
+                    "isRead": False
+                })
+        except Exception:
+            pass
+
         return result
 
     @staticmethod

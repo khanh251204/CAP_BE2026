@@ -139,3 +139,30 @@ def revoke_all_user_refresh_tokens(
     db.flush()
 
     return updated_rows
+
+
+# PURGE EXPIRED & REVOKED REFRESH TOKENS (XÓA CỨNG DỮ LIỆU THỪA)
+def delete_expired_and_revoked_tokens(
+    db: Session,
+    *,
+    now: datetime
+) -> int:
+    """
+    Xóa cứng toàn bộ refresh token đã hết hạn (expires_at <= now)
+    hoặc đã bị thu hồi (is_revoked == True) để giải phóng dữ liệu trong DB.
+    """
+    from sqlalchemy import or_
+
+    deleted_rows = (
+        db.query(RefreshToken)
+        .filter(
+            or_(
+                RefreshToken.expires_at <= now,
+                RefreshToken.is_revoked == True
+            )
+        )
+        .delete(synchronize_session=False)
+    )
+
+    db.flush()
+    return deleted_rows

@@ -30,8 +30,8 @@ class GroqService:
         # ========================================================
         # PLUGGABLE AI MODEL INITIALIZATION
         # ========================================================
-        # Đọc cấu hình từ .env, mặc định là groq_20b nếu không set
-        self.active_ai_model = os.getenv("ACTIVE_AI_MODEL", "groq_20b")
+        # Đọc cấu hình từ .env, mặc định là groq_120b nếu không set
+        self.active_ai_model = os.getenv("ACTIVE_AI_MODEL", "groq_120b")
         
         # pyrefly: ignore [missing-import]
         from ai_benchmark_qwen.models import get_model_provider

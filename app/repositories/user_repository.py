@@ -53,13 +53,14 @@ def create_user(
         if target_role:
             role_id = target_role.role_id
 
+    from app.models.store_model import Store
+
     user = User(
         full_name=full_name,
         email=email,
         password_hash=password_hash,
         region=region,
         account_type=account_type,
-        store_name=store_name,
         business_type=business_type,
         google_id=google_id,
         apple_id=apple_id,
@@ -69,6 +70,16 @@ def create_user(
 
     db.add(user)
     db.flush()
+
+    if store_name:
+        new_store = Store(
+            user_id=user.user_id,
+            store_name=store_name,
+            business_type=business_type
+        )
+        db.add(new_store)
+        db.flush()
+        user.store_id = new_store.store_id
 
     return user
 

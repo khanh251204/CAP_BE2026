@@ -232,6 +232,22 @@ def save_transaction(
 
     except ValueError as ve:
         err_msg = str(ve)
+        # Gửi thông báo lỗi giao dịch tới người dùng & đẩy Push FCM
+        try:
+            from app.services.notification_service import NotificationService
+            NotificationService.create_notification({
+                "userId": str(user_id),
+                "title": "Giao dịch không thành công ⚠️",
+                "description": f"Không thể lưu giao dịch: {err_msg}",
+                "notificationType": "TRANSACTION_FAILED",
+                "icon": "alert-circle",
+                "iconColor": "#FFFFFF",
+                "borderColor": "#EF4444",
+                "isRead": False
+            })
+        except Exception:
+            pass
+
         # Các lỗi về giá trị sai (âm, = 0, vượt tồn kho, sai đơn vị tính, sản phẩm không tồn tại) -> trả 422 UNPROCESSABLE ENTITY theo chuẩn QA testcases
         if any(kw in err_msg.lower() for kw in ["phải lớn hơn", "không đủ tồn kho", "không khớp với đơn vị", "không tồn tại"]):
             raise HTTPException(
@@ -244,6 +260,21 @@ def save_transaction(
             detail=f"Dữ liệu không hợp lệ: {err_msg}"
         )
     except Exception as e:
+        try:
+            from app.services.notification_service import NotificationService
+            NotificationService.create_notification({
+                "userId": str(user_id),
+                "title": "Lỗi hệ thống lưu giao dịch ❌",
+                "description": f"Hệ thống gặp sự cố khi lưu giao dịch: {str(e)}",
+                "notificationType": "TRANSACTION_ERROR",
+                "icon": "close-circle",
+                "iconColor": "#FFFFFF",
+                "borderColor": "#EF4444",
+                "isRead": False
+            })
+        except Exception:
+            pass
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lưu database thất bại: {str(e)}"

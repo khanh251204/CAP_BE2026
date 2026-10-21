@@ -14,6 +14,7 @@ from app.middlewares.system_log_middleware import SystemLogMiddleware
 from app.services.closing_scheduler import ClosingScheduler
 from app.services.data_lake_service import DataLakeService
 from app.services.notification_cleanup_service import NotificationCleanupScheduler
+from app.services.token_cleanup_service import TokenCleanupScheduler
 
 # Core routers
 from app.api.stt import router as stt_router
@@ -64,6 +65,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[NotificationCleanupScheduler] Start error: {e}")
 
+    # 5. Khởi động Token Cleanup Scheduler (tự động dọn dẹp refresh token hết hạn)
+    try:
+        TokenCleanupScheduler.start()
+    except Exception as e:
+        logger.error(f"[TokenCleanupScheduler] Start error: {e}")
+
     yield
 
     try:
@@ -76,6 +83,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    try:
+        TokenCleanupScheduler.stop()
+    except Exception:
+        pass
+
 
 app = FastAPI(
     title="Expense Tracker API",
@@ -84,16 +96,18 @@ app = FastAPI(
 )
 
 
+from fastapi.encoders import jsonable_encoder
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc: RequestValidationError):
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={
+        content=jsonable_encoder({
             "status": "error",
             "success": False,
             "message": "Dữ liệu không hợp lệ",
             "detail": exc.errors()
-        }
+        })
     )
 
 

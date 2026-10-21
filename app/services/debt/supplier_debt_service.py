@@ -57,6 +57,16 @@ class SupplierDebtMixin:
                 db.add(new_tx)
                 db.flush()
                 transaction_id = new_tx.transaction_id
+            else:
+                existing_tx = db.query(Transaction).filter(
+                    Transaction.transaction_id == transaction_id,
+                    Transaction.user_id == user_id
+                ).first()
+                if not existing_tx:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Giao dịch {transaction_id} không tồn tại hoặc không thuộc quyền quản lý"
+                    )
 
             debt = Debt(
                 transaction_id=transaction_id,
@@ -153,7 +163,7 @@ class SupplierDebtMixin:
                 )
 
             account = DebtRepository.get_account_by_id_and_user(account_id=account_id, user_id=user_id, db=db, for_update=True)
-            if not account:
+            if not account or not account.is_active:
                 raise HTTPException(status_code=404, detail=f"Tài khoản {account_id} không tồn tại hoặc đã bị vô hiệu hóa")
 
             current_balance = Decimal(str(account.balance)) if account.balance is not None else Decimal("0")
