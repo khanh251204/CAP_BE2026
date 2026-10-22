@@ -33,8 +33,7 @@ class GroqService:
         # Đọc cấu hình từ .env, mặc định là groq_120b nếu không set
         self.active_ai_model = os.getenv("ACTIVE_AI_MODEL", "groq_120b")
         
-        # pyrefly: ignore [missing-import]
-        from ai_benchmark_qwen.models import get_model_provider
+        from app.ai.models import get_model_provider
         
         if self.active_ai_model == "groq_20b":
             self.provider = get_model_provider(provider_name="groq", model_name="openai/gpt-oss-20b")
@@ -93,13 +92,13 @@ class GroqService:
         knowledge: str = ""
     ) -> dict:
         """
-        Phân tích câu giao dịch bằng LLM thông qua Plug-in của ai_benchmark.
+        Phân tích câu giao dịch bằng LLM thông qua Model Provider (Pluggable).
         """
         if not text or not text.strip():
             raise ValueError("Text giao dịch không được để trống.")
 
         try:
-            # Sử dụng Model Provider từ ai_benchmark
+            # Sử dụng Model Provider từ app.ai.models
             # (Hàm predict sẽ tự động ghép system prompt và format JSON)
             benchmark_result = self.provider.predict(
                 text=text, 
