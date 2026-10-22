@@ -20,6 +20,7 @@ class IntentNameEnum(str, Enum):
     thu_no_khach_hang = "thu_no_khach_hang"
     ghi_no_nha_cung_cap = "ghi_no_nha_cung_cap"
     tra_no_nha_cung_cap = "tra_no_nha_cung_cap"
+    tra_no_cung_cap = "tra_no_cung_cap"
     chi_tien = "chi_tien"
     hang_hong = "hang_hong"
     kiem_kho = "kiem_kho"
@@ -36,6 +37,7 @@ VALID_INTENT_TYPE_COMBINATIONS: Dict[str, Set[str]] = {
     "ghi_no_nha_cung_cap": {"DEBT"},
     "thu_no_khach_hang": {"INCOME", "DEBT"},
     "tra_no_nha_cung_cap": {"EXPENSE", "DEBT"},
+    "tra_no_cung_cap": {"EXPENSE", "DEBT"},
     "kiem_kho": {"NONE"},
     "bao_cao": {"NONE"},
     "chot_so": {"NONE"},

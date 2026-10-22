@@ -30,7 +30,7 @@ def parse_and_validate_transaction_query(
     Validate query params cho API GET /transactions:
     - 401: Xác thực người dùng trước qua get_current_user_id.
     - 200: Nếu param không có hoặc để rỗng ("") thì không lọc, coi như None -> trả 200 OK bình thường.
-    - 400: Nếu có truyền param nhưng sai giá trị / sai enum / tham số lạ / không khớp tổ hợp -> HTTP 400 Bad Request.
+    - 422: Nếu có truyền param nhưng sai giá trị / sai enum / tham số lạ / không khớp tổ hợp -> HTTP 422 Unprocessable Entity.
     """
     errors = []
     query_params = request.query_params
@@ -124,7 +124,7 @@ def parse_and_validate_transaction_query(
 
     if errors:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=errors
         )
 
