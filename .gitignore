@@ -58,3 +58,9 @@ test_api/node_modules/
 test_api/playwright-report/
 test_api/test-results/
 test_api/
+
+# ========================================
+# Data Lake (Keep directory skeleton, ignore runtime generated data)
+# ========================================
+data_lake/**/*.json
+
