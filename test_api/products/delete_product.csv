@@ -1,0 +1,5 @@
+test_id,product_id,auth_type,expected,actual,note
+TC01,EXISTING_ID,NO_TOKEN,401,Status 401 (PASSED),[NO_TOKEN] Khong gui token Authorization
+TC02,EXISTING_ID,INVALID_TOKEN,401,Status 401 (PASSED),[INVALID_TOKEN] Gui token Authorization sai hoac het han
+TC03,99999999,VALID,404,Status 404 (PASSED),product_id khong ton tai hoac khong co quyen
+TC04,NEW_CREATED_ID,VALID,200,Status 200 (PASSED),Positive: Xoa mem san pham thanh cong (is_active = False)

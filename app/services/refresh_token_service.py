@@ -9,15 +9,17 @@ from jose import jwt, JWTError, ExpiredSignatureError
 from sqlalchemy.orm import Session
 
 from app.configs.jwt import SECRET_KEY, ALGORITHM
+from app.configs.settings import settings
 from app.repositories.refresh_token_repository import (
     create_refresh_token as create_refresh_token_record,
     get_active_refresh_token_by_jti,
-    revoke_refresh_token
+    revoke_refresh_token,
+    delete_expired_and_revoked_tokens
 )
 
 load_dotenv()
 
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 
 def hash_refresh_token(token: str) -> str:
@@ -161,6 +163,15 @@ def revoke_refresh_token_value(db: Session, *, token: str):
     }
 
 
+def purge_expired_refresh_tokens(db: Session) -> int:
+    """
+    Xóa cứng toàn bộ refresh token đã hết hạn hoặc đã thu hồi khỏi DB.
+    Trả về số lượng bản ghi đã được dọn dẹp.
+    """
+    now = datetime.utcnow()
+    return delete_expired_and_revoked_tokens(db=db, now=now)
+
+
 __all__ = [
     "hash_refresh_token",
     "create_refresh_token",
@@ -168,4 +179,5 @@ __all__ = [
     "validate_refresh_token",
     "rotate_refresh_token",
     "revoke_refresh_token_value",
+    "purge_expired_refresh_tokens",
 ]

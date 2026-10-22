@@ -69,14 +69,22 @@ def get_products_by_user_id(
     )
 
 
+from app.schemas.product_schema import (
+    ProductCreateRequest,
+    ProductUpdateRequest,
+    InventoryCheckRequest,
+    ManualInventoryTransactionRequest,
+)
+
+
 # ==========================================
 # THÊM PRODUCT - THEO USER ĐĂNG NHẬP
 # ==========================================
 
-@router.post("/products")
-@router.post("/productsNew")
+@router.post("/products", status_code=status.HTTP_201_CREATED)
+@router.post("/productsNew", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_product(
-    data: dict,
+    data: ProductCreateRequest,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -92,7 +100,7 @@ def create_product(
 # ==========================================
 
 @router.get("/products/{product_id}")
-@router.get("/product/{product_id}")
+@router.get("/product/{product_id}", include_in_schema=False)
 def get_product_by_id(
     product_id: int,
     user_id: int = Depends(get_current_user_id),
@@ -110,10 +118,10 @@ def get_product_by_id(
 # ==========================================
 
 @router.put("/products/{product_id}")
-@router.put("/product/{product_id}")
+@router.put("/product/{product_id}", include_in_schema=False)
 def update_product(
     product_id: int,
-    data: dict,
+    data: ProductUpdateRequest,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -130,7 +138,7 @@ def update_product(
 # ==========================================
 
 @router.delete("/products/{product_id}")
-@router.delete("/product/{product_id}")
+@router.delete("/product/{product_id}", include_in_schema=False)
 def delete_product(
     product_id: int,
     user_id: int = Depends(get_current_user_id),
@@ -148,10 +156,10 @@ def delete_product(
 # ==========================================
 
 @router.post("/products/{product_id}/inventory-check")
-@router.post("/product/{product_id}/inventory-check")
+@router.post("/product/{product_id}/inventory-check", include_in_schema=False)
 def inventory_check(
     product_id: int,
-    data: dict,
+    data: InventoryCheckRequest,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -171,11 +179,11 @@ def inventory_check(
 # API PHỤ: NHẬP KHO / XUẤT KHO THỦ CÔNG
 # ==========================================
 
-@router.post("/products/{product_id}/inventory-transactions")
-@router.post("/product/{product_id}/inventory-transactions")
+@router.post("/products/{product_id}/inventory-transactions", status_code=status.HTTP_201_CREATED)
+@router.post("/product/{product_id}/inventory-transactions", status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def manual_inventory_transaction(
     product_id: int,
-    data: dict,
+    data: ManualInventoryTransactionRequest,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):

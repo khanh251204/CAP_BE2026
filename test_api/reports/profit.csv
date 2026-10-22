@@ -1,0 +1,8 @@
+test_id,period_type,date,year,month,quarter,from_date,to_date,auth_type,expected,actual,note
+PRF_01,,,,,,,,NO_AUTH,Status 401,Status 401 (PASSED),Khong gui Authorization token
+PRF_02,,,,,,,,INVALID_TOKEN,Status 401,Status 401 (PASSED),Gui token khong hop le
+PRF_03,INVALID_PERIOD,,,,,,,VALID,Status 400,Status 400 (PASSED),Gui period_type khong hop le
+PRF_04,MONTH,,2026,abc,,,,VALID,Status 422,Status 422 (PASSED),Gui month khong dung kieu so
+PRF_05,,,,,,,,VALID,Status 200,Status 200 (PASSED),Xem bao cao tong hop loi nhuan mac dinh
+PRF_06,MONTH,,2026,10,,,,VALID,Status 200,Status 200 (PASSED),Xem bao cao loi nhuan theo thang
+PRF_07,QUARTER,,2026,,4,,,VALID,Status 200,Status 200 (PASSED),Xem bao cao loi nhuan theo quy

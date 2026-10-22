@@ -77,6 +77,11 @@ class ProductService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Đơn vị tính mặc định (default_unit) là bắt buộc"
             )
+        if len(default_unit) > 50:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Đơn vị tính tối đa 50 ký tự"
+            )
 
         try:
             unit_price = float(data.get("unit_price") or data.get("price") or 0.0)
@@ -141,6 +146,34 @@ class ProductService:
         product = repo.get_product_by_id(db, user_id, product_id)
         if not product:
             return None
+
+        if "product_name" in data:
+            if data["product_name"] is None or not str(data["product_name"]).strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Tên sản phẩm không được để trống"
+                )
+            clean_name = str(data["product_name"]).strip()
+            if len(clean_name) > 255:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Tên sản phẩm tối đa 255 ký tự"
+                )
+            data["product_name"] = clean_name
+
+        if "default_unit" in data:
+            if data["default_unit"] is None or not str(data["default_unit"]).strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Đơn vị tính không được để trống"
+                )
+            clean_unit = str(data["default_unit"]).strip()
+            if len(clean_unit) > 50:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Đơn vị tính tối đa 50 ký tự"
+                )
+            data["default_unit"] = clean_unit
 
         if "product_type" in data and data["product_type"] is not None:
             pt_val = str(data["product_type"]).strip().upper()

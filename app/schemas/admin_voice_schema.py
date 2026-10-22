@@ -19,6 +19,7 @@ class AdminVoiceListItem(BaseModel):
     confidence: Optional[float] = Field(None, description="Độ tin cậy STT")
     status: str = Field(..., description="Trạng thái xử lý: SUCCESS, FAILED, PROCESSING, REVIEW")
     transaction_id: Optional[int] = Field(None, description="ID giao dịch tài chính liên kết (nếu có)")
+    audio_url: Optional[str] = Field(None, description="URL stream/nghe file ghi âm")
     processing_time_ms: Optional[int] = Field(None, description="Thời gian xử lý tính bằng mili-giây (ms)")
     created_at: Optional[datetime] = Field(None, description="Thời gian khởi tạo bản ghi")
 

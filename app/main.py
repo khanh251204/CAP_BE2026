@@ -1,24 +1,20 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.configs.database import auth_db, Base, engine
-from app.configs.migrations.migrate_voice_record import (
-    migrate_voice_record_schema,
-)
-from app.configs.migrations.migrate_transaction_detail import (
-    migrate_transaction_detail_schema,
-)
-from app.configs.migrations.migrate_system_logs import (
-    migrate_system_logs,
-)
-from app.configs.migrations.migrate_user_correction import (
-    migrate_user_correction_schema,
-)
+from fastapi.exceptions import RequestValidationError
+logger = logging.getLogger(__name__)
+
+from app.configs.database import auth_db, check_db_health
+from app.configs.settings import settings
 from app.middlewares.system_log_middleware import SystemLogMiddleware
 from app.services.closing_scheduler import ClosingScheduler
 from app.services.data_lake_service import DataLakeService
+from app.services.notification_cleanup_service import NotificationCleanupScheduler
+from app.services.token_cleanup_service import TokenCleanupScheduler
 
 # Core routers
 from app.api.stt import router as stt_router
@@ -42,51 +38,53 @@ from app.routes.admin_transaction_route import router as admin_transaction_route
 from app.routes.admin_user_route import router as admin_user_router
 from app.routes.admin_voice_route import router as admin_voice_router
 from app.routes.admin_system_log_route import router as admin_system_log_router
+from app.routes.admin_notification_route import router as admin_notification_router
+from app.routes.admin_rbac_route import router as admin_rbac_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 1. Xác thực kết nối DB (SELECT 1 ping), không chạy DDL lock trong lifespan đa tiến trình
     auth_db()
 
-    try:
-        Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        print(f"[DB] Table creation check: {e}")
-
-    try:
-        migrate_voice_record_schema()
-    except Exception as e:
-        print(f"[DB] Voice_Record migration error: {e}")
-
-    try:
-        migrate_transaction_detail_schema()
-    except Exception as e:
-        print(f"[DB] Transaction_Detail migration error: {e}")
-
-    try:
-        migrate_system_logs()
-    except Exception as e:
-        print(f"[DB] System_Logs migration error: {e}")
-
-    try:
-        migrate_user_correction_schema()
-    except Exception as e:
-        print(f"[DB] User_Correction migration error: {e}")
-
+    # 2. Khởi động Closing Scheduler
     try:
         ClosingScheduler.start()
     except Exception as e:
-        print(f"[Scheduler] Start error: {e}")
+        logger.error(f"[Scheduler] Start error: {e}")
 
+    # 3. Khởi tạo Data Lake storage
     try:
         DataLakeService.init_storage()
     except Exception as e:
-        print(f"[DataLake] Init error: {e}")
+        logger.error(f"[DataLake] Init error: {e}")
+
+    # 4. Khởi động Notification Cleanup Scheduler (tự động dọn dẹp thông báo cũ)
+    try:
+        NotificationCleanupScheduler.start()
+    except Exception as e:
+        logger.error(f"[NotificationCleanupScheduler] Start error: {e}")
+
+    # 5. Khởi động Token Cleanup Scheduler (tự động dọn dẹp refresh token hết hạn)
+    try:
+        TokenCleanupScheduler.start()
+    except Exception as e:
+        logger.error(f"[TokenCleanupScheduler] Start error: {e}")
 
     yield
 
     try:
         ClosingScheduler.stop()
+    except Exception:
+        pass
+
+    try:
+        NotificationCleanupScheduler.stop()
+    except Exception:
+        pass
+
+    try:
+        TokenCleanupScheduler.stop()
     except Exception:
         pass
 
@@ -98,16 +96,26 @@ app = FastAPI(
 )
 
 
+from fastapi.encoders import jsonable_encoder
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=jsonable_encoder({
+            "status": "error",
+            "success": False,
+            "message": "Dữ liệu không hợp lệ",
+            "detail": exc.errors()
+        })
+    )
+
+
 # =====================================================
-# CORS
+# CORS (Cấu hình động từ biến môi trường CORS_ORIGINS)
 # =====================================================
 
-ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-]
+ORIGINS = settings.cors_origins_list
 
 app.add_middleware(
     CORSMiddleware,
@@ -152,6 +160,8 @@ ADMIN_ROUTERS = [
     admin_user_router,
     admin_voice_router,
     admin_system_log_router,
+    admin_notification_router,
+    admin_rbac_router,
 ]
 
 
@@ -161,6 +171,30 @@ for router in CORE_ROUTERS:
 
 for router in ADMIN_ROUTERS:
     app.include_router(router, prefix="/api/v1")
+
+
+# =====================================================
+# SYSTEM & HEALTH PROBES
+# =====================================================
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    """
+    Liveness & Readiness probe cho Docker / Kubernetes.
+    Ping SELECT 1 kiểm tra tình trạng kết nối Database.
+    """
+    if not check_db_health():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "unhealthy",
+                "database": "disconnected"
+            }
+        )
+    return {
+        "status": "healthy",
+        "database": "connected"
+    }
 
 
 # =====================================================

@@ -20,6 +20,7 @@ class AdminDatasetItem(BaseModel):
     confidence: Optional[float] = Field(None, description="Độ tin cậy STT")
     status: str = Field(..., description="Trạng thái xử lý: SUCCESS, FAILED, PROCESSING, REVIEW")
     has_correction: bool = Field(False, description="Có dữ liệu hiệu chỉnh từ người dùng không")
+    audio_url: Optional[str] = Field(None, description="URL stream/nghe file âm thanh")
     storage_path: Optional[str] = Field(None, description="Đường dẫn snapshot lưu trữ trong Data Lake")
     created_at: Optional[datetime] = Field(None, description="Thời điểm khởi tạo bản ghi")
 
@@ -43,6 +44,7 @@ class AdminDatasetDetailResponse(BaseModel):
     voice_record_id: int = Field(..., description="ID Voice Record liên kết")
     data_type: str = Field(..., description="Phân loại: RAW, PROCESSED, FEEDBACK, DATASET")
     source_type: str = Field(..., description="Nguồn dữ liệu: VOICE_PIPELINE")
+    status: str = Field("PROCESSING", description="Trạng thái: SUCCESS, FAILED, PROCESSING, REVIEW")
     user_id: Optional[int] = Field(None, description="ID người dùng")
     user_name: Optional[str] = Field(None, description="Họ tên người dùng")
     audio_url: Optional[str] = Field(None, description="URL stream/nghe file âm thanh bảo mật")

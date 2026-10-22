@@ -1,0 +1,4 @@
+test_id,token_type,expected,actual,note
+TC01,VALID_FROM_LOGIN,200,Status 200 (PASSED),Positive: Dang xuat thanh cong voi cookie phien hop le
+TC02,MISSING_COOKIE,200,Status 200 (PASSED),Dang xuat khi khong co cookie van clear cookie va tra ve 200
+TC03,EXPIRED_COOKIE,200,Status 200 (PASSED),Dang xuat khi cookie da het han van clear va tra ve 200

@@ -143,3 +143,19 @@ class ClosingScheduler:
                     "message": f"Đã đến giờ chốt sổ kỳ {p_type}. Vui lòng kiểm tra và xác nhận chốt sổ."
                 }
             )
+            # Gửi thông báo in-app và Push FCM nhắc nhở người dùng chốt sổ
+            try:
+                from app.services.notification_service import NotificationService
+                NotificationService.create_notification({
+                    "userId": str(setting.user_id),
+                    "title": f"Nhắc nhở chốt sổ kỳ {p_type} ⏰",
+                    "description": f"Đã đến khung giờ chốt sổ ({setting.closing_time.strftime('%H:%M')}). Bạn có {preview['transaction_count']} giao dịch cần kiểm tra và xác nhận.",
+                    "notificationType": "CLOSING_REMINDER",
+                    "icon": "clock-alert-outline",
+                    "iconColor": "#FFFFFF",
+                    "borderColor": "#F59E0B",
+                    "isRead": False
+                })
+            except Exception as ne:
+                logger.warning(f"Could not create closing reminder notification: {ne}")
+

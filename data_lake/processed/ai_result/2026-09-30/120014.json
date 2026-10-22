@@ -1,0 +1,27 @@
+{
+  "voice_record_id": 120014,
+  "transcript": "Bán 10 lớp sữa chua",
+  "intent": "ban_hang",
+  "entities": {
+    "customer": null,
+    "date": null,
+    "new_product_name": null,
+    "payment": null,
+    "price": null,
+    "product": "sữa chua",
+    "quantity": 10,
+    "supplier": null,
+    "unit": null
+  },
+  "confidence": null,
+  "processing_time": 2.661,
+  "provider": "Groq",
+  "model": "openai/gpt-oss-120b",
+  "prompt_version": "1.2.0",
+  "pipeline_version": "1.0.0",
+  "status": "PROCESSING",
+  "error_message": null,
+  "request_id": null,
+  "created_at": "2026-09-30T23:23:43",
+  "data_classification": "PROCESSED_AI"
+}

@@ -1,0 +1,5 @@
+test_id,customer_id,account_id,amount,note,auth_type,expected,actual,note_tc
+TC01,EXISTING_ID,1,200000,Thu no tien mat,NO_TOKEN,401,Status 401 (PASSED),[NO_TOKEN] Thu no khong co token
+TC02,EXISTING_ID,1,200000,Thu no tien mat,INVALID_TOKEN,401,Status 401 (PASSED),[INVALID_TOKEN] Thu no voi token sai
+TC03,EXISTING_ID,1,-50000,So tien am,VALID,400,Status 400 (PASSED),Thu no so tien am khong hop le
+TC04,EXISTING_ID,1,200000,Thu no khach hang hop le,VALID,200,Status 200 (PASSED),Positive: Thu no khach hang thanh cong

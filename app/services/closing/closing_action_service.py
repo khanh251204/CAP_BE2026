@@ -208,7 +208,7 @@ class ClosingActionService:
         db.commit()
         db.refresh(closing_period)
 
-        # 6. Bắn WebSocket event CLOSING_COMPLETED
+        # 6. Bắn WebSocket event CLOSING_COMPLETED và tạo Thông báo + Push FCM
         try:
             import asyncio
             try:
@@ -233,6 +233,23 @@ class ClosingActionService:
                 pass
         except Exception as ws_err:
             logger.warning(f"Could not push WebSocket closing event: {ws_err}")
+
+        # 7. Gửi thông báo hệ thống & Push FCM chốt sổ thành công
+        try:
+            from app.services.notification_service import NotificationService
+            closing_time_str = datetime.now().strftime("%H:%M - %d/%m/%Y")
+            NotificationService.create_notification({
+                "userId": str(user_id),
+                "title": f"Chốt sổ kỳ {p_type} thành công 🎉",
+                "description": f"Sổ tài chính kỳ {p_type} ({p_start} đến {p_end}) đã được chốt hoàn tất lúc {closing_time_str}. Doanh thu: {int(summary['total_sales']):,}đ.",
+                "notificationType": "CLOSING",
+                "icon": "lock-clock",
+                "iconColor": "#FFFFFF",
+                "borderColor": "#0F766E",
+                "isRead": False
+            })
+        except Exception as notif_err:
+            logger.warning(f"Could not create closing notification: {notif_err}")
 
         return closing_period
 

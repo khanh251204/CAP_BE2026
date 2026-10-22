@@ -30,19 +30,22 @@ class AdminUserRepository:
 
         # 1. Search (full_name, email, phone_number, store_name)
         if search and search.strip():
+            from app.models.store_model import Store
             kw = f"%{search.strip()}%"
             filters.append(
                 or_(
                     User.full_name.ilike(kw),
                     User.email.ilike(kw),
                     User.phone_number.ilike(kw),
-                    User.store_name.ilike(kw)
+                    User.store_rel.has(Store.store_name.ilike(kw))
                 )
             )
 
         # 2. Filter theo Role
         if role and role.strip():
-            filters.append(User.role.ilike(role.strip()))
+            from app.models.role_permission_model import Role
+            clean_role = role.strip()
+            filters.append(User.role_rel.has(Role.role_name.ilike(clean_role)))
 
         # 3. Filter theo Business Type
         if business_type and business_type.strip():

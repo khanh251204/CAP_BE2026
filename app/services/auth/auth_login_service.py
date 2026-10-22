@@ -18,7 +18,8 @@ from app.services.google_auth_service import verify_google_id_token
 from app.services.refresh_token_service import (
     create_refresh_token,
     rotate_refresh_token,
-    revoke_refresh_token_value
+    revoke_refresh_token_value,
+    purge_expired_refresh_tokens
 )
 from app.services.auth.auth_registration_service import normalize_email, user_to_dict
 from app.services.system_log_service import log_event
@@ -130,7 +131,7 @@ def login_user(db: Session, data: LoginRequest):
         raise
     except Exception as e:
         db.rollback()
-        print("❌ Login error:", e)
+        logger.error(f"Login error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng nhập"
@@ -210,6 +211,8 @@ def refresh_access_token(db: Session, token: str):
             )
 
         access = create_access_session(user)
+        # Tự động dọn dẹp các token hết hạn / revoked thừa trong database
+        purge_expired_refresh_tokens(db)
         db.commit()
 
         return {
@@ -231,6 +234,8 @@ def refresh_access_token(db: Session, token: str):
 def logout_user(db: Session, token: str):
     try:
         revoke_refresh_token_value(db=db, token=token)
+        # Xóa cứng các token hết hạn / revoked để tránh lưu dữ liệu dư thừa
+        purge_expired_refresh_tokens(db)
         db.commit()
         return {
             "success": True,

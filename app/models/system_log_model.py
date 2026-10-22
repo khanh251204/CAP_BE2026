@@ -29,6 +29,7 @@ class SystemLogStep(str, enum.Enum):
     AUTH = "AUTH"
     STT = "STT"
     LLM = "LLM"
+    ADMIN = "ADMIN"
     DB = "DB"
     OTHER = "OTHER"
 
@@ -59,7 +60,7 @@ class SystemLog(Base):
     )
 
     step = Column(
-        Enum("AUTH", "STT", "LLM", "DB", "OTHER", name="system_log_step_enum"),
+        String(20),
         nullable=True,
         default="OTHER",
         index=True

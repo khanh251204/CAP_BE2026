@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
@@ -109,42 +110,47 @@ class BanHangHandler:
         customer_id = entities.get("customer_id")
 
         if not customer_id and customer_name:
-            db = get_db_session()
-            try:
-                clean_customer_name = str(customer_name).strip()
-                # Exact match
-                db_customer = (
-                    db.query(Customer)
-                    .filter(
-                        Customer.user_id == user_id,
-                        Customer.customer_name == clean_customer_name
-                    )
-                    .first()
-                )
-                # Fuzzy match
-                if not db_customer:
+            def _lookup_customer(uid: int, cname: str):
+                db = get_db_session()
+                try:
+                    clean_customer_name = str(cname).strip()
+                    # Exact match
                     db_customer = (
                         db.query(Customer)
                         .filter(
-                            Customer.user_id == user_id,
-                            Customer.customer_name.ilike(f"%{clean_customer_name}%")
+                            Customer.user_id == uid,
+                            Customer.customer_name == clean_customer_name
                         )
                         .first()
                     )
+                    # Fuzzy match
+                    if not db_customer:
+                        db_customer = (
+                            db.query(Customer)
+                            .filter(
+                                Customer.user_id == uid,
+                                Customer.customer_name.ilike(f"%{clean_customer_name}%")
+                            )
+                            .first()
+                        )
+                    if db_customer:
+                        return db_customer.customer_id, db_customer.customer_name
+                    return None, None
+                finally:
+                    db.close()
 
-                if db_customer:
-                    customer_id = db_customer.customer_id
-                    customer_name = db_customer.customer_name
-                else:
-                    return {
-                        "success": False,
-                        "status": "customer_not_found",
-                        "intent": intent,
-                        "customer_name": customer_name,
-                        "message": f"Không tìm thấy khách hàng '{customer_name}' trong hệ thống. Vui lòng tạo khách hàng trước."
-                    }
-            finally:
-                db.close()
+            found_id, found_name = await asyncio.to_thread(_lookup_customer, user_id, customer_name)
+            if found_id:
+                customer_id = found_id
+                customer_name = found_name
+            else:
+                return {
+                    "success": False,
+                    "status": "customer_not_found",
+                    "intent": intent,
+                    "customer_name": customer_name,
+                    "message": f"Không tìm thấy khách hàng '{customer_name}' trong hệ thống. Vui lòng tạo khách hàng trước."
+                }
 
         payload = build_payload(entities=entities, text=text)
         if stock_result.get("product_id"):

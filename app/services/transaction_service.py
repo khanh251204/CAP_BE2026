@@ -97,15 +97,35 @@ class TransactionService:
         - Transaction_Detail (1-N): product_id, quantity, unit, unit_price, subtotal
         - Tự động cập nhật số dư Account nếu thanh toán thành công (PAID).
         """
-        # 1. Kiểm tra intent_id nếu được truyền
-        intent_id = request.intent_id
+        intent = None
         if intent_id is not None:
             intent = db.query(Intent).filter(Intent.intent_id == intent_id).first()
             if not intent:
                 raise ValueError(f"Không tìm thấy Intent với id {intent_id}")
 
+        # TC_TX03_052: Giao dịch chi tiền (chi_tien) bắt buộc phải có category_id
+        if intent and intent.intent_name == "chi_tien" and category_id is None:
+            raise ValueError("Giao dịch chi tiền bắt buộc phải có danh mục (category_id)")
+
+        # TC_TX03_053: Giao dịch chi tiền bắt buộc phải có account_id
+        account_id = request.account_id
+        if intent and intent.intent_name == "chi_tien" and account_id is None:
+            raise ValueError("Giao dịch chi tiền bắt buộc phải có tài khoản thanh toán (account_id)")
+
+        # TC_TX03_054 & TC_TX03_058: Giao dịch chi tiền bắt buộc phải có total_amount > 0
+        if intent and intent.intent_name == "chi_tien":
+            if request.total_amount is None:
+                raise ValueError("Giao dịch chi tiền bắt buộc phải có số tiền (total_amount)")
+            try:
+                chk_amt = Decimal(str(request.total_amount))
+                if chk_amt <= 0:
+                    raise ValueError("Số tiền giao dịch (total_amount) phải lớn hơn 0")
+            except Exception as e:
+                if "phải lớn hơn 0" in str(e):
+                    raise
+                raise ValueError("Số tiền giao dịch (total_amount) không hợp lệ")
+
         # 2. Kiểm tra category_id nếu được truyền
-        category_id = request.category_id
         category = None
         if category_id is not None:
             category = db.query(Category).filter(
@@ -116,7 +136,6 @@ class TransactionService:
                 raise ValueError(f"Không tìm thấy Category với id {category_id}")
 
         # 3. Kiểm tra account_id nếu được truyền
-        account_id = request.account_id
         account = None
         if account_id is not None:
             account = db.query(Account).filter(
@@ -311,7 +330,10 @@ class TransactionService:
             .first()
         )
 
-        intent_id = db_intent.intent_id if db_intent else None
+        if not db_intent:
+            raise ValueError(f"Intent '{groq_intent}' không tồn tại trong hệ thống")
+
+        intent_id = db_intent.intent_id
 
         # ==========================================================
         # 2. LẤY ENTITIES
@@ -364,20 +386,30 @@ class TransactionService:
         if groq_intent in SALES_INTENTS:
             if not product_name:
                 raise ValueError("Bán hàng phải có product")
-            if not quantity:
+            if not unit or not str(unit).strip():
+                raise ValueError("Thiếu đơn vị tính (unit)")
+            if quantity is None:
                 raise ValueError("Bán hàng phải có quantity")
-            if not price:
+            if price is None:
                 raise ValueError("Bán hàng phải có price")
 
         elif groq_intent in PURCHASE_INTENTS:
             if not product_name:
                 raise ValueError("Nhập hàng phải có product")
-            if not quantity:
+            if not unit or not str(unit).strip():
+                raise ValueError("Thiếu đơn vị tính (unit)")
+            if quantity is None:
                 raise ValueError("Nhập hàng phải có quantity")
-            if not price:
+            if price is None:
                 raise ValueError("Nhập hàng phải có price")
 
-        elif groq_intent in MONEY_IN_INTENTS:
+        elif groq_intent in {"thu_no_phai_thu", "thu_no_khach_hang"}:
+            if not customer_name:
+                raise ValueError("Thu nợ khách hàng bắt buộc phải có khách hàng (customer)")
+            if not price:
+                raise ValueError("Thu nợ khách hàng phải có số tiền (price/amount)")
+
+        elif groq_intent in {"thu_tien"}:
             if not price:
                 raise ValueError("Thu tiền phải có amount")
 
@@ -392,26 +424,51 @@ class TransactionService:
                 raise ValueError("Phải có giá tiền")
 
         elif groq_intent in RECEIVABLE_DEBT_INTENTS:
-            if not price:
+            if price is None:
                 raise ValueError("Ghi nợ phải thu phải có amount")
             if not customer_name:
                 raise ValueError("Ghi nợ phải thu phải có customer")
+            # TC_TX03_013 & TC_TX03_014 & TC_TX03_015: Ghi nợ nếu có nhắc số lượng/unit thì bắt buộc phải có product, và ngược lại; có product bắt buộc có unit
+            if (quantity is not None or unit is not None) and not product_name:
+                raise ValueError("Giao dịch ghi nợ có số lượng hoặc đơn vị tính bắt buộc phải có sản phẩm (product)")
+            if product_name and quantity is None:
+                raise ValueError("Giao dịch ghi nợ có sản phẩm bắt buộc phải có số lượng (quantity)")
+            if product_name and (not unit or not str(unit).strip()):
+                raise ValueError("Thiếu đơn vị tính (unit)")
 
         elif groq_intent in PAYABLE_DEBT_INTENTS:
-            if not price:
+            if price is None:
                 raise ValueError("Ghi nợ phải trả phải có amount")
             if not supplier_name:
                 raise ValueError("Ghi nợ phải trả phải có supplier")
+            # TC_TX03_038 & TC_TX03_039: Mua hàng nợ có nhắc sản phẩm thì bắt buộc có product, quantity, unit
+            if (quantity is not None or unit is not None) and not product_name:
+                raise ValueError("Giao dịch ghi nợ có số lượng hoặc đơn vị tính bắt buộc phải có sản phẩm (product)")
+            if product_name and quantity is None:
+                raise ValueError("Giao dịch ghi nợ có sản phẩm bắt buộc phải có số lượng (quantity)")
+            if product_name and (not unit or not str(unit).strip()):
+                raise ValueError("Thiếu đơn vị tính (unit)")
 
         # ==========================================================
-        # 6. TÍNH TIỀN
+        # 6. TÍNH TIỀN & VALIDATE SỐ LIỆU (TC_TX03_006, 007, 009, 025, 026)
         # ==========================================================
-        total_amount = Decimal(str(price or 0))
-        qty = Decimal(str(quantity or 1))
-        if qty <= 0:
-            raise ValueError("Quantity phải lớn hơn 0")
+        try:
+            total_amount = Decimal(str(price or 0))
+        except Exception:
+            raise ValueError("Giá tiền không hợp lệ")
 
-        unit_price = total_amount / qty if product_name else Decimal("0.00")
+        if total_amount <= 0:
+            raise ValueError("Giá (price/amount) phải lớn hơn 0")
+
+        try:
+            qty = Decimal(str(quantity or 1))
+        except Exception:
+            raise ValueError("Số lượng không hợp lệ")
+
+        if quantity is not None and qty <= 0:
+            raise ValueError("Số lượng (quantity) phải lớn hơn 0")
+
+        unit_price = total_amount / qty if product_name and qty > 0 else Decimal("0.00")
 
         # ==========================================================
         # 7. XỬ LÝ ACCOUNT (đúng model Account & docs/erd.md: account_type, account_name)
@@ -559,6 +616,10 @@ class TransactionService:
             )
 
             if not product:
+                # TC_TX03_016: Luồng bán hàng (ban_hang, ghi_no_khach_hang) yêu cầu sản phẩm phải tồn tại trong kho, không tự tạo mới
+                if groq_intent in ("ban_hang", "ghi_no_khach_hang", "ghi_no_phai_thu"):
+                    raise ValueError(f"Sản phẩm '{product_name}' không tồn tại")
+
                 product = create_product(
                     db=db,
                     user_id=user_id,
@@ -568,6 +629,17 @@ class TransactionService:
                 )
                 product.updated_at = datetime.now()
             else:
+                # TC_TX03_010 & TC_TX03_035: Đơn vị tính gửi lên phải khớp với đơn vị tính đã lưu của sản phẩm
+                ALL_ITEM_INTENTS = (
+                    "ban_hang", "ghi_no_khach_hang", "ghi_no_phai_thu",
+                    "mua_hang", "nhap_hang", "ghi_no_nha_cung_cap", "ghi_no_phai_tra"
+                )
+                if groq_intent in ALL_ITEM_INTENTS and unit and product.default_unit:
+                    norm_req_unit = str(unit).strip().lower()
+                    norm_prod_unit = str(product.default_unit).strip().lower()
+                    if norm_req_unit != norm_prod_unit:
+                        raise ValueError(f"Đơn vị tính '{unit}' không khớp với đơn vị tính của sản phẩm ('{product.default_unit}')")
+
                 product.unit_price = str(unit_price)
                 if unit:
                     product.default_unit = unit
@@ -1212,4 +1284,4 @@ class TransactionService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Lỗi hệ thống khi xóa giao dịch: {str(exc)}"
-            )
+            )

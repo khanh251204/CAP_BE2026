@@ -12,7 +12,7 @@ def create_voice_record(
     confidence: Optional[float] = None,
     processing_time: Optional[float] = None,
     intent: Optional[str] = None,
-    status: str = "SUCCESS",
+    status: str = "PROCESSING",
     error_message: Optional[str] = None,
     transaction_id: Optional[int] = None
 ) -> VoiceRecord:
@@ -28,13 +28,18 @@ def create_voice_record(
         if db.query(Transaction.transaction_id).filter(Transaction.transaction_id == transaction_id).first():
             valid_tx_id = transaction_id
 
+    # Trạng thái thành công chỉ khi đã có transaction_id xác nhận; ngược lại là PROCESSING
+    record_status = status
+    if valid_tx_id is not None and record_status == "PROCESSING":
+        record_status = "SUCCESS"
+
     record = VoiceRecord(
         user_id=valid_user_id,
         transaction_id=valid_tx_id,
         audio_path=audio_url,
         transcript=transcript,
         intent=intent,
-        status=status,
+        status=record_status,
         confidence=confidence,
         processing_time=processing_time,
         error_message=error_message,
@@ -58,9 +63,13 @@ def link_voice_record_to_transaction(
     db: Session,
     voice_id: int,
     transaction_id: int,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    status: str = "SUCCESS"
 ) -> bool:
-    """Liên kết một VoiceRecord với Transaction sau khi giao dịch được xác nhận."""
+    """
+    Liên kết VoiceRecord với Transaction sau khi người dùng bấm xác nhận đồng ý giao dịch.
+    Trạng thái được cập nhật thành SUCCESS (Thành công) và đồng bộ sang Data Lake.
+    """
     query = db.query(VoiceRecord).filter(VoiceRecord.voice_id == voice_id)
     if user_id is not None:
         query = query.filter((VoiceRecord.user_id == user_id) | (VoiceRecord.user_id.is_(None)))
@@ -70,6 +79,7 @@ def link_voice_record_to_transaction(
         return False
 
     record.transaction_id = transaction_id
+    record.status = status
     if user_id is not None and not record.user_id:
         record.user_id = user_id
 
@@ -81,11 +91,41 @@ def link_voice_record_to_transaction(
 
     db.commit()
 
-    # Cập nhật Data Lake snapshot sau khi giao dịch được liên kết
+    # Cập nhật Data Lake snapshot sau khi giao dịch được xác nhận thành công
     try:
         from app.services.data_lake_service import DataLakeService
-        if tx:
-            DataLakeService.ingest_record(record, transaction=tx, db=db)
+        DataLakeService.ingest_record(record, transaction=tx, db=db)
+    except Exception:
+        pass
+
+    return True
+
+
+def mark_voice_record_rejected(
+    db: Session,
+    voice_id: int,
+    user_id: Optional[int] = None,
+    reason: Optional[str] = "Người dùng không đồng ý xác nhận giao dịch"
+) -> bool:
+    """
+    Đánh dấu bản ghi khi người dùng không đồng ý / từ chối / hủy bỏ giao dịch.
+    Trạng thái cập nhật thành FAILED và đồng bộ sang Data Lake.
+    """
+    query = db.query(VoiceRecord).filter(VoiceRecord.voice_id == voice_id)
+    if user_id is not None:
+        query = query.filter((VoiceRecord.user_id == user_id) | (VoiceRecord.user_id.is_(None)))
+
+    record = query.first()
+    if not record:
+        return False
+
+    record.status = "FAILED"
+    record.error_message = reason
+    db.commit()
+
+    try:
+        from app.services.data_lake_service import DataLakeService
+        DataLakeService.ingest_record(record, db=db)
     except Exception:
         pass
 

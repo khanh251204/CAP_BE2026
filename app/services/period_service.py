@@ -105,9 +105,11 @@ class PeriodService:
             return val.date()
         if isinstance(val, str):
             val = val.strip()
-            # Thử parse ISO format YYYY-MM-DD
+            # Yêu cầu định dạng chính xác YYYY-MM-DD không có ký tự thừa / SQL injection
             try:
-                return datetime.strptime(val[:10], "%Y-%m-%d").date()
+                if len(val) != 10:
+                    raise ValueError()
+                return datetime.strptime(val, "%Y-%m-%d").date()
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -133,14 +135,28 @@ class PeriodService:
         }
 
     @classmethod
+    def _validate_year(cls, year: Optional[int], now: datetime) -> int:
+        if year is not None:
+            if not isinstance(year, int) or year < 1900 or year > 2100:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Năm '{year}' không hợp lệ. Năm phải nằm trong khoảng 1900 đến 2100."
+                )
+            return year
+        return now.year
+
+    @classmethod
     def _resolve_month(cls, year: Optional[int], month: Optional[int], tz: ZoneInfo, now: datetime) -> Dict[str, Any]:
-        y = year or now.year
-        m = month or now.month
-        if not (1 <= m <= 12):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tháng '{m}' không hợp lệ. Tháng phải nằm trong khoảng 1 đến 12."
-            )
+        y = cls._validate_year(year, now)
+        if month is None:
+            m = now.month
+        else:
+            if not isinstance(month, int) or not (1 <= month <= 12):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tháng '{month}' không hợp lệ. Tháng phải nằm trong khoảng 1 đến 12."
+                )
+            m = month
 
         last_day = calendar.monthrange(y, m)[1]
         start_d = date(y, m, 1)
@@ -161,13 +177,16 @@ class PeriodService:
 
     @classmethod
     def _resolve_quarter(cls, year: Optional[int], quarter: Optional[int], tz: ZoneInfo, now: datetime) -> Dict[str, Any]:
-        y = year or now.year
-        q = quarter or ((now.month - 1) // 3 + 1)
-        if not (1 <= q <= 4):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Quý '{q}' không hợp lệ. Quý phải từ 1 đến 4."
-            )
+        y = cls._validate_year(year, now)
+        if quarter is None:
+            q = (now.month - 1) // 3 + 1
+        else:
+            if not isinstance(quarter, int) or not (1 <= quarter <= 4):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Quý '{quarter}' không hợp lệ. Quý phải từ 1 đến 4."
+                )
+            q = quarter
 
         quarter_map = {
             1: (date(y, 1, 1), date(y, 3, 31)),
@@ -192,7 +211,7 @@ class PeriodService:
 
     @classmethod
     def _resolve_year(cls, year: Optional[int], tz: ZoneInfo, now: datetime) -> Dict[str, Any]:
-        y = year or now.year
+        y = cls._validate_year(year, now)
         start_d = date(y, 1, 1)
         end_d = date(y, 12, 31)
         start_dt = datetime.combine(start_d, time.min)

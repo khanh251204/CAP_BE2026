@@ -1,5 +1,8 @@
 import json
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from app.ai.mcp.product.server import server as product_server
 from app.ai.mcp.inventory.server import server as inventory_server
@@ -48,8 +51,7 @@ async def list_mcp_tools():
                 })
 
         except Exception as e:
-
-            print(
+            logger.warning(
                 f"[MCP] Không lấy được tools "
                 f"từ {server_name}: {e}"
             )
@@ -85,8 +87,7 @@ async def find_mcp_server(tool_name: str):
                     return server
 
         except Exception as e:
-
-            print(
+            logger.warning(
                 f"[MCP] Lỗi kiểm tra "
                 f"{server_name}: {e}"
             )

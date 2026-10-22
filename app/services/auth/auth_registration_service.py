@@ -1,7 +1,10 @@
 import re
+import logging
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.controllers.notification_controller import NotificationController
 from app.configs.roles import Roles
@@ -71,11 +74,13 @@ def register_user(db: Session, data: RegisterRequest):
         )
 
     store_name = None
-    business_type = None
+    business_type = "RESELLER"
 
     if data.accountType == "business":
         store_name = data.storeName.strip() if data.storeName else None
-        business_type = data.businessField.strip() if data.businessField else None
+        business_type = data.businessField.strip() if data.businessField else "RESELLER"
+    elif data.businessField:
+        business_type = data.businessField.strip()
 
     try:
         user = create_user(
@@ -125,7 +130,7 @@ def register_user(db: Session, data: RegisterRequest):
         raise
     except Exception as e:
         db.rollback()
-        print("❌ REGISTER ERROR:", str(e))
+        logger.error(f"Register error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể đăng ký tài khoản"

@@ -1,0 +1,9 @@
+test_id,product_id,product_name,unit_price,default_unit,forbidden_field,auth_type,expected,actual,note
+TC01,EXISTING_ID,Update Name,20000,lon,,NO_TOKEN,401,Status 401 (PASSED),[NO_TOKEN] Khong gui token Authorization
+TC02,EXISTING_ID,Update Name,20000,lon,,INVALID_TOKEN,401,Status 401 (PASSED),[INVALID_TOKEN] Gui token Authorization sai hoac het han
+TC03,EXISTING_ID,Update Name,20000,lon,current_stock,VALID,400,Status 400 (PASSED),Chinh sua truong bi cam (current_stock)
+TC04,EXISTING_ID,Update Name,20000,lon,user_id,VALID,400,Status 400 (PASSED),Chinh sua truong bi cam (user_id)
+TC05,EXISTING_ID,Update Name,-5000,lon,,VALID,400,Status 400 (PASSED),unit_price la so am
+TC06,EXISTING_ID,Update Name,abc,lon,,VALID,400,Status 400 (PASSED),unit_price la chuoi chu khong hop le
+TC07,99999999,Update Name,20000,lon,,VALID,404,Status 404 (PASSED),product_id khong ton tai hoac khong co quyen
+TC08,EXISTING_ID,Coca Cola Update 2026,12000,lon,,VALID,200,Status 200 (PASSED),Positive: Cap nhat thong tin san pham hop le

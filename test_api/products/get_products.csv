@@ -1,0 +1,5 @@
+test_id,query_param,auth_type,expected,actual,note
+TC01,,NO_TOKEN,401,Status 401 (PASSED),[NO_TOKEN] Lay danh sach san pham khi khong gui token
+TC02,,INVALID_TOKEN,401,Status 401 (PASSED),[INVALID_TOKEN] Lay danh sach san pham khi gui token sai
+TC03,,VALID,200,Status 200 (PASSED),Positive: Lay danh sach tat ca san pham cua user thanh cong
+TC04,Coca,VALID,200,Status 200 (PASSED),Positive: Tim kiem san pham theo ten thanh cong

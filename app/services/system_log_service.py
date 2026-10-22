@@ -68,11 +68,13 @@ def _persist_log_entry(log_data: dict):
     """Ghi trực tiếp 1 bản ghi SystemLog vào DB session riêng."""
     db = None
     try:
+        from app.middlewares.system_log_middleware import resolve_log_step
         db = get_db_session()
+        resolved_step = resolve_log_step(log_data.get("api_path"), log_data.get("step"))
         entry = SystemLog(
             created_at=log_data.get("created_at") or datetime.now(),
             level=log_data.get("level", "INFO"),
-            step=log_data.get("step", "OTHER"),
+            step=resolved_step,
             api_path=log_data.get("api_path"),
             http_method=log_data.get("http_method"),
             status_code=log_data.get("status_code"),

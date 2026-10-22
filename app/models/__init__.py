@@ -1,4 +1,6 @@
 from app.models.user_model import User
+from app.models.store_model import Store
+from app.models.role_permission_model import Role, Permission, role_permissions
 from app.models.product_model import Product
 from app.models.intent_model import Intent
 from app.models.category_model import Category
@@ -19,9 +21,14 @@ from app.models.closing_setting_model import ClosingSetting
 from app.models.closing_report_model import ClosingReport
 from app.models.system_log_model import SystemLog
 from app.models.user_correction_model import UserCorrection
+from app.models.user_pending_confirmation_model import UserPendingConfirmation
 
 __all__ = [
     "User",
+    "Store",
+    "Role",
+    "Permission",
+    "role_permissions",
     "Product",
     "Intent",
     "Category",
@@ -42,4 +49,5 @@ __all__ = [
     "ClosingReport",
     "SystemLog",
     "UserCorrection",
+    "UserPendingConfirmation",
 ]
