@@ -50,3 +50,21 @@ class NotificationService:
             notification_id,
             user_id
         )
+
+    @staticmethod
+    def delete_notification(
+        notification_id: str,
+        user_id: str
+    ):
+        return NotificationRepository.delete_for_user(
+            notification_id,
+            user_id
+        )
+
+    @staticmethod
+    def delete_all_notifications(
+        user_id: str
+    ):
+        return NotificationRepository.delete_all_for_user(
+            user_id
+        )

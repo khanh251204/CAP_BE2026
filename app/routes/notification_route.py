@@ -81,4 +81,29 @@ def register_fcm_token(
     return {
         "success": success,
         "message": "Đã lưu FCM device token thành công" if success else "Lưu token thất bại"
-    }
+    }
+
+# DELETE ALL (của user hiện tại)
+@router.delete("/notifications")
+def delete_all_notifications(
+    payload: dict = Depends(authenticate_user)
+):
+    user_id = payload.get("sub")
+
+    return NotificationController.delete_all_notifications(
+        str(user_id)
+    )
+
+
+# DELETE ONE
+@router.delete("/notifications/{notification_id}")
+def delete_notification(
+    notification_id: str,
+    payload: dict = Depends(authenticate_user)
+):
+    user_id = payload.get("sub")
+
+    return NotificationController.delete_notification(
+        notification_id,
+        str(user_id)
+    )
