@@ -43,6 +43,9 @@ class ClosingPeriodResponse(BaseModel):
     closed_at: str
     created_at: str
     transaction_count: Optional[int] = None
+    # Giao dịch thuộc kỳ nhưng phát sinh sau giờ chốt (chưa có trong snapshot)
+    late_transaction_count: Optional[int] = 0
+    needs_reclose: Optional[bool] = False
 
 
 class ClosingPeriodListResponse(BaseModel):

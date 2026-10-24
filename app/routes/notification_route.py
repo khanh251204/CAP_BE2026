@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.controllers.notification_controller import NotificationController
-from app.configs.jwt import authenticate_user, authorize_roles
+from app.configs.jwt import authenticate_user, require_permission
 
 router = APIRouter()
 
@@ -30,11 +30,11 @@ def get_notifications(
     )
 
 
-# CREATE (Yêu cầu quyền ADMIN - Trả 401 nếu chưa login/invalid token, 403 nếu user thường)
+# CREATE (Yêu cầu quyền admin_notification:manage - 401 nếu chưa login/invalid token, 403 nếu không đủ quyền)
 @router.post(
     "/notifications",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_permission("admin_notification:manage"))]
 )
 def create_notification(
     data: NotificationCreateSchema

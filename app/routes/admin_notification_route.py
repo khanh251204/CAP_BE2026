@@ -3,7 +3,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 from fastapi import APIRouter, Depends, Query, status
 
-from app.configs.jwt import authorize_roles, authenticate_user
+from app.configs.jwt import authenticate_user, require_permission, require_admin_area
 from app.services.admin_notification_service import AdminNotificationService
 from app.services.notification_cleanup_service import (
     NotificationCleanupService,
@@ -13,7 +13,7 @@ from app.services.notification_cleanup_service import (
 router = APIRouter(
     prefix="/admin/notifications",
     tags=["Admin - Notifications"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_admin_area)]
 )
 
 
@@ -33,7 +33,8 @@ class NotificationCleanupRequest(BaseModel):
     description=(
         "Xóa cứng vĩnh viễn các thông báo trong Firestore nếu thời gian tạo "
         "đã vượt quá số ngày quy định (mặc định là 14 ngày)."
-    )
+    ),
+    dependencies=[Depends(require_permission("admin_notification:manage"))],
 )
 def cleanup_notifications(
     payload: Optional[NotificationCleanupRequest] = None,
@@ -100,7 +101,8 @@ class AdminNotificationBulkDeleteRequest(BaseModel):
 @router.get(
     "",
     summary="Danh sách thông báo (Admin)",
-    description="Xem tất cả thông báo của mọi user, có phân trang và bộ lọc."
+    description="Xem tất cả thông báo của mọi user, có phân trang và bộ lọc.",
+    dependencies=[Depends(require_permission("admin_notification:read"))],
 )
 def list_notifications(
     page: int = Query(1, ge=1),
@@ -129,7 +131,7 @@ def list_notifications(
 # =====================================================
 # STATS
 # =====================================================
-@router.get("/stats", summary="Thống kê thông báo (Admin)")
+@router.get("/stats", summary="Thống kê thông báo (Admin)", dependencies=[Depends(require_permission("admin_notification:read"))])
 def notification_stats():
     return AdminNotificationService.get_stats()
 
@@ -141,7 +143,8 @@ def notification_stats():
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Gửi thông báo (Admin)",
-    description="Gửi cho 1 user, nhiều user, hoặc tất cả. Thông báo cá nhân sẽ được đẩy push qua FCM."
+    description="Gửi cho 1 user, nhiều user, hoặc tất cả. Thông báo cá nhân sẽ được đẩy push qua FCM.",
+    dependencies=[Depends(require_permission("admin_notification:manage"))],
 )
 def send_notification(
     data: AdminNotificationSendRequest,
@@ -156,7 +159,7 @@ def send_notification(
 # =====================================================
 # BULK DELETE
 # =====================================================
-@router.post("/bulk-delete", summary="Xóa nhiều thông báo (Admin)")
+@router.post("/bulk-delete", summary="Xóa nhiều thông báo (Admin)", dependencies=[Depends(require_permission("admin_notification:manage"))])
 def bulk_delete_notifications(data: AdminNotificationBulkDeleteRequest):
     return AdminNotificationService.bulk_delete(data.ids)
 
@@ -164,12 +167,12 @@ def bulk_delete_notifications(data: AdminNotificationBulkDeleteRequest):
 # =====================================================
 # DETAIL / UPDATE / DELETE
 # =====================================================
-@router.get("/{notification_id}", summary="Chi tiết thông báo (Admin)")
+@router.get("/{notification_id}", summary="Chi tiết thông báo (Admin)", dependencies=[Depends(require_permission("admin_notification:read"))])
 def get_notification(notification_id: str):
     return AdminNotificationService.get_notification(notification_id)
 
 
-@router.patch("/{notification_id}", summary="Sửa thông báo (Admin)")
+@router.patch("/{notification_id}", summary="Sửa thông báo (Admin)", dependencies=[Depends(require_permission("admin_notification:manage"))])
 def update_notification(
     notification_id: str,
     data: AdminNotificationUpdateRequest,
@@ -183,7 +186,8 @@ def update_notification(
 @router.delete(
     "/{notification_id}",
     summary="Xóa thông báo (Admin)",
-    description="Xóa cứng. Với thông báo chung, mọi user đều không còn thấy."
+    description="Xóa cứng. Với thông báo chung, mọi user đều không còn thấy.",
+    dependencies=[Depends(require_permission("admin_notification:manage"))],
 )
 def delete_notification(notification_id: str):
     return AdminNotificationService.delete_notification(notification_id)

@@ -8,6 +8,7 @@ from app.ai.mcp.product.server import server as product_server
 from app.ai.mcp.inventory.server import server as inventory_server
 from app.ai.mcp.debt.server import server as debt_server
 from app.ai.mcp.expense.server import server as expense_server
+from app.ai.mcp.report.server import server as report_server
 
 
 # ============================================================
@@ -19,44 +20,32 @@ MCP_SERVERS = {
     "inventory": inventory_server,
     "debt": debt_server,
     "expense": expense_server,
+    "report": report_server,
 }
 
+# tool_name -> server. Danh sách tool cố định lúc khởi động nên chỉ cần dựng 1 lần,
+# tránh gọi list_tools() của mọi server ở mỗi lần gọi tool.
+_TOOL_INDEX: dict[str, Any] | None = None
 
-# ============================================================
-# LIST ALL TOOLS
-# ============================================================
 
-async def list_mcp_tools():
-    """
-    Lấy toàn bộ tools từ Product MCP + Inventory MCP.
-    """
-
-    all_tools = []
-
+async def _build_tool_index() -> tuple[dict[str, Any], bool]:
+    """Trả về (index, complete). complete=False nếu có server lỗi -> không cache để lần sau thử lại."""
+    index: dict[str, Any] = {}
+    complete = True
     for server_name, server in MCP_SERVERS.items():
-
         try:
-            tools = await server.list_tools()
-
-            for tool in tools:
-
-                all_tools.append({
-                    "server": server_name,
-                    "name": getattr(tool, "name", None),
-                    "description": getattr(
-                        tool,
-                        "description",
-                        None
-                    )
-                })
-
+            for tool in await server.list_tools():
+                name = getattr(tool, "name", None)
+                if not name:
+                    continue
+                if name in index:
+                    logger.warning(f"[MCP] Tool '{name}' bị trùng tên ở server {server_name}")
+                    continue
+                index[name] = server
         except Exception as e:
-            logger.warning(
-                f"[MCP] Không lấy được tools "
-                f"từ {server_name}: {e}"
-            )
-
-    return all_tools
+            logger.warning(f"[MCP] Không lấy được tools từ {server_name}: {e}")
+            complete = False
+    return index, complete
 
 
 # ============================================================
@@ -67,32 +56,14 @@ async def find_mcp_server(tool_name: str):
     """
     Tìm MCP server chứa tool cần gọi.
     """
+    global _TOOL_INDEX
+    if _TOOL_INDEX is not None:
+        return _TOOL_INDEX.get(tool_name)
 
-    for server_name, server in MCP_SERVERS.items():
-
-        try:
-
-            tools = await server.list_tools()
-
-            for tool in tools:
-
-                name = getattr(
-                    tool,
-                    "name",
-                    None
-                )
-
-                if name == tool_name:
-
-                    return server
-
-        except Exception as e:
-            logger.warning(
-                f"[MCP] Lỗi kiểm tra "
-                f"{server_name}: {e}"
-            )
-
-    return None
+    index, complete = await _build_tool_index()
+    if complete:
+        _TOOL_INDEX = index
+    return index.get(tool_name)
 
 
 # ============================================================

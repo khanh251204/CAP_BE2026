@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.controllers.debt_controller import DebtController
 from app.routes.debt.customer_debt_route import customer_debt_router
 from app.routes.debt.supplier_debt_route import supplier_debt_router
@@ -25,6 +25,7 @@ debt_router.include_router(supplier_debt_router)
     "/summary",
     response_model=DebtSummaryResponse,
     summary="Thống kê tổng quan công nợ Dashboard (receivable & payable)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_debt_summary(
     db: Session = Depends(get_db),
@@ -37,6 +38,7 @@ def get_debt_summary(
     "/{debt_id}/payments",
     response_model=PayDebtResponse,
     summary="Thanh toán chính xác theo debt_id (Mục 10 & 11)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def pay_debt_by_id(
     debt_id: int = Path(..., ge=1, description="ID công nợ cần thanh toán"),
@@ -59,6 +61,7 @@ def pay_debt_by_id(
     "/{debt_id}/payments",
     response_model=List[DebtPaymentHistoryItem],
     summary="Lịch sử thanh toán của một khoản nợ (Mục 6.4 & Mục 12)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_debt_payments(
     debt_id: int = Path(..., ge=1, description="ID công nợ cần xem lịch sử thanh toán"),
@@ -72,6 +75,7 @@ def get_debt_payments(
     "/{debt_id}",
     response_model=DebtDetailResponse,
     summary="Chi tiết khoản công nợ kèm thông tin đối tác, giao dịch và thanh toán (Mục 6.3)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_debt_detail(
     debt_id: int = Path(..., ge=1, description="ID công nợ cần xem chi tiết"),
@@ -85,11 +89,13 @@ def get_debt_detail(
     "",
     response_model=PaginatedDebtListResponse,
     summary="Lấy danh sách tất cả công nợ có phân trang và bộ lọc (Mục 6.2)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 @debt_router.get(
     "/",
     response_model=PaginatedDebtListResponse,
     include_in_schema=False,
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_all_debts(
     direction: Optional[str] = Query(None, description="Lọc theo chiều nợ: RECEIVABLE, PAYABLE"),

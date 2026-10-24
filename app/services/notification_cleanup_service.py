@@ -14,17 +14,14 @@ DEFAULT_NOTIFICATION_RETENTION_DAYS = int(os.getenv("NOTIFICATION_RETENTION_DAYS
 class NotificationCleanupService:
     """
     Service dọn dẹp các thông báo Firestore quá hạn.
-    Mặc định: xóa cứng các thông báo chưa đọc/chưa xem quá 14 ngày (2 tuần).
+    Mặc định: xóa cứng tất cả các thông báo quá 14 ngày (2 tuần).
     """
 
     @staticmethod
     def cleanup_expired_notifications(retention_days: int = DEFAULT_NOTIFICATION_RETENTION_DAYS) -> Dict[str, Any]:
         """
-        Quét và xóa cứng các thông báo thỏa mãn:
-        - Thông báo cá nhân (userId != 'ALL'):
-            createdAt < cutoff_time VÀ isRead == False
-        - Thông báo chung (userId == 'ALL'):
-            createdAt < cutoff_time VÀ (readByUsers rỗng hoặc đã quá hạn)
+        Quét và xóa cứng tất cả thông báo thỏa mãn:
+        - Thời gian tạo createdAt < cutoff_date (quá retention_days, mặc định 14 ngày).
         """
         now = datetime.now(timezone.utc)
         cutoff_date = now - timedelta(days=retention_days)
@@ -35,9 +32,7 @@ class NotificationCleanupService:
         )
 
         try:
-            # Lấy toàn bộ notifications collection
-            # Lưu ý: Do Firestore queries kết hợp inequal trên nhiều trường có thể cần composite index,
-            # duyệt các doc có createdAt < cutoff_date và lọc điều kiện chưa đọc/chưa xem là tối ưu và an toàn nhất.
+            # Lấy toàn bộ notifications collection có createdAt < cutoff_date
             docs_stream = (
                 db.collection("notifications")
                 .where("createdAt", "<", cutoff_date)
@@ -56,34 +51,19 @@ class NotificationCleanupService:
                 data = doc.to_dict() or {}
                 user_id = str(data.get("userId", ""))
 
-                should_delete = False
-
+                # Tự động xóa mọi thông báo đã quá hạn 14 ngày
                 if user_id == "ALL":
-                    # Thông báo ALL: nếu không có ai đọc hoặc đã quá hạn 14 ngày
-                    read_by = data.get("readByUsers", [])
-                    if not isinstance(read_by, list):
-                        read_by = []
-                    # Nếu chưa ai đọc (readByUsers rỗng) hoặc quá hạn retention_days
-                    if len(read_by) == 0:
-                        should_delete = True
-                        global_deleted += 1
+                    global_deleted += 1
                 else:
-                    # Thông báo cá nhân: chưa đọc (isRead == False)
-                    is_read = bool(data.get("isRead", False))
-                    is_seen = bool(data.get("isSeen", False))
-                    # Nếu cả chưa xem lẫn chưa đọc
-                    if not is_read and not is_seen:
-                        should_delete = True
-                        personal_deleted += 1
+                    personal_deleted += 1
 
-                if should_delete:
-                    batch.delete(doc.reference)
-                    batch_count += 1
+                batch.delete(doc.reference)
+                batch_count += 1
 
-                    if batch_count >= MAX_BATCH_SIZE:
-                        batch.commit()
-                        batch = db.batch()
-                        batch_count = 0
+                if batch_count >= MAX_BATCH_SIZE:
+                    batch.commit()
+                    batch = db.batch()
+                    batch_count = 0
 
             # Commit batch còn lại nếu có
             if batch_count > 0:
@@ -104,7 +84,7 @@ class NotificationCleanupService:
                 "personal_deleted": personal_deleted,
                 "global_deleted": global_deleted,
                 "total_deleted": total_deleted,
-                "message": f"Đã xóa thành công {total_deleted} thông báo chưa đọc quá {retention_days} ngày."
+                "message": f"Đã xóa thành công {total_deleted} thông báo quá {retention_days} ngày."
             }
 
         except Exception as exc:

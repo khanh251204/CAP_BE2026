@@ -13,6 +13,7 @@ server.tool()(InventoryTools.import_inventory)
 server.tool()(InventoryTools.check_stock)
 server.tool()(InventoryTools.nhap_kho)
 server.tool()(InventoryTools.xuat_kho)
+server.tool()(InventoryTools.report_damage)
 
 
 if __name__ == "__main__":

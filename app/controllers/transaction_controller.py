@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.services.transaction_service import TransactionService
-from app.schemas.transaction_schema import TransactionCreateRequest
+from app.schemas.transaction_schema import TransactionCreateRequest, TransactionUpdateRequest
 
 
 class TransactionController:
@@ -52,7 +52,7 @@ class TransactionController:
                     "type": request.type or "",
                     "entities": {
                         "product": request.product,
-                        "price": request.price or request.total_amount,
+                        "price": request.price if request.price is not None else request.total_amount,
                         "quantity": request.quantity,
                         "unit": request.unit,
                         "customer": request.customer,
@@ -179,4 +179,27 @@ class TransactionController:
             db=db,
             user_id=user_id,
             transaction_id=transaction_id
-        )
+        )
+
+    @staticmethod
+    def update_transaction(
+        db: Session,
+        user_id: int,
+        transaction_id: int,
+        request: TransactionUpdateRequest
+    ):
+        result = TransactionService.update_transaction(
+            db=db,
+            user_id=user_id,
+            transaction_id=transaction_id,
+            request=request
+        )
+
+        # Kích hoạt sự kiện WebSocket realtime thông báo Dashboard & Report
+        try:
+            from app.services.websocket_manager import trigger_report_update
+            trigger_report_update(user_id=user_id, transaction_id=transaction_id)
+        except Exception:
+            pass
+
+        return result

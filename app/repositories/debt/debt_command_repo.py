@@ -41,12 +41,9 @@ class DebtCommandRepository:
         db: Session,
         phone_number: Optional[str] = None
     ) -> Supplier:
-        supplier = Supplier(
-            user_id=user_id,
-            supplier_name=supplier_name,
-            phone_number=phone_number
-        )
-        db.add(supplier)
+        # Dùng lại nhà cung cấp đã có (so khớp đã chuẩn hóa) thay vì tạo trùng
+        from app.services.duplicate_guard import get_or_create_supplier_by_name
+        supplier = get_or_create_supplier_by_name(db, user_id, supplier_name, phone_number=phone_number)
         db.commit()
         db.refresh(supplier)
         return supplier

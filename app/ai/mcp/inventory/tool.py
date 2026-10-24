@@ -1,8 +1,12 @@
 import json
+import logging
 from typing import Any, Dict
 
 from app.configs.database import SessionLocal
 from app.services.inventory_service import InventoryService
+
+
+logger = logging.getLogger(__name__)
 
 
 class InventoryTools:
@@ -38,14 +42,14 @@ class InventoryTools:
             )
 
         except Exception as e:
+            logger.exception("[Inventory MCP] Lỗi xử lý tool")
 
             db.rollback()
 
             return json.dumps(
                 {
                     "success": False,
-                    "message": "Có lỗi xảy ra khi nhập hàng vào kho",
-                    "error": str(e)
+                    "message": "Có lỗi xảy ra khi nhập hàng vào kho"
                 },
                 ensure_ascii=False
             )
@@ -85,14 +89,14 @@ class InventoryTools:
             )
 
         except Exception as e:
+            logger.exception("[Inventory MCP] Lỗi xử lý tool")
 
             db.rollback()
 
             return json.dumps(
                 {
                     "success": False,
-                    "message": "Có lỗi xảy ra khi xuất kho / bán hàng",
-                    "error": str(e)
+                    "message": "Có lỗi xảy ra khi xuất kho / bán hàng"
                 },
                 ensure_ascii=False
             )
@@ -123,13 +127,13 @@ class InventoryTools:
             )
             return json.dumps(result, ensure_ascii=False)
         except Exception as e:
+            logger.exception("[Inventory MCP] Lỗi xử lý tool")
             db.rollback()
             return json.dumps(
                 {
                     "status": "error",
                     "success": False,
-                    "message": "Có lỗi xảy ra khi kiểm tra tồn kho.",
-                    "error": str(e)
+                    "message": "Có lỗi xảy ra khi kiểm tra tồn kho."
                 },
                 ensure_ascii=False
             )
@@ -158,13 +162,13 @@ class InventoryTools:
             )
             return json.dumps(result, ensure_ascii=False)
         except Exception as e:
+            logger.exception("[Inventory MCP] Lỗi xử lý tool")
             db.rollback()
             return json.dumps(
                 {
                     "status": "error",
                     "success": False,
-                    "message": "Có lỗi xảy ra khi nhập kho.",
-                    "error": str(e)
+                    "message": "Có lỗi xảy ra khi nhập kho."
                 },
                 ensure_ascii=False
             )
@@ -193,13 +197,49 @@ class InventoryTools:
             )
             return json.dumps(result, ensure_ascii=False)
         except Exception as e:
+            logger.exception("[Inventory MCP] Lỗi xử lý tool")
             db.rollback()
             return json.dumps(
                 {
                     "status": "error",
                     "success": False,
-                    "message": "Có lỗi xảy ra khi xuất kho.",
-                    "error": str(e)
+                    "message": "Có lỗi xảy ra khi xuất kho."
+                },
+                ensure_ascii=False
+            )
+        finally:
+            db.close()
+
+
+    # =========================================================
+    # HÀNG HƯ HỎNG (INVENTORY DAMAGE)
+    # =========================================================
+
+    @staticmethod
+    def report_damage(
+        user_id: int,
+        payload: Dict[str, Any]
+    ) -> str:
+        """
+        MCP tool:
+        Ghi nhận hàng hư hỏng / hết hạn (Inventory_Transaction DAMAGE).
+        """
+        db = SessionLocal()
+        try:
+            service = InventoryService(db)
+            result = service.report_damage(
+                user_id=user_id,
+                payload=payload
+            )
+            return json.dumps(result, ensure_ascii=False)
+        except Exception:
+            logger.exception("[Inventory MCP] Lỗi xử lý tool")
+            db.rollback()
+            return json.dumps(
+                {
+                    "status": "error",
+                    "success": False,
+                    "message": "Có lỗi xảy ra khi ghi nhận hàng hư hỏng."
                 },
                 ensure_ascii=False
             )

@@ -1,1 +1,0 @@
-invalid type: string "## INTENT: nhap_hang (Ví dụ đơn vị lạng)\n\nExample:\n\"Mua 15 lạng cúc áo của bác Hai\"\n\nExpected extraction:\nintent = \"nhap_hang\"\nproduct = \"cúc áo\"\nquantity = 15\nunit = \"100g\"\nsupplier = \"bác Hai\"", expected f64g -> quantity = 15, unit = \"100g\").\n- \"gram\", \"gam\", \"g\" -> chuẩn hóa thành: \"g\".\n- \"yến\": 1 yến = 10 kg.\nt

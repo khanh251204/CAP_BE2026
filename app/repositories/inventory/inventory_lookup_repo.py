@@ -1,11 +1,28 @@
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.supplier_model import Supplier
 from app.models.customer_model import Customer
 from app.models.product_model import Product
+
+
+class AmbiguousMatchError(ValueError):
+    """Tên tìm kiếm khớp nhiều bản ghi: phải hỏi lại người dùng, không tự chọn bừa."""
+
+    def __init__(self, kind: str, query: str, candidates: List[str]):
+        self.kind = kind
+        self.query = query
+        self.candidates = candidates
+        shown = ", ".join(f"'{c}'" for c in candidates[:5])
+        super().__init__(
+            f"Có nhiều {kind} khớp với '{query}': {shown}. Vui lòng nói rõ tên hơn."
+        )
+
+
+MAX_FUZZY_CANDIDATES = 6
 
 
 class InventoryLookupRepository:
@@ -41,63 +58,76 @@ class InventoryLookupRepository:
         supplier_name: str,
         note: Optional[str] = None
     ) -> Supplier:
-        now = datetime.now()
-        supplier = Supplier(
-            user_id=user_id,
-            supplier_name=supplier_name.strip(),
-            note=note,
-            created_at=now,
-            updated_at=now,
-        )
-        self.db.add(supplier)
-        self.db.flush()
-        return supplier
+        # Dùng lại nhà cung cấp đã có (so khớp đã chuẩn hóa) thay vì tạo trùng
+        from app.services.duplicate_guard import get_or_create_supplier_by_name
+        return get_or_create_supplier_by_name(self.db, user_id, supplier_name, note=note)
 
     def get_customer_by_name(self, user_id: int, name: str) -> Optional[Customer]:
+        """
+        Tìm khách hàng: khớp chính xác (không phân biệt hoa thường) trước,
+        sau đó khớp gần đúng. Nếu gần đúng ra nhiều kết quả -> AmbiguousMatchError.
+        """
         if not name:
             return None
         clean_name = name.strip()
-        customer = (
+        exact = (
             self.db.query(Customer)
             .filter(
                 Customer.user_id == user_id,
-                Customer.customer_name == clean_name,
+                func.lower(Customer.customer_name) == clean_name.lower(),
             )
             .first()
         )
-        if not customer:
-            customer = (
-                self.db.query(Customer)
-                .filter(
-                    Customer.user_id == user_id,
-                    Customer.customer_name.ilike(f"%{clean_name}%"),
-                )
-                .first()
+        if exact:
+            return exact
+
+        matches = (
+            self.db.query(Customer)
+            .filter(
+                Customer.user_id == user_id,
+                Customer.customer_name.ilike(f"%{clean_name}%"),
             )
-        return customer
+            .limit(MAX_FUZZY_CANDIDATES)
+            .all()
+        )
+        if len(matches) > 1:
+            raise AmbiguousMatchError("khách hàng", clean_name, [c.customer_name for c in matches])
+        return matches[0] if matches else None
 
     def get_product_id_by_name(self, user_id: int, name: str) -> Optional[int]:
+        """
+        Tìm sản phẩm đang kinh doanh (is_active) theo tên: khớp chính xác trước,
+        sau đó khớp gần đúng. Nếu gần đúng ra nhiều kết quả -> AmbiguousMatchError.
+        """
         if not name:
             return None
         clean_name = name.strip()
-        product = (
+        active = Product.is_active == True  # noqa: E712
+        exact = (
             self.db.query(Product)
             .filter(
                 Product.user_id == user_id,
-                Product.product_name == clean_name,
+                active,
+                func.lower(Product.product_name) == clean_name.lower(),
             )
             .first()
         )
-        if not product:
-            product = (
-                self.db.query(Product)
-                .filter(
-                    Product.user_id == user_id,
-                    Product.product_name.ilike(f"%{clean_name}%"),
-                )
-                .first()
+        if exact:
+            return exact.product_id
+
+        matches = (
+            self.db.query(Product)
+            .filter(
+                Product.user_id == user_id,
+                active,
+                Product.product_name.ilike(f"%{clean_name}%"),
             )
-        return product.product_id if product else None
+            .limit(MAX_FUZZY_CANDIDATES)
+            .all()
+        )
+        if len(matches) > 1:
+            raise AmbiguousMatchError("sản phẩm", clean_name, [p.product_name for p in matches])
+        return matches[0].product_id if matches else None
 
     def get_product_by_id(self, user_id: int, product_id: int) -> Optional[Product]:
         return (
@@ -106,6 +136,22 @@ class InventoryLookupRepository:
                 Product.user_id == user_id,
                 Product.product_id == product_id,
             )
+            .first()
+        )
+
+    def lock_product(self, user_id: int, product_id: int) -> Optional[Product]:
+        """
+        Khóa dòng Product (SELECT ... FOR UPDATE) trước khi đọc/ghi tồn kho.
+        Các giao dịch đồng thời trên cùng sản phẩm sẽ phải xếp hàng chờ,
+        nên tồn kho đọc ra luôn là giá trị mới nhất (chống race condition).
+        """
+        return (
+            self.db.query(Product)
+            .filter(
+                Product.user_id == user_id,
+                Product.product_id == product_id,
+            )
+            .with_for_update()
             .first()
         )
 

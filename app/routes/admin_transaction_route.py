@@ -5,7 +5,7 @@ Endpoints:
   GET /admin/transactions          — Danh sách giao dịch (phân trang, search, filter, sort)
   GET /admin/transactions/{id}     — Chi tiết giao dịch
 
-Authorization: JWT + Role ADMIN (reuse authorize_roles từ jwt.py)
+Authorization: JWT + quyền admin_* (require_admin_area + require_permission)
 """
 from datetime import datetime
 from typing import Optional
@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Query, Path
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import authorize_roles
+from app.configs.jwt import require_permission, require_admin_area
 from app.schemas.admin_transaction_schema import (
     AdminTransactionListResponse,
     AdminTransactionDetailResponse,
@@ -25,7 +25,7 @@ from app.services.admin_transaction_service import AdminTransactionService
 router = APIRouter(
     prefix="/admin/transactions",
     tags=["Admin - Transaction Management"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_admin_area)]
 )
 
 
@@ -39,6 +39,7 @@ router = APIRouter(
         "bộ lọc (intent, payment_status, input_method, user_id, ngày), "
         "và sắp xếp."
     ),
+    dependencies=[Depends(require_permission("admin_transaction:read"))],
 )
 def list_transactions(
     page: int = Query(1, ge=1, description="Trang hiện tại (bắt đầu từ 1)"),
@@ -108,6 +109,7 @@ def list_transactions(
         "thông tin User, Intent, Category, Account, Customer/Supplier, "
         "và danh sách Transaction_Detail kèm Product."
     ),
+    dependencies=[Depends(require_permission("admin_transaction:read"))],
 )
 def get_transaction_detail(
     transaction_id: int = Path(..., description="ID giao dịch"),

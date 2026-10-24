@@ -7,14 +7,14 @@ Endpoints:
   GET /admin/dashboard/top-products        — Deprecated: Trả danh sách rỗng (Admin không quản lý chỉ số kinh doanh)
   GET /admin/dashboard/expense-categories — Deprecated: Trả danh sách rỗng (Admin không quản lý cơ cấu chi phí)
 
-Authorization: JWT + Role ADMIN (reuse authorize_roles từ jwt.py)
+Authorization: JWT + quyền admin_* (require_admin_area + require_permission)
 """
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import authorize_roles
+from app.configs.jwt import require_permission, require_admin_area
 from app.schemas.admin_dashboard_schema import (
     AdminDashboardResponse,
     AdminActivityTrendItem,
@@ -27,7 +27,7 @@ from app.services.admin_dashboard_service import AdminDashboardService
 router = APIRouter(
     prefix="/admin/dashboard",
     tags=["Admin - Dashboard"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_admin_area)]
 )
 
 
@@ -40,6 +40,7 @@ router = APIRouter(
         "System KPIs (User, Transaction, Voice), Voice AI Processing & Trend, "
         "User & Transaction Activity, Data Lake/Dataset summary, Recent activity và System health."
     ),
+    dependencies=[Depends(require_permission("admin_dashboard:read"))],
 )
 def get_admin_dashboard(
     period_type: Optional[str] = Query(None, description="Loại kỳ: DAY, WEEK, MONTH, QUARTER, YEAR, CUSTOM"),
@@ -62,6 +63,7 @@ def get_admin_dashboard(
     response_model=List[AdminActivityTrendItem],
     summary="Xem xu hướng hoạt động hệ thống theo ngày (Admin)",
     description="Thống kê lượng người dùng mới, giao dịch và lượt xử lý giọng nói theo từng ngày trong kỳ.",
+    dependencies=[Depends(require_permission("admin_dashboard:read"))],
 )
 def get_dashboard_trends(
     period_type: Optional[str] = Query(None, description="Loại kỳ: DAY, WEEK, MONTH, QUARTER, YEAR, CUSTOM"),
@@ -84,6 +86,7 @@ def get_dashboard_trends(
     response_model=List[AdminDashboardTopProductItem],
     summary="Top sản phẩm (Đã ngừng hỗ trợ trên Admin Dashboard)",
     description="Admin Dashboard tập trung vào chỉ số hệ thống và Voice AI; chỉ số sản phẩm kinh doanh thuộc User Report.",
+    dependencies=[Depends(require_permission("admin_dashboard:read"))],
 )
 def get_top_products(
     db: Session = Depends(get_db),
@@ -96,6 +99,7 @@ def get_top_products(
     response_model=List[AdminDashboardExpenseCategoryItem],
     summary="Cơ cấu chi phí (Đã ngừng hỗ trợ trên Admin Dashboard)",
     description="Admin Dashboard tập trung vào chỉ số hệ thống và Voice AI; cơ cấu chi phí kinh doanh thuộc User Report.",
+    dependencies=[Depends(require_permission("admin_dashboard:read"))],
 )
 def get_expense_categories(
     db: Session = Depends(get_db),

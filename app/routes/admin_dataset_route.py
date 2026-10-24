@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import authorize_roles
+from app.configs.jwt import require_permission, require_admin_area
 from app.schemas.admin_dataset_schema import (
     AdminDatasetListResponse,
     AdminDatasetDetailResponse,
@@ -17,7 +17,7 @@ from app.services.admin_dataset_service import AdminDatasetService
 router = APIRouter(
     prefix="/admin/dataset",
     tags=["Admin - Data Lake & Dataset Management"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))],
+    dependencies=[Depends(require_admin_area)],
 )
 
 
@@ -26,6 +26,7 @@ router = APIRouter(
     response_model=AdminDatasetListResponse,
     summary="Xem danh sách bộ dữ liệu Data Lake",
     description="Truy vấn danh sách các mẫu dữ liệu trong Data Lake (phân loại RAW, PROCESSED, FEEDBACK, DATASET) có phân trang và bộ lọc.",
+    dependencies=[Depends(require_permission("admin_dataset:read"))],
 )
 def list_dataset(
     page: int = Query(1, ge=1, description="Trang hiện tại (1-based)"),
@@ -58,6 +59,7 @@ def list_dataset(
     response_model=AdminDatasetSummaryResponse,
     summary="Xem thống kê tổng quan Data Lake",
     description="Báo cáo số lượng bản ghi theo từng zone trong Data Lake, phân bổ intent và trạng thái xử lý.",
+    dependencies=[Depends(require_permission("admin_dataset:read"))],
 )
 def get_dataset_summary(db: Session = Depends(get_db)):
     return AdminDatasetService.get_summary(db=db)
@@ -68,6 +70,7 @@ def get_dataset_summary(db: Session = Depends(get_db)):
     response_model=List[Dict[str, Any]],
     summary="Xuất dữ liệu Dataset phục vụ AI Evaluation / Research",
     description="Trích xuất các mẫu dữ liệu hợp lệ kèm nhãn intent, entities và tham chiếu audio để đánh giá mô hình.",
+    dependencies=[Depends(require_permission("admin_dataset:export"))],
 )
 def export_dataset(
     intent: Optional[str] = Query(None, description="Lọc theo intent cụ thể"),
@@ -88,6 +91,7 @@ def export_dataset(
     response_model=AdminDatasetDetailResponse,
     summary="Xem chi tiết một bản ghi Dataset trong Data Lake",
     description="Xem đầy đủ dữ liệu thô, kết quả AI, hiệu chỉnh của người dùng, liên kết giao dịch và vị trí lưu trữ trong Data Lake.",
+    dependencies=[Depends(require_permission("admin_dataset:read"))],
 )
 def get_dataset_detail(id: int, db: Session = Depends(get_db)):
     return AdminDatasetService.get_dataset_detail(db=db, voice_id=id)
@@ -98,6 +102,7 @@ def get_dataset_detail(id: int, db: Session = Depends(get_db)):
     response_model=AdminDatasetIngestResponse,
     summary="Ingest bản ghi Voice Processing vào Data Lake",
     description="Kích hoạt quá trình snapshot lưu trữ bản ghi vào các vùng Raw, Processed, Feedback và Dataset trong Data Lake.",
+    dependencies=[Depends(require_permission("admin_dataset:manage"))],
 )
 def ingest_voice_record_to_lake(id: int, db: Session = Depends(get_db)):
     return AdminDatasetService.ingest_voice_record(db=db, voice_id=id)

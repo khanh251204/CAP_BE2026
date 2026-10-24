@@ -131,3 +131,23 @@ class TransactionRepository:
             )
         )
         return db.scalars(stmt).unique().first()
+
+    @staticmethod
+    def get_transaction_for_update(
+        db: Session,
+        user_id: int,
+        transaction_id: int
+    ) -> Optional[Transaction]:
+        """
+        Lấy giao dịch kèm khóa dòng (SELECT ... FOR UPDATE) phục vụ cập nhật.
+        Bắt buộc lọc theo user_id (multi-tenant).
+        """
+        return (
+            db.query(Transaction)
+            .filter(
+                Transaction.transaction_id == transaction_id,
+                Transaction.user_id == user_id
+            )
+            .with_for_update()
+            .first()
+        )

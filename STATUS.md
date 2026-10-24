@@ -1,0 +1,87 @@
+# PROJECT STATUS: VoiceCashBook AI Subsystem
+**Cập nhật lần cuối:** 2026-10-23  
+**Dự án:** VoiceCashBook Backend (FastAPI + MySQL/TiDB + Groq LPUs)  
+**Tài liệu tham chiếu:** [docs/ai_architecture_analysis.md](file:///d:/Huy_Rearch/BE/docs/ai_architecture_analysis.md), [docs/ai_pipeline_specification.md](file:///d:/Huy_Rearch/BE/docs/ai_pipeline_specification.md), [AGENTS.md](file:///d:/Huy_Rearch/BE/AGENTS.md)
+
+---
+
+## 1. TỔNG QUAN KIẾN TRÚC & TIẾN ĐỘ THỰC HIỆN
+
+| Hạng mục kiến trúc | Trạng thái | Chi tiết triển khai | Độ sẵn sàng |
+| :--- | :--- | :--- | :--- |
+| **1. Audio Pipeline & STT** | ✅ Hoàn thành | FFmpeg giải mã 16kHz PCM, WebRTC VAD lọc khoảng lặng, Groq Whisper API (`whisper-large-v3-turbo`) | 100% |
+| **2. Normalization-RAG Layer** | ✅ Hoàn thành | `NormalizationService` (in-memory regex greedy match, < 10ms), chuẩn hóa đơn vị tính, số từ, tiền tệ và từ lóng 3 miền | 95% |
+| **3. LLM Inference Engine** | ✅ Hoàn thành | `openai/gpt-oss-120b` chạy trên Groq LPU qua `GroqService`, trích xuất 9 thực thể JSON có cấu trúc | 95% |
+| **4. AI Agent Orchestrator** | ✅ Hoàn thành | `Agent` (`app/ai/core/agent.py`), luồng 2 pha (Analyze $\rightarrow$ Waiting Confirmation $\rightarrow$ Confirm), điều phối qua `SessionStoreService` | 100% |
+| **5. Intent Router** | ✅ Hoàn thành | `IntentRouter` (`app/ai/core/router.py`), 17 handlers và aliases nghiệp vụ | 100% |
+| **6. MCP Layer (FastMCP)** | ✅ Hoàn thành | 4 MCP Servers: `product`, `inventory`, `debt`, `expense` kết nối qua `app/ai/mcp/client.py` | 95% |
+| **7. Business Rules Validation** | ✅ Hoàn thành | Chuẩn hóa `business_type` (`RESELLER`, `PRODUCER`, `SERVICE`) & `product_type` (`RESALE`, `RAW_MATERIAL`, `FINISHED_GOOD`) | 95% |
+| **8. Data Lake & MLOps Loop** | ✅ Hoàn thành | `DataLakeService`: Ghi nhận bất đồng bộ Voice record, kết quả AI, và diff sửa lỗi từ người dùng | 90% |
+
+---
+
+## 2. MA TRẬN TIẾN ĐỘ CÁC INTENTS
+
+### 2.1. PHẠM VI CAPSTONE 1 (7 INTENT CỐT LÕI - GIAO DỊCH TÀI CHÍNH & KHO MCP)
+
+| STT | Intent | Nghiệp vụ | Phân loại | MCP Tool Trọng Tâm | Quy Tắc Nghiệp Vụ / Tác Động Dữ Liệu | Trạng Thái |
+| :---: | :--- | :--- | :---: | :--- | :--- | :---: |
+| 1 | `ban_hang` | Bán hàng cho khách | `INCOME` | `check_stock`, `export_inventory` | Tạo Tx, trừ kho (`Inventory_Tx OUT` nếu là RESELLER, cho phép stock=0 nếu là PRODUCER FINISHED_GOOD, bỏ qua nếu SERVICE), tạo Debt nếu còn nợ. | ✅ Hoàn thành |
+| 2 | `mua_hang` (`nhap_hang`) | Mua hàng từ nhà cung cấp | `EXPENSE` | `import_inventory` | Tạo Tx, tăng kho (`Inventory_Tx IN`), tạo Debt nếu mua nợ NCC. | ✅ Hoàn thành |
+| 3 | `chi_tien` (`chi_phi`) | Chi phí kinh doanh (điện, nước, mặt bằng...) | `EXPENSE` | `create_expense` | Tạo Tx chi phí, trừ số dư tài khoản (`Account.balance`). | ✅ Hoàn thành |
+| 4 | `ghi_no_khach_hang` (`khach_ghi_no`) | Ghi nợ khách hàng | `DEBT (RECEIVABLE)` | `ghi_no_khach_hang` | Tạo bản ghi nợ phải thu trong Debt (`direction = RECEIVABLE`). | ✅ Hoàn thành |
+| 5 | `thu_no_khach_hang` (`thu_no_khach`) | Thu nợ khách hàng | `DEBT / INCOME` | `thu_no_khach_hang` | Thu nợ, tạo phiếu thu, cấn trừ công nợ theo FIFO hoặc chỉ định. | ✅ Hoàn thành |
+| 6 | `ghi_no_nha_cung_cap` (`ghi_no_ncc`) | Ghi nợ nhà cung cấp | `DEBT (PAYABLE)` | `ghi_no_nha_cung_cap` | Tạo bản ghi nợ phải trả trong Debt (`direction = PAYABLE`). | ✅ Hoàn thành |
+| 7 | `tra_no_nha_cung_cap` (`tra_no_ncc`) | Trả nợ nhà cung cấp | `DEBT (PAYABLE) / EXPENSE` | `thu_no_nha_cung_cap` | Thanh toán nợ, giảm công nợ NCC (`direction = PAYABLE`). | ✅ Hoàn thành |
+
+### 2.2. PHẠM VI CAPSTONE 2 (CÁC INTENTS MỞ RỘNG & TÍNH NĂNG NÂNG CAO)
+
+| STT | Intent | Nhóm nghiệp vụ | Handler / Tool | Ghi chú & Kế hoạch triển khai Capstone 2 |
+| :---: | :--- | :--- | :--- | :--- |
+| 1 | `them_san_pham` | Danh mục sản phẩm | `create_product` | Thêm sản phẩm mới bằng giọng nói kèm đơn giá, loại sản phẩm. |
+| 2 | `sua_san_pham` | Danh mục sản phẩm | `update_product` | Chỉnh sửa tên, đơn vị tính, đơn giá, ngưỡng tồn an toàn. |
+| 3 | `xoa_san_pham` | Danh mục sản phẩm | `delete_product` | Soft-delete (`is_active = 0`) bảo toàn toàn vẹn lịch sử giao dịch. |
+| 4 | `tim_san_pham` | Danh mục sản phẩm | `search_products` | Tra cứu giá và thông tin tồn kho sản phẩm. |
+| 5 | `nhap_kho` | Quản trị kho nội bộ | `nhap_kho` | Nhập chuyển kho nội bộ không phát sinh dòng tiền. |
+| 6 | `xuat_kho` | Quản trị kho nội bộ | `xuat_kho` | Xuất kho điều chuyển / hao hụt nội bộ. |
+| 7 | `hang_hong` | Quản trị kho nội bộ | `report_damage` | Ghi nhận hàng tồn kho hư hỏng/hết hạn (`type = DAMAGE`). |
+| 8 | `kiem_kho` | Quản trị kho nội bộ | `kiem_kho` | Đối soát số lượng tồn thực tế vs sổ sách (`ADJUSTMENT`). |
+| 9 | `bao_cao` | Báo cáo & Phân tích | `Report MCP` | Tổng hợp doanh thu, chi phí, lợi nhuận, công nợ định kỳ. |
+| 10 | `chot_so` | Báo cáo & Phân tích | `chot_so` | Chốt sổ giao dịch cuối ngày / cuối tháng. |
+| 11 | **BOM Module** | Nghiệp vụ nâng cao | Production Service | Định mức nguyên vật liệu cho `PRODUCER`. |
+| 12 | **Multi-item Batch** | AI Core nâng cao | LLM 120B Inference | Trích xuất và xử lý nhiều sản phẩm trong 1 câu nói. |
+
+---
+
+## 3. TRẠNG THÁI CÁC MCP SERVERS
+
+| Server | Đường dẫn | Công cụ cung cấp | Trạng thái |
+| :--- | :--- | :--- | :---: |
+| **Product MCP** | `app/ai/mcp/product/` | `get_all_products`, `get_product_by_id`, `search_products`, `create_product`, `update_product`, `delete_product` | ✅ Hoạt động ổn định |
+| **Inventory MCP** | `app/ai/mcp/inventory/` | `check_stock`, `import_inventory`, `export_inventory`, `nhap_kho`, `xuat_kho` | ✅ Hoạt động ổn định |
+| **Debt MCP** | `app/ai/mcp/debt/` | `ghi_no_khach_hang`, `thu_no_khach_hang`, `ghi_no_nha_cung_cap`, `thu_no_nha_cung_cap` | ✅ Hoạt động ổn định |
+| **Expense MCP** | `app/ai/mcp/expense/` | `create_expense` | ✅ Hoạt động ổn định |
+
+---
+
+## 4. QUY TẮC NGHIỆP VỤ & TỒN KHO THEO BUSINESS_TYPE
+
+| Tiêu chí | RESELLER | PRODUCER | SERVICE |
+| :--- | :--- | :--- | :--- |
+| **Bản chất** | Mua hàng về và bán lại trực tiếp. | Mua nguyên liệu $\rightarrow$ chế biến/sản xuất $\rightarrow$ bán thành phẩm. | Cung cấp dịch vụ (sửa chữa, cắt tóc, vận chuyển...). |
+| **Product Type chính** | `RESALE` | `RAW_MATERIAL` & `FINISHED_GOOD` | Không yêu cầu hoặc dịch vụ vô hình. |
+| **Kiểm tra tồn kho khi bán** | **BẮT BUỘC**: `qty_sell <= current_stock`. Nếu thiếu $\rightarrow$ Báo lỗi `out_of_stock`. | **KHÔNG BẮT BUỘC** với `FINISHED_GOOD` (sản xuất theo order, cho phép bán khi tồn = 0). Chặn bán trực tiếp `RAW_MATERIAL`. | **KHÔNG KIỂM TRA TỒN KHO**. |
+| **Biến động kho (Inventory_Tx)** | Ghi giảm `OUT` tương ứng khi xác nhận bán. | Giữ nguyên trừ khi có lệnh xuất kho/sản xuất (BOM phase sau). | Không tạo bản ghi `Inventory_Transaction.OUT`. |
+
+---
+
+## 5. CÔNG VIỆC ĐANG THỰC HIỆN & BACKLOG TIẾP THEO
+
+- [x] Thiết lập chuẩn hóa `business_type` và `product_type` trong DB và code.
+- [x] Áp dụng quy tắc tồn kho theo mô hình kinh doanh cho intent `ban_hang`.
+- [x] Thử nghiệm FastMCP client cho 4 nhóm nghiệp vụ cốt lõi.
+- [x] Tạo Skill Antigravity `voicecash-agent` tại `.agents/skills/voicecash-agent/SKILL.md`.
+- [ ] Mở rộng xử lý đa sản phẩm cùng lúc (Multi-item batch extraction: "Bán 2 lon coca và 3 gói mì").
+- [ ] Thiết kế cơ chế BOM (Định mức nguyên vật liệu) cho `PRODUCER` giai đoạn kế tiếp.
+- [ ] Bổ sung bài test tự động cho race-condition kiểm tra tồn kho đồng thời (Row-level locking).
+- [ ] Mở rộng kho từ điển phương ngữ tiếng Việt `normalization_data.json` theo phản hồi Data Lake.

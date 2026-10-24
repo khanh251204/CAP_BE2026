@@ -16,6 +16,11 @@ from app.services.period_service import PeriodService
 from app.services.report_service import ReportService
 from app.services.websocket_manager import ws_manager
 from app.services.closing.closing_email_service import ClosingEmailService
+from app.services.closing.closing_guard import (
+    assert_can_reopen,
+    assert_no_reopened_children,
+    period_params_of,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +115,9 @@ class ClosingActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Kỳ {p_type} từ ngày {p_start} đến {p_end} đã được chốt sổ trước đó (ID: {existing.closing_id}). Không thể chốt trùng."
             )
+
+        # 1b. Không chốt kỳ cha khi còn kỳ con đã mở lại chưa chốt lại
+        assert_no_reopened_children(db, user_id, p_type, p_start, p_end)
 
         # 2. Tính toán số liệu snapshot
         live_data = ReportService.get_live_report(db, user_id, period_params)
@@ -254,6 +262,45 @@ class ClosingActionService:
         return closing_period
 
     @classmethod
+    def reclose_closing(
+        cls,
+        db: Session,
+        user_id: int,
+        closing_id: int
+    ) -> ClosingPeriod:
+        """
+        POST /closing-periods/{id}/reclose:
+        Chốt lại kỳ ĐÃ chốt để cập nhật snapshot với giao dịch phát sinh sau giờ chốt
+        (vd đơn bán 22:30 khi lịch chốt lúc 22:00). Gửi lại email báo cáo với số mới.
+        """
+        closing = db.query(ClosingPeriod).filter(
+            ClosingPeriod.closing_id == closing_id,
+            ClosingPeriod.user_id == user_id
+        ).first()
+        if not closing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy kỳ chốt sổ ID {closing_id} hoặc bạn không có quyền truy cập."
+            )
+        if closing.status != "CLOSED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Kỳ này đang mở — hãy dùng Chốt sổ thay vì Chốt lại."
+            )
+
+        stamp = f"[Chốt lại lúc {datetime.now().strftime('%Y-%m-%d %H:%M')}: cập nhật giao dịch phát sinh sau giờ chốt]"
+        note = f"{closing.note}\n{stamp}" if closing.note else stamp
+
+        # create_closing chỉ cập nhật bản ghi đang OPEN → chuyển tạm về OPEN rồi chốt lại
+        closing.status = "OPEN"
+        db.flush()
+        try:
+            return cls.create_closing(db=db, user_id=user_id, period_params=period_params_of(closing), note=note)
+        except Exception:
+            db.rollback()
+            raise
+
+    @classmethod
     def reopen_closing(
         cls,
         db: Session,
@@ -281,6 +328,9 @@ class ClosingActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Kỳ chốt sổ này hiện đang ở trạng thái OPEN."
             )
+
+        # Mở lại theo thứ bậc: kỳ cha đang chốt thì phải mở kỳ cha trước
+        assert_can_reopen(db, closing)
 
         closing.status = "OPEN"
         append_note = f"[Reopened at {datetime.now().strftime('%Y-%m-%d %H:%M')}: {reason or 'Không có lý do'}]"

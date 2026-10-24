@@ -6,23 +6,28 @@ import logging
 import tempfile
 import traceback
 
-from typing import Optional
+from typing import Any, Optional
+import re
+from app.services.closing.closing_guard import PERIOD_CLOSED_CODE, is_period_closed_message
 from fastapi import (
     APIRouter,
     UploadFile,
     File,
     Depends,
-    Query
+    HTTPException,
+    Query,
+    status,
 )
 
+from app.configs.permissions import INTENT_PERMISSIONS
+from app.services.permission_service import PermissionService
 from app.ai.llm.groq_service import GroqService
 from app.ai.core.agent import Agent as TransactionAgent
 
 from app.schemas.analysis_schema import AnalysisRequest
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 
-from app.ai.rag.rag_service import RAGService
-from app.ai.rag.vector_store import VectorStore
+from app.ai.rag.normalization_service import NormalizationService
 from app.services.session_store_service import SessionStoreService
 
 
@@ -36,11 +41,8 @@ logger = logging.getLogger(__name__)
 
 groq_service = GroqService()
 
-vector_store = VectorStore()
-
-rag_service = RAGService(
-    vector_store=vector_store
-)
+# Chuẩn hóa từ lóng / đơn vị / tiền tệ bằng regex + từ điển (không cần vector DB)
+normalization_service = NormalizationService()
 
 
 # ============================================================
@@ -49,7 +51,7 @@ rag_service = RAGService(
 
 transaction_agent = TransactionAgent(
     llm=groq_service,
-    rag=rag_service
+    rag=normalization_service
 )
 
 
@@ -59,14 +61,20 @@ transaction_agent = TransactionAgent(
 
 from app.api.stt import stt_groq
 
-router.add_api_route("/stt/groq", stt_groq, methods=["POST"], tags=["Speech to Text"])
+router.add_api_route(
+    "/stt/groq",
+    stt_groq,
+    methods=["POST"],
+    tags=["Speech to Text"],
+    dependencies=[Depends(require_permission("voice:use"))],
+)
 
 
 # ============================================================
 # TRANSACTION - AGENT
 # ============================================================
 
-@router.post("/analyze/groq")
+@router.post("/analyze/groq", dependencies=[Depends(require_permission("voice:use"))])
 async def voice_transaction(
     request: AnalysisRequest,
     current_user_id: int = Depends(
@@ -116,10 +124,10 @@ async def voice_transaction(
     except Exception as e:
         logger.error(f"Lỗi xử lý giao dịch giọng nói: {e}", exc_info=True)
 
+        # Chi tiết lỗi đã được log; không trả exception nội bộ (SQL, stacktrace...) ra client
         return {
             "success": False,
-            "message": "Lỗi xử lý giao dịch",
-            "error": str(e)
+            "message": "Lỗi xử lý giao dịch"
         }
 
 
@@ -137,15 +145,57 @@ from app.services.data_lake_service import DataLakeService
 import copy
 
 
-@router.post("/agent/confirm")
+def _attach_error_message(result: Any) -> None:
+    """
+    Lỗi từ MCP trả về dạng {"success": False, "error": "Error executing tool x: 409: ..."}
+    → luôn có `message` dễ đọc cho app; kỳ đã chốt → thêm `code` = PERIOD_CLOSED để app hỏi người dùng.
+    """
+    if not isinstance(result, dict):
+        return
+    raw = result.get("message") or result.get("error") or result.get("detail")
+    if isinstance(raw, list):
+        raw = " ".join(getattr(x, "text", str(x)) for x in raw)
+    msg = re.sub(r"^\s*Error executing tool [\w_]+:\s*", "", str(raw or "")).strip()
+    msg = re.sub(r"^\d{3}:\s*", "", msg).strip()
+    result["message"] = msg or "Không thể lưu giao dịch. Vui lòng thử lại."
+    if is_period_closed_message(msg):
+        result["code"] = PERIOD_CLOSED_CODE
+
+
+def _resolve_account_id(db: Session, user_id: int, payload: dict) -> int:
+    """
+    Tài khoản nhận/chi tiền cho thu nợ / trả nợ khi xác nhận giao dịch giọng nói.
+    Dùng account_id trong payload nếu có (service công nợ sẽ kiểm tra tài khoản thuộc đúng user);
+    nếu không có thì lấy tài khoản mặc định CỦA CHÍNH USER (ưu tiên tiền mặt, chưa có thì tạo).
+    Trước đây mặc định là account_id = 1 — tài khoản của một user khác.
+    """
+    if payload.get("account_id"):
+        return int(payload["account_id"])
+    from app.services.account_service import AccountService
+
+    account = AccountService.get_default_account(db=db, user_id=user_id) or AccountService.get_or_create_account_by_name(
+        db=db, user_id=user_id, account_name="Tiền mặt", account_type="CASH"
+    )
+    return account.account_id
+
+
+@router.post("/agent/confirm", dependencies=[Depends(require_permission("voice:use"))])
 async def confirm_action(
     body: Optional[AgentConfirmRequest] = None,
     session_id: Optional[str] = Query(None),
     current_user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    session_key = (body.session_id if body and body.session_id else None) or session_id or current_user_id
-    pending = SessionStoreService.get_confirmation(session_key) or SessionStoreService.get_confirmation(current_user_id)
+    # Phiên chờ xác nhận luôn được lưu theo user_id của người đang đăng nhập.
+    # Không dùng session_id do client gửi lên để tránh truy cập phiên của user khác.
+    requested_session = (body.session_id if body and body.session_id else None) or session_id
+    if requested_session and str(requested_session).strip() != str(current_user_id):
+        return {
+            "success": False,
+            "message": "Phiên xác nhận không hợp lệ"
+        }
+    session_key = current_user_id
+    pending = SessionStoreService.get_confirmation(session_key)
 
     if not pending:
         return {
@@ -154,6 +204,15 @@ async def confirm_action(
         }
 
     intent = pending["intent"]
+
+    # Thao tác bằng giọng nói phải có cùng quyền như thao tác bằng tay
+    required_permission = INTENT_PERMISSIONS.get(intent)
+    if required_permission and not PermissionService.has_permission(current_user_id, required_permission):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Bạn không có quyền '{required_permission}' để xác nhận thao tác '{intent}'"
+        )
+
     ai_result = copy.deepcopy(pending["payload"])
     payload = pending["payload"]
     correction_diff = None
@@ -201,6 +260,9 @@ async def confirm_action(
     elif intent == "xuat_kho":
         res = await call_mcp_tool("xuat_kho", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
+    elif intent == "hang_hong":
+        res = await call_mcp_tool("report_damage", {"payload": payload, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
     elif intent in ("ghi_no_khach_hang", "khach_ghi_no"):
         res = await call_mcp_tool("ghi_no_khach_hang", {
             "input": {
@@ -214,7 +276,7 @@ async def confirm_action(
         result = normalize_mcp_result(res)
     elif intent in ("thu_no_khach_hang", "thu_no_khach"):
         input_data = {
-            "account_id": payload.get("account_id") or 1,
+            "account_id": await asyncio.to_thread(_resolve_account_id, db, current_user_id, payload),
             "amount": payload.get("amount") or payload.get("original_amount"),
             "input_method": payload.get("input_method", "MANUAL"),
         }
@@ -238,7 +300,7 @@ async def confirm_action(
         result = normalize_mcp_result(res)
     elif intent in ("tra_no_nha_cung_cap", "tra_no_ncc"):
         input_data = {
-            "account_id": payload.get("account_id") or 1,
+            "account_id": await asyncio.to_thread(_resolve_account_id, db, current_user_id, payload),
             "amount": payload.get("amount") or payload.get("original_amount"),
             "note": payload.get("note"),
             "input_method": payload.get("input_method", "MANUAL"),
@@ -262,6 +324,7 @@ async def confirm_action(
             is_success = False
 
     if not is_success:
+        _attach_error_message(result)
         if voice_id:
             try:
                 from app.services.voice_record_service import mark_voice_record_rejected
@@ -339,13 +402,12 @@ async def confirm_action(
     await asyncio.to_thread(_sync_post_confirm)
 
     SessionStoreService.delete_confirmation(session_key)
-    SessionStoreService.delete_confirmation(current_user_id)
 
     return result
 
 
-@router.post("/agent/cancel")
-@router.post("/agent/reject", include_in_schema=False)
+@router.post("/agent/cancel", dependencies=[Depends(require_permission("voice:use"))])
+@router.post("/agent/reject", include_in_schema=False, dependencies=[Depends(require_permission("voice:use"))])
 async def cancel_action(
     session_id: Optional[str] = Query(None),
     current_user_id: int = Depends(get_current_user_id),
@@ -355,8 +417,13 @@ async def cancel_action(
     Xử lý khi người dùng KHÔNG ĐỒNG Ý hoặc BẤM HỦY giao dịch.
     Cập nhật VoiceRecord trong DB và Data Lake sang trạng thái FAILED (không thành công).
     """
-    session_key = session_id or current_user_id
-    pending = SessionStoreService.pop_confirmation(session_key) or SessionStoreService.pop_confirmation(current_user_id)
+    # Chỉ được hủy phiên của chính mình (session_id khác user hiện tại bị bỏ qua)
+    if session_id and str(session_id).strip() != str(current_user_id):
+        return {
+            "success": False,
+            "message": "Phiên xác nhận không hợp lệ"
+        }
+    pending = SessionStoreService.pop_confirmation(current_user_id)
 
     if pending and pending.get("voice_id"):
         try:

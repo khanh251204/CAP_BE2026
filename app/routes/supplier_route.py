@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.services.supplier_service import SupplierService
 from app.services.debt_service import DebtService
 from app.schemas.supplier_schema import (
@@ -19,14 +19,15 @@ from app.schemas.debt_schema import (
     SupplierFIFOPaymentResponse,
 )
 
-supplier_router = APIRouter(prefix="/suppliers", tags=["Supplier Management"])
+supplier_router = APIRouter(tags=["Supplier Management"])
 
 
 @supplier_router.post(
-    "",
+    "/suppliers",
     response_model=SupplierResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Tạo mới nhà cung cấp (Mục 18)",
+    dependencies=[Depends(require_permission("supplier:manage"))],
 )
 def create_supplier(
     request: SupplierCreateRequest,
@@ -37,9 +38,10 @@ def create_supplier(
 
 
 @supplier_router.get(
-    "",
+    "/suppliers",
     response_model=PaginatedSupplierListResponse,
     summary="Lấy danh sách nhà cung cấp (Mục 18)",
+    dependencies=[Depends(require_permission("supplier:read"))],
 )
 def get_suppliers(
     search: Optional[str] = Query(None, description="Tìm kiếm theo tên hoặc số điện thoại"),
@@ -58,9 +60,10 @@ def get_suppliers(
 
 
 @supplier_router.get(
-    "/{supplier_id}",
+    "/suppliers/{supplier_id}",
     response_model=SupplierDetailResponse,
     summary="Chi tiết nhà cung cấp kèm tổng quan công nợ (Mục 19)",
+    dependencies=[Depends(require_permission("supplier:read"))],
 )
 def get_supplier_detail(
     supplier_id: int = Path(..., ge=1, description="ID nhà cung cấp"),
@@ -75,14 +78,16 @@ def get_supplier_detail(
 
 
 @supplier_router.patch(
-    "/{supplier_id}",
+    "/suppliers/{supplier_id}",
     response_model=SupplierResponse,
     summary="Cập nhật thông tin nhà cung cấp (PATCH - Mục 18)",
+    dependencies=[Depends(require_permission("supplier:manage"))],
 )
 @supplier_router.put(
-    "/{supplier_id}",
+    "/suppliers/{supplier_id}",
     response_model=SupplierResponse,
     summary="Cập nhật thông tin nhà cung cấp (PUT)",
+    dependencies=[Depends(require_permission("supplier:manage"))],
 )
 def update_supplier(
     supplier_id: int = Path(..., ge=1, description="ID nhà cung cấp"),
@@ -99,8 +104,9 @@ def update_supplier(
 
 
 @supplier_router.delete(
-    "/{supplier_id}",
+    "/suppliers/{supplier_id}",
     summary="Xóa nhà cung cấp (Mục 18)",
+    dependencies=[Depends(require_permission("supplier:manage"))],
 )
 def delete_supplier(
     supplier_id: int = Path(..., ge=1, description="ID nhà cung cấp"),
@@ -115,9 +121,10 @@ def delete_supplier(
 
 
 @supplier_router.get(
-    "/{supplier_id}/debts",
+    "/suppliers/{supplier_id}/debts",
     response_model=SupplierDebtListResponse,
     summary="Danh sách công nợ chi tiết của nhà cung cấp kèm sản phẩm (Mục 18)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_supplier_debts(
     supplier_id: int = Path(..., ge=1, description="ID nhà cung cấp"),
@@ -132,9 +139,10 @@ def get_supplier_debts(
 
 
 @supplier_router.post(
-    "/{supplier_id}/debt-payments",
+    "/suppliers/{supplier_id}/debt-payments",
     response_model=SupplierFIFOPaymentResponse,
     summary="Thanh toán tổng công nợ nhà cung cấp theo thuật toán FIFO (Mục 14)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def pay_supplier_debt_fifo(
     supplier_id: int = Path(..., ge=1, description="ID nhà cung cấp"),

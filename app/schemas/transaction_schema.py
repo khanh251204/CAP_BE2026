@@ -154,6 +154,57 @@ class TransactionCreateRequest(BaseModel):
     payment: Optional[str] = Field(None, description="Phương thức thanh toán dạng text")
 
 
+class TransactionUpdateRequest(BaseModel):
+    """
+    Request cập nhật giao dịch (PUT /transaction/{transaction_id}) theo docs/erd_new.md.
+
+    - Partial update: chỉ các trường được gửi lên (model_fields_set) mới được cập nhật.
+      Gửi giá trị null cho trường Nullable (category_id, account_id, customer_id, supplier_id, note...)
+      nghĩa là gỡ liên kết / xóa giá trị.
+    - intent_id KHÔNG được thay đổi. Nếu gửi lên phải trùng intent hiện tại.
+    - details: nếu gửi lên sẽ THAY THẾ TOÀN BỘ danh sách Transaction_Detail cũ,
+      hệ thống tự hoàn tác & tính lại Inventory_Transaction, Account.balance, Debt/Debt_Payment.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    intent_id: Optional[int] = Field(None, description="Chỉ dùng để đối chiếu, không được đổi intent")
+    category_id: Optional[int] = Field(None, description="FK -> Category (Nullable)")
+    account_id: Optional[int] = Field(None, description="FK -> Account (Nullable)")
+    customer_id: Optional[int] = Field(None, description="FK -> Customer (Nullable)")
+    supplier_id: Optional[int] = Field(None, description="FK -> Supplier (Nullable)")
+    total_amount: Optional[float] = Field(None, ge=0, description="Tổng giá trị giao dịch")
+    payment_status: Optional[str] = Field(
+        None,
+        description="Trạng thái thanh toán theo ERD: 'PAID', 'PARTIAL', 'PENDING'"
+    )
+    input_text: Optional[str] = Field(None, description="Văn bản gốc / text đầu vào")
+    note: Optional[str] = Field(None, description="Ghi chú giao dịch")
+    transaction_date: Optional[datetime] = Field(None, description="Ngày giao dịch")
+    details: Optional[List[TransactionDetailCreate]] = Field(
+        None,
+        description="Danh sách chi tiết mới (thay thế toàn bộ chi tiết cũ)"
+    )
+
+    @model_validator(mode="after")
+    def validate_update_payload(self):
+        if not self.model_fields_set:
+            raise ValueError("Phải gửi ít nhất một trường cần cập nhật")
+        if self.payment_status is not None:
+            normalized = self.payment_status.upper().strip()
+            if normalized not in {"PAID", "PARTIAL", "PENDING"}:
+                raise ValueError("payment_status chỉ chấp nhận: 'PAID', 'PARTIAL', 'PENDING'")
+            self.payment_status = normalized
+        if "payment_status" in self.model_fields_set and self.payment_status is None:
+            raise ValueError("payment_status không được để null")
+        if "transaction_date" in self.model_fields_set and self.transaction_date is None:
+            raise ValueError("transaction_date không được để null")
+        if "total_amount" in self.model_fields_set and self.total_amount is None:
+            raise ValueError("total_amount không được để null")
+        if "details" in self.model_fields_set and self.details is not None and len(self.details) == 0:
+            raise ValueError("details không được là danh sách rỗng")
+        return self
+
+
 # ==========================================
 # RESPONSE SCHEMAS CHO TRANSACTION (docs/erd.md)
 # ==========================================

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Path, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.controllers.debt_controller import DebtController
 from app.repositories.debt_repository import DebtRepository
 from app.schemas.debt_schema import (
@@ -22,6 +22,7 @@ customer_debt_router = APIRouter()
     "/customer",
     response_model=CreateCustomerDebtResponse,
     summary="Tạo công nợ khách hàng (create_customer_debt / ghi_no_khach_hang)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def create_customer_debt(
     request: CreateCustomerDebtRequest,
@@ -42,6 +43,7 @@ def create_customer_debt(
     "/customer",
     response_model=List[CustomerDebtItemResponse],
     summary="Lấy danh sách công nợ khách hàng (RECEIVABLE)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_customer_debts(
     customer_id: Optional[int] = Query(None, description="Lọc theo ID khách hàng"),
@@ -63,6 +65,7 @@ def get_customer_debts(
     "/customer/payments",
     response_model=CollectCustomerDebtResponse,
     summary="Thu tiền nợ khách hàng linh hoạt qua body (Mục 7)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def collect_customer_debt_by_body(
     request: CollectCustomerDebtRequest,
@@ -85,6 +88,7 @@ def collect_customer_debt_by_body(
     "/customer/{id}/payments",
     response_model=CollectCustomerDebtResponse,
     summary="Thu tiền nợ khách hàng (đích danh theo debt_id hoặc FIFO theo customer_id)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def collect_customer_debt_by_id(
     id: int = Path(..., description="ID công nợ cần thu (nếu nợ cụ thể) hoặc ID khách hàng (nếu thu tổng FIFO)"),
@@ -125,6 +129,7 @@ def collect_customer_debt_by_id(
     "/customer-account/{customer_id}/payments",
     response_model=CollectCustomerDebtByCustomerResponse,
     summary="Thu tiền nợ khách hàng - tự động phân bổ FIFO qua nhiều khoản nợ (Compatibility alias)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def collect_customer_debt_fifo(
     customer_id: int = Path(..., description="ID khách hàng cần thu nợ"),

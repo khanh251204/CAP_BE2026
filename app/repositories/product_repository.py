@@ -85,13 +85,15 @@ def get_products_with_stock(db: Session, user_id: int):
 
     return data
 def get_product_by_name(db: Session, user_id: int, product_name: str):
+    clean_name = product_name.strip() if product_name else ""
     return (
         db.query(Product)
         .filter(
             Product.user_id == user_id,
-            Product.product_name == product_name,
+            Product.product_name.ilike(clean_name),
             Product.is_active == True
         )
+        .order_by(Product.product_id.asc())
         .first()
     )
 

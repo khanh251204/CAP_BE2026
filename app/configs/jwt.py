@@ -180,15 +180,33 @@ def authenticate_user(
     return decode_access_token(token)
 
 
+def _load_access(user: dict):
+    """Lấy role & quyền hiện tại của user từ DB (không tin claim 'role' trong token)."""
+    from app.services.permission_service import PermissionService
+
+    access = PermissionService.get_user_access(int(user.get("sub", 0)))
+    if not access.exists:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tài khoản không tồn tại hoặc phiên đăng nhập đã hết hạn"
+        )
+    if access.is_locked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên."
+        )
+    return access
+
+
 def authorize_roles(*roles):
     """
-    Phân quyền theo Role người dùng (OWNER, STAFF, ADMIN, ...).
+    Phân quyền theo Role người dùng (OWNER, STAFF, ADMIN, ...), đọc role hiện tại từ DB.
+    Ưu tiên dùng require_permission để Admin có thể cấu hình quyền trên ma trận RBAC.
     """
     allowed = {str(r).strip().upper() for r in roles}
 
     def wrapper(user=Depends(authenticate_user)):
-        user_role = str(user.get("role", "")).strip().upper()
-        if user_role not in allowed:
+        if _load_access(user).role_name not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Bạn không có quyền truy cập"
@@ -203,33 +221,39 @@ def require_permission(permission_code: str):
     Kiểm tra người dùng có quyền cụ thể (permission_code) hay không.
     ADMIN luôn có toàn quyền bỏ qua kiểm tra mã lẻ.
     """
-    def wrapper(user=Depends(authenticate_user)):
-        user_role = str(user.get("role", "")).strip().upper()
-        if user_role == "ADMIN":
-            return user
+    from app.configs.permissions import PERMISSION_CODES
 
-        user_id = int(user.get("sub", 0))
-        from app.configs.database import SessionLocal
-        from app.models.user_model import User
-        db = SessionLocal()
-        try:
-            db_user = db.query(User).filter(User.user_id == user_id).first()
-            if not db_user or not db_user.role_rel:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Tài khoản chưa được gán vai trò hoặc quyền thực hiện '{permission_code}'"
-                )
-            user_perm_codes = {p.code for p in db_user.role_rel.permissions}
-            if permission_code not in user_perm_codes:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Bạn không có quyền '{permission_code}' để thực hiện hành động này"
-                )
-        finally:
-            db.close()
+    if permission_code not in PERMISSION_CODES:
+        # Lỗi lập trình: phát hiện ngay lúc import thay vì 403 khó hiểu lúc chạy
+        raise ValueError(f"Mã quyền '{permission_code}' chưa được khai báo trong app/configs/permissions.py")
+
+    def wrapper(user=Depends(authenticate_user)):
+        if not _load_access(user).has(permission_code):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Bạn không có quyền '{permission_code}' để thực hiện hành động này"
+            )
         return user
 
+    wrapper.permission_code = permission_code  # dùng cho test / kiểm tra độ phủ quyền
     return wrapper
+
+
+ADMIN_PERMISSION_PREFIXES = ("admin_", "system:", "rbac:")
+
+
+def require_admin_area(user=Depends(authenticate_user)):
+    """
+    Chặn ở cấp router cho khu vực /admin: chỉ cho qua ADMIN hoặc role có ít nhất một quyền quản trị.
+    Từng endpoint vẫn phải kiểm tra quyền cụ thể bằng require_permission.
+    """
+    access = _load_access(user)
+    if not (access.is_admin or any(p.startswith(ADMIN_PERMISSION_PREFIXES) for p in access.permissions)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền truy cập khu vực quản trị"
+        )
+    return user
 
 
 def get_current_user_id(payload: dict = Depends(authenticate_user)) -> int:
@@ -315,6 +339,8 @@ __all__ = [
     "decode_reset_token",
     "authenticate_user",
     "authorize_roles",
+    "require_permission",
+    "require_admin_area",
     "get_current_user_id",
     "get_current_user_id_optional",
     "get_current_user_business_type",

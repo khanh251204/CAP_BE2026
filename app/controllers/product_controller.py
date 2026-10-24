@@ -17,6 +17,13 @@ class ProductController:
             "success": True,
             "data": data
         }
+
+    # ==========================================
+    # GET CẢNH BÁO TỒN KHO (HẾT HÀNG / DƯỚI MIN_QUANTITY)
+    # ==========================================
+    @staticmethod
+    def get_stock_alerts(user_id: int, db: Session, alert_type: Optional[str] = "ALL"):
+        return ProductService.get_stock_alerts(user_id=user_id, db=db, alert_type=alert_type)
     # ==========================================
     # TÌM KIẾM PRODUCT THEO TÊN - USER ĐĂNG NHẬP
     # ==========================================

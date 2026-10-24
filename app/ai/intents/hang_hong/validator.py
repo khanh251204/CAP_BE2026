@@ -1,7 +1,9 @@
 from typing import Any
 
+# Khớp với prompt intent.py: hang_hong cần product + quantity (unit lấy mặc định từ sản phẩm nếu thiếu)
 REQUIRED_FIELDS = [
-    "price"
+    "product",
+    "quantity"
 ]
 
 
@@ -18,7 +20,7 @@ def validate(entities: dict[str, Any]) -> dict:
     if missing_fields:
         return {
             "success": False,
-            "status": "error",
+            "status": "need_information",
             "missing_fields": missing_fields,
             "message": "Thiếu thông tin bắt buộc"
         }

@@ -1,3 +1,4 @@
+import inspect
 from typing import Any
 
 from app.ai.intents.nhap_hang.handler import NhapHangHandler
@@ -39,7 +40,7 @@ _bao_cao = BaoCaoHandler()
 HANDLERS = {
     "mua_hang": _mua_hang,
     "nhap_hang": _nhap_hang,
-    "nhap_kho": _mua_hang,
+    "nhap_kho": _nhap_kho,
     "xuat_kho": _xuat_kho,
     "ban_hang": _ban_hang,
     "khach_ghi_no": _khach_ghi_no,
@@ -58,6 +59,7 @@ HANDLERS = {
     "tim_san_pham": _tim_sp,
     "xem_san_pham": _tim_sp,
     "chi_phi": _chi_phi,
+    "chi_tien": _chi_phi,
     "hang_hong": _hang_hong,
     "bao_cao": _bao_cao,
 }
@@ -90,7 +92,6 @@ class IntentRouter:
                 "message": f"Intent chưa được hỗ trợ: {intent}"
             }
 
-        import inspect
         sig = inspect.signature(handler.handle)
         kwargs = {
             "user_id": user_id,
@@ -103,85 +104,3 @@ class IntentRouter:
 
         return await handler.handle(**kwargs)
 
-
-# ============================================================
-# AGENT ROUTER (TƯƠNG THÍCH NGƯỢC VỚI CÁC TEST CASES)
-# ============================================================
-
-from app.ai.core.handlers import (
-    handle_ghi_no_khach_hang,
-    handle_thu_no_khach_hang,
-    handle_ghi_no_nha_cung_cap,
-    handle_thu_no_nha_cung_cap,
-    handle_sell,
-    handle_import,
-)
-
-
-class AgentRouter:
-
-    @staticmethod
-    def get_tool(intent: str) -> str | None:
-        return IntentRouter.get_handler(intent)
-
-    @staticmethod
-    async def execute(
-        intent: str,
-        user_id: int,
-        entities: dict[str, Any],
-        text: str
-    ) -> dict:
-        if intent == "ban_hang":
-            return await handle_sell(
-                intent=intent,
-                user_id=user_id,
-                entities=entities,
-                text=text
-            )
-
-        if intent == "nhap_hang":
-            return await handle_import(
-                intent=intent,
-                user_id=user_id,
-                entities=entities,
-                text=text
-            )
-
-        if intent in ("ghi_no_khach_hang", "khach_ghi_no"):
-            return await handle_ghi_no_khach_hang(
-                intent=intent,
-                user_id=user_id,
-                entities=entities,
-                text=text
-            )
-
-        if intent in ("thu_no_khach_hang", "thu_no_khach"):
-            return await handle_thu_no_khach_hang(
-                intent=intent,
-                user_id=user_id,
-                entities=entities,
-                text=text
-            )
-
-        if intent in ("ghi_no_nha_cung_cap", "ncc_ghi_no"):
-            return await handle_ghi_no_nha_cung_cap(
-                intent=intent,
-                user_id=user_id,
-                entities=entities,
-                text=text
-            )
-
-        if intent in ("thu_no_nha_cung_cap", "tra_no_nha_cung_cap", "tra_no_ncc"):
-            return await handle_thu_no_nha_cung_cap(
-                intent=intent,
-                user_id=user_id,
-                entities=entities,
-                text=text
-            )
-
-        return await IntentRouter.route(
-            intent=intent,
-            user_id=user_id,
-            entities=entities,
-            text=text
-        )

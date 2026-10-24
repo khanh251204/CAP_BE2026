@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 from app.configs.database import get_db
 from app.controllers.inventory_controller import InventoryController
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.schemas.inventory_schema import (
     InventoryImportRequest,
     InventorySellRequest,
@@ -14,7 +14,7 @@ from app.schemas.inventory_schema import (
 router = APIRouter()
 
 
-@router.post("/import", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("/import", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("transaction:purchase"))])
 def import_goods(
     payload: InventoryImportRequest,
     db: Session = Depends(get_db),
@@ -27,7 +27,7 @@ def import_goods(
     return result
 
 
-@router.post("/sell", response_model=Dict[str, Any])
+@router.post("/sell", response_model=Dict[str, Any], dependencies=[Depends(require_permission("transaction:create"))])
 def sell_goods(
     payload: InventorySellRequest,
     db: Session = Depends(get_db),
@@ -40,7 +40,7 @@ def sell_goods(
     return result
 
 
-@router.post("/check-stock", response_model=Dict[str, Any])
+@router.post("/check-stock", response_model=Dict[str, Any], dependencies=[Depends(require_permission("inventory:read"))])
 def check_stock(
     payload: InventoryCheckStockRequest,
     db: Session = Depends(get_db),

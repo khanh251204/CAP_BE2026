@@ -7,12 +7,13 @@ def build_payload(
 ) -> dict:
     """
     Mapping dữ liệu entities của hang_hong thành payload chuẩn.
+    Không query DB, không gọi LLM hoặc MCP.
     """
     return {
         "product_name": entities.get("product"),
+        "product_id": entities.get("product_id"),
         "quantity": entities.get("quantity"),
         "unit": entities.get("unit"),
-        "amount": entities.get("price"),
         "date": entities.get("date"),
         "input_text": text
     }

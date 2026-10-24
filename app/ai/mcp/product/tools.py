@@ -100,6 +100,33 @@ class ProductTools:
             db.close()
 
     @staticmethod
+    def find_duplicate_product(
+        name: str,
+        user_id: int
+    ):
+        """
+        MCP tool: kiểm tra đã có sản phẩm TRÙNG TÊN chưa (khớp chính xác sau khi chuẩn hóa
+        hoa/thường, khoảng trắng). Khác search_products (tìm chứa chuỗi): có "Coca" vẫn thêm được "Coca Zero".
+        """
+        from app.services.duplicate_guard import find_duplicate_product
+
+        db = SessionLocal()
+        try:
+            product = find_duplicate_product(db, user_id, name)
+            return {
+                "success": True,
+                "exists": product is not None,
+                "product": {
+                    "product_id": product.product_id,
+                    "product_name": product.product_name,
+                    "default_unit": product.default_unit,
+                    "unit_price": product.unit_price,
+                } if product else None,
+            }
+        finally:
+            db.close()
+
+    @staticmethod
     def get_products_with_stock(
         user_id: int
     ):

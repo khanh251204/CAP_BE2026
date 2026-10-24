@@ -35,22 +35,21 @@ class ThemSanPhamHandler:
 
         product_name = entities.get("product")
 
-        # Kiểm tra sản phẩm đã tồn tại chưa
-        search_call = await call_mcp_tool(
-            "search_products",
+        # Kiểm tra trùng TÊN CHÍNH XÁC (không phải tìm chứa chuỗi: có "Coca" vẫn thêm được "Coca Zero")
+        dup_call = await call_mcp_tool(
+            "find_duplicate_product",
             {
                 "name": product_name,
                 "user_id": user_id
             }
         )
-        search_result = normalize_mcp_result(search_call)
+        dup_result = normalize_mcp_result(dup_call)
 
-        if not search_result.get("success"):
-            return search_result
+        if not dup_result.get("success"):
+            return dup_result
 
-        existing_products = search_result.get("products", [])
-        if existing_products:
-            existing = existing_products[0]
+        if dup_result.get("exists"):
+            existing = dup_result["product"]
             unit_price = existing.get("unit_price")
             try:
                 price_text = f"{float(unit_price):,.0f}đ/{existing.get('default_unit', '')}"

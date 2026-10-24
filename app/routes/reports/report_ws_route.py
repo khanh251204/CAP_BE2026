@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
 from app.configs import database as db_config
+from app.services.permission_service import PermissionService
 from app.services.report_service import ReportService
 from app.services.websocket_manager import ws_manager, authenticate_websocket, serialize_ws_data
 
@@ -42,6 +43,15 @@ async def handle_dashboard_report_ws(
         await websocket.send_text(json.dumps({
             "event": "ERROR",
             "message": f"Xác thực thất bại: {str(e)}"
+        }, ensure_ascii=False))
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    if not PermissionService.has_permission(user_id, "report:read"):
+        await websocket.accept()
+        await websocket.send_text(json.dumps({
+            "event": "ERROR",
+            "message": "Bạn không có quyền 'report:read' để xem báo cáo"
         }, ensure_ascii=False))
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

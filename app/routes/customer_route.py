@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.services.customer_service import CustomerService
 from app.services.debt_service import DebtService
 from app.schemas.customer_schema import (
@@ -27,6 +27,7 @@ customer_router = APIRouter(prefix="/customers", tags=["Customer Management"])
     response_model=CustomerResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Tạo mới khách hàng (Mục 15)",
+    dependencies=[Depends(require_permission("customer:manage"))],
 )
 def create_customer(
     request: CustomerCreateRequest,
@@ -40,6 +41,7 @@ def create_customer(
     "",
     response_model=PaginatedCustomerListResponse,
     summary="Lấy danh sách khách hàng (Mục 15)",
+    dependencies=[Depends(require_permission("customer:read"))],
 )
 def get_customers(
     search: Optional[str] = Query(None, description="Tìm kiếm theo tên hoặc số điện thoại"),
@@ -61,6 +63,7 @@ def get_customers(
     "/{customer_id}",
     response_model=CustomerDetailResponse,
     summary="Chi tiết khách hàng kèm tổng quan công nợ (Mục 16)",
+    dependencies=[Depends(require_permission("customer:read"))],
 )
 def get_customer_detail(
     customer_id: int = Path(..., ge=1, description="ID khách hàng"),
@@ -78,11 +81,13 @@ def get_customer_detail(
     "/{customer_id}",
     response_model=CustomerResponse,
     summary="Cập nhật thông tin khách hàng (PATCH - Mục 15)",
+    dependencies=[Depends(require_permission("customer:manage"))],
 )
 @customer_router.put(
     "/{customer_id}",
     response_model=CustomerResponse,
     summary="Cập nhật thông tin khách hàng (PUT)",
+    dependencies=[Depends(require_permission("customer:manage"))],
 )
 def update_customer(
     customer_id: int = Path(..., ge=1, description="ID khách hàng"),
@@ -101,6 +106,7 @@ def update_customer(
 @customer_router.delete(
     "/{customer_id}",
     summary="Xóa khách hàng (Mục 15)",
+    dependencies=[Depends(require_permission("customer:manage"))],
 )
 def delete_customer(
     customer_id: int = Path(..., ge=1, description="ID khách hàng"),
@@ -118,6 +124,7 @@ def delete_customer(
     "/{customer_id}/debts",
     response_model=CustomerDebtListResponse,
     summary="Danh sách công nợ chi tiết của khách hàng kèm sản phẩm (Mục 17)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_customer_debts(
     customer_id: int = Path(..., ge=1, description="ID khách hàng"),
@@ -135,6 +142,7 @@ def get_customer_debts(
     "/{customer_id}/debt-payments",
     response_model=CustomerFIFOPaymentResponse,
     summary="Thanh toán tổng công nợ khách hàng theo thuật toán FIFO (Mục 13)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def pay_customer_debt_fifo(
     customer_id: int = Path(..., ge=1, description="ID khách hàng"),
