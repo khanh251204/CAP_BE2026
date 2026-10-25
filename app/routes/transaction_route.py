@@ -160,7 +160,7 @@ def get_transactions(
 
 
 @transaction_router.get(
-    "/transaction/{transaction_id}",
+    "/transactions/{transaction_id}",
     response_model=TransactionResponseItem,
     summary="Lấy chi tiết giao dịch theo transaction_id",
     dependencies=[Depends(require_permission("transaction:read"))],
@@ -189,7 +189,7 @@ def get_transaction_by_id(
 
 
 @transaction_router.post(
-    "/transaction",
+    "/transactions",
     status_code=status.HTTP_201_CREATED,
     summary="Tạo hoặc lưu giao dịch mới",
     dependencies=[Depends(require_permission("transaction:create"))],
@@ -278,7 +278,7 @@ def save_transaction(
 
 
 @transaction_router.delete(
-    "/transaction/{transaction_id}",
+    "/transactions/{transaction_id}",
     summary="Xóa giao dịch và hoàn lại tồn kho, công nợ liên quan",
     dependencies=[Depends(require_permission("transaction:delete"))],
 )
@@ -302,7 +302,7 @@ def delete_transaction(
 
 
 @transaction_router.put(
-    "/transaction/{transaction_id}",
+    "/transactions/{transaction_id}",
     summary="Cập nhật giao dịch và đồng bộ tồn kho, công nợ, số dư tài khoản",
     dependencies=[Depends(require_permission("transaction:update"))],
 )

@@ -15,7 +15,7 @@ from app.schemas.closing_schema import (
     ClosingPeriodResponse,
     ClosingPeriodListResponse,
     ClosingTransactionsResponse,
-    ClosingReopenRequest,
+    ClosingStatusUpdateRequest,
     ClosingSettingResponse,
     ClosingSettingUpdateRequest,
     ClosingReportResponse
@@ -150,38 +150,24 @@ def get_closing_transactions(
 
 
 # =========================================================
-# 5b. RECLOSE (cập nhật snapshot với giao dịch phát sinh sau giờ chốt)
+# 6. CẬP NHẬT TRẠNG THÁI KỲ CHỐT (MỞ LẠI / CHỐT LẠI)
 # =========================================================
-@router.post("/closing-periods/{closing_id}/reclose", response_model=ClosingPeriodResponse, dependencies=[Depends(require_permission("closing:reopen"))])
-def reclose_closing_period(
+@router.patch("/closing-periods/{closing_id}", response_model=ClosingPeriodResponse, dependencies=[Depends(require_permission("closing:reopen"))])
+def update_closing_period_status(
     closing_id: int,
+    data: ClosingStatusUpdateRequest,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """
-    POST /closing-periods/{id}/reclose:
-    Chốt lại kỳ đã chốt — tính lại số liệu & danh sách giao dịch, gửi lại email báo cáo.
+    PATCH /closing-periods/{id}:
+    - {"status": "OPEN", "reason": "..."} : mở lại kỳ chốt sổ để điều chỉnh giao dịch.
+    - {"status": "CLOSED"}                 : chốt lại kỳ — tính lại số liệu & danh sách giao dịch, gửi lại email báo cáo.
     """
-    ClosingService.reclose_closing(db, user_id, closing_id)
-    return ClosingService.get_closing_period_detail(db, user_id, closing_id)
-
-
-# =========================================================
-# 6. REOPEN CLOSING PERIOD
-# =========================================================
-@router.patch("/closing-periods/{closing_id}/reopen", response_model=ClosingPeriodResponse, dependencies=[Depends(require_permission("closing:reopen"))])
-def reopen_closing_period(
-    closing_id: int,
-    data: Optional[ClosingReopenRequest] = None,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
-    """
-    PATCH /closing-periods/{id}/reopen:
-    Mở lại kỳ chốt sổ để điều chỉnh giao dịch khi được phép.
-    """
-    reason = data.reason if data else None
-    ClosingService.reopen_closing(db, user_id, closing_id, reason=reason)
+    if data.status == "OPEN":
+        ClosingService.reopen_closing(db, user_id, closing_id, reason=data.reason)
+    else:
+        ClosingService.reclose_closing(db, user_id, closing_id)
     return ClosingService.get_closing_period_detail(db, user_id, closing_id)
 
 
@@ -246,15 +232,15 @@ def get_closing_reports(
 # =========================================================
 # 10. RESEND CLOSING REPORT EMAIL
 # =========================================================
-@router.post("/closing-reports/{report_id}/resend", dependencies=[Depends(require_permission("closing:manage"))])
+@router.post("/closing-reports/{report_id}/deliveries", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("closing:manage"))])
 def resend_closing_report(
     report_id: int,
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """
-    POST /closing-reports/{id}/resend:
-    Thử gửi lại email báo cáo chốt sổ khi bị lỗi hoặc người dùng yêu cầu gửi lại.
+    POST /closing-reports/{id}/deliveries:
+    Gửi lại (tạo lượt gửi mới) email báo cáo chốt sổ khi bị lỗi hoặc người dùng yêu cầu gửi lại.
     """
     return ClosingService.resend_closing_report(db, user_id, report_id)
 

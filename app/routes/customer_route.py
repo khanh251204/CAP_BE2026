@@ -14,9 +14,12 @@ from app.schemas.customer_schema import (
     CustomerDebtListResponse,
     PaginatedCustomerListResponse,
 )
+from app.controllers.debt_controller import DebtController
 from app.schemas.debt_schema import (
     FIFODebtPaymentRequest,
     CustomerFIFOPaymentResponse,
+    CreateCustomerDebtRequest,
+    CreateCustomerDebtResponse,
 )
 
 customer_router = APIRouter(prefix="/customers", tags=["Customer Management"])
@@ -135,6 +138,29 @@ def get_customer_debts(
         customer_id=customer_id,
         user_id=user_id,
         db=db,
+    )
+
+
+@customer_router.post(
+    "/{customer_id}/debts",
+    response_model=CreateCustomerDebtResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ghi nợ mới cho khách hàng (RECEIVABLE)",
+    dependencies=[Depends(require_permission("debt:manage"))],
+)
+def create_customer_debt(
+    customer_id: int = Path(..., ge=1, description="ID khách hàng"),
+    request: CreateCustomerDebtRequest = ...,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return DebtController.create_customer_debt(
+        db=db,
+        user_id=user_id,
+        customer_id=customer_id,
+        total_debt=request.total_debt,
+        transaction_id=request.transaction_id,
+        note=request.note,
     )
 
 

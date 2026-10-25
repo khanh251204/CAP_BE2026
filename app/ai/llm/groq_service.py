@@ -2,7 +2,7 @@ import os
 import json
 
 from dotenv import load_dotenv
-from groq import Groq
+from app.ai.llm.groq_client_pool import get_groq_pool
 
 from app.services.audio.hallucination import is_speech_hallucination
 
@@ -18,13 +18,10 @@ class GroqService:
 
     def __init__(self):
         # ========================================================
-        # GROQ CLIENT (Vẫn giữ cho Whisper STT)
+        # GROQ CLIENT cho Whisper STT
+        # Dùng pool nhiều key: GROQ_API_KEY lỗi thì tự chuyển sang GROQ_API_KEY_2
         # ========================================================
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("GROQ_API_KEY chưa được cấu hình trong .env")
-
-        self.client = Groq(api_key=api_key)
+        self.groq = get_groq_pool()
         self.transcription_model = "whisper-large-v3-turbo"
 
         # ========================================================
@@ -67,15 +64,17 @@ class GroqService:
             raise FileNotFoundError(f"Không tìm thấy file: {file_path}")
 
         with open(file_path, "rb") as file:
-            transcription = (
-                self.client.audio.transcriptions.create(
-                    file=(os.path.basename(file_path), file.read()),
-                    model=self.transcription_model,
-                    language="vi",
-                    prompt="Giao dịch bán hàng, mua hàng, nhập kho, xuất kho, kiểm kho, ghi nợ, chi tiền, giá tiền, số lượng sản phẩm.",
-                    temperature=0.0
-                )
+            audio_bytes = file.read()
+
+        transcription = self.groq.call(
+            lambda client: client.audio.transcriptions.create(
+                file=(os.path.basename(file_path), audio_bytes),
+                model=self.transcription_model,
+                language="vi",
+                prompt="Giao dịch bán hàng, mua hàng, nhập kho, xuất kho, kiểm kho, ghi nợ, chi tiền, giá tiền, số lượng sản phẩm.",
+                temperature=0.0
             )
+        )
 
         text = transcription.text.strip()
         if is_speech_hallucination(text):

@@ -16,7 +16,8 @@ const cases = readCsv<{
   note_tc: string;
 }>(csvFilePath);
 
-const DEBT_SUPPLIER_ENDPOINT = process.env.DEBT_SUPPLIER_ENDPOINT || '/api/v1/debts/supplier';
+// POST /api/v1/suppliers/{supplier_id}/debts
+const DEBT_SUPPLIER_ENDPOINT = (supplierId: unknown) => `/api/v1/suppliers/${supplierId}/debts`;
 
 let authToken = '';
 let targetSupplierId = 270002;
@@ -59,7 +60,7 @@ for (const tc of cases) {
       note: tc.note,
     };
 
-    const res = await request.post(DEBT_SUPPLIER_ENDPOINT, {
+    const res = await request.post(DEBT_SUPPLIER_ENDPOINT(supplierIdToUse), {
       data: payload,
       headers,
     });
@@ -75,7 +76,7 @@ for (const tc of cases) {
         {
           test_id: tc.test_id,
           note: tc.note_tc,
-          url: DEBT_SUPPLIER_ENDPOINT,
+          url: DEBT_SUPPLIER_ENDPOINT(supplierIdToUse),
           actual_status: res.status(),
           expected_status: tc.expected,
           response_body: body,
@@ -101,7 +102,7 @@ for (const tc of cases) {
         testId: tc.test_id,
         feature: 'Debts - Supplier Debt',
         summary: tc.note_tc,
-        endpoint: DEBT_SUPPLIER_ENDPOINT,
+        endpoint: DEBT_SUPPLIER_ENDPOINT(supplierIdToUse),
         headers,
         payload,
         expectedStatus,

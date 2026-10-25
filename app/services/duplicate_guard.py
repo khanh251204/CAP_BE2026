@@ -2,7 +2,8 @@
 Chặn tạo trùng Sản phẩm / Nhà cung cấp / Khách hàng trong phạm vi một user (multi-tenant).
 
 Quy tắc trùng (so sánh sau khi chuẩn hóa, độc lập với collation của DB):
-- Tên: bỏ khoảng trắng thừa, không phân biệt hoa/thường, GIỮ NGUYÊN dấu tiếng Việt
+- Tên: bỏ khoảng trắng thừa và ký tự vô hình, không phân biệt hoa/thường, kiểu gõ NFC/NFD
+  hay vị trí đặt dấu thanh ("hoà" == "hòa"), nhưng GIỮ NGUYÊN dấu tiếng Việt
   ("Coca  cola" == "coca cola", nhưng "Bơ" != "Bò").
 - Số điện thoại (khách hàng, nhà cung cấp): chỉ so phần chữ số, "+84"/"84" quy về "0".
 - Mã số thuế (nhà cung cấp): bỏ khoảng trắng, không phân biệt hoa/thường.
@@ -28,14 +29,40 @@ from app.models.user_model import User
 # CHUẨN HÓA
 # =============================================
 
+# 5 dấu thanh tiếng Việt (dạng tổ hợp): huyền, sắc, ngã, hỏi, nặng.
+# Không gồm dấu mũ (â ê ô), trăng (ă), móc (ơ ư) vì đó là chữ cái khác nhau.
+_TONE_MARKS = {"̀", "́", "̃", "̉", "̣"}
+
+
+def _strip_invisible(text: str) -> str:
+    """Bỏ ký tự định dạng vô hình (zero-width space/joiner, BOM...) thường dính khi copy-paste."""
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+
+
+def _tone_key(word: str) -> str:
+    """
+    Khóa so sánh của một âm tiết, không phụ thuộc VỊ TRÍ đặt dấu thanh:
+    "hoà" (kiểu cũ) và "hòa" (kiểu mới) -> cùng khóa; "bò" và "bơ" vẫn khác nhau.
+    """
+    decomposed = unicodedata.normalize("NFD", word)
+    tones = sorted(ch for ch in decomposed if ch in _TONE_MARKS)
+    base = unicodedata.normalize("NFC", "".join(ch for ch in decomposed if ch not in _TONE_MARKS))
+    return base + ("|" + "".join(tones) if tones else "")
+
+
 def normalize_name(value: Optional[str]) -> str:
-    text = unicodedata.normalize("NFC", str(value or ""))
-    return re.sub(r"\s+", " ", text).strip().casefold()
+    """
+    Khóa so trùng tên: không phân biệt hoa/thường, khoảng trắng thừa, ký tự vô hình,
+    kiểu gõ dựng sẵn/tổ hợp (NFC/NFD) và vị trí đặt dấu thanh — nhưng GIỮ phân biệt dấu.
+    """
+    text = _strip_invisible(unicodedata.normalize("NFC", str(value or "")))
+    text = re.sub(r"\s+", " ", text).strip().casefold()
+    return " ".join(_tone_key(w) for w in text.split(" ")) if text else ""
 
 
 def clean_name(value: Optional[str]) -> str:
-    """Tên để lưu: bỏ khoảng trắng thừa nhưng giữ nguyên chữ hoa/thường người dùng nhập."""
-    text = unicodedata.normalize("NFC", str(value or ""))
+    """Tên để lưu: bỏ khoảng trắng thừa, ký tự vô hình; giữ nguyên chữ hoa/thường người dùng nhập."""
+    text = _strip_invisible(unicodedata.normalize("NFC", str(value or "")))
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -59,8 +86,8 @@ def lock_user_scope(db: Session, user_id: int) -> None:
 
 
 def _conflict(message: str) -> HTTPException:
-    # Giữ mã 400 theo hợp đồng API hiện có (test_api/products: "trùng tên -> 400")
-    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+    # Trùng với bản ghi đã có -> 409 Conflict (chuẩn REST)
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
 
 
 # =============================================

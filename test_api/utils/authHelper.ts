@@ -12,7 +12,7 @@ export async function getAuthToken(request: APIRequestContext): Promise<string> 
 
   const email = process.env.TEST_EMAIL || 'buithinhu1408@gmail.com';
   const password = process.env.TEST_PASSWORD || 'Abcd1234@';
-  const loginEndpoint = process.env.LOGIN_ENDPOINT || '/api/v1/login';
+  const loginEndpoint = process.env.LOGIN_ENDPOINT || '/api/v1/auth/login';
 
   const res = await request.post(loginEndpoint, {
     data: { email, password },

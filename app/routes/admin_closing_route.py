@@ -6,10 +6,9 @@ Endpoints:
   GET   /admin/closing/periods                        — Danh sách kỳ chốt (cross-user, filter, sort, phân trang)
   GET   /admin/closing/periods/{id}                   — Chi tiết kỳ chốt + lịch sử email
   GET   /admin/closing/periods/{id}/transactions      — Drill-down giao dịch thuộc kỳ
-  PATCH /admin/closing/periods/{id}/reopen            — Mở lại kỳ đã chốt (bắt buộc lý do)
-  POST  /admin/closing/periods/{id}/close             — Chốt lại kỳ đang mở (tính lại snapshot)
+  PATCH /admin/closing/periods/{id}                   — Đổi trạng thái: OPEN (mở lại, bắt buộc lý do) / CLOSED (chốt lại)
   GET   /admin/closing/reports                        — Lịch sử gửi email báo cáo chốt sổ
-  POST  /admin/closing/reports/{id}/resend            — Gửi lại email báo cáo
+  POST  /admin/closing/reports/{id}/deliveries        — Gửi lại email báo cáo
   GET   /admin/closing/settings                       — Cấu hình tự động chốt sổ của các user
   PUT   /admin/closing/settings/{user_id}             — Cập nhật cấu hình chốt sổ của một user
 
@@ -27,8 +26,7 @@ from app.schemas.admin_closing_schema import (
     AdminClosingOverviewResponse,
     AdminClosingPeriodDetailResponse,
     AdminClosingPeriodListResponse,
-    AdminClosingRecloseRequest,
-    AdminClosingReopenRequest,
+    AdminClosingStatusUpdateRequest,
     AdminClosingReportListResponse,
     AdminClosingSettingItem,
     AdminClosingSettingListResponse,
@@ -134,45 +132,34 @@ def get_period_transactions(
 
 
 @router.patch(
-    "/periods/{closing_id}/reopen",
+    "/periods/{closing_id}",
     response_model=AdminClosingPeriodDetailResponse,
-    summary="Mở lại kỳ đã chốt (Admin)",
-    description="Chuyển kỳ CLOSED về OPEN để chủ sổ điều chỉnh giao dịch. Bắt buộc ghi lý do; thao tác được ghi vết.",
+    summary="Mở lại / chốt lại kỳ chốt (Admin)",
+    description=(
+        "status = OPEN: chuyển kỳ CLOSED về OPEN để chủ sổ điều chỉnh giao dịch (bắt buộc lý do, thao tác được ghi vết). "
+        "status = CLOSED: tính lại snapshot từ dữ liệu hiện tại, liên kết lại giao dịch và gửi email báo cáo cho chủ sổ."
+    ),
     dependencies=[Depends(require_permission("admin_closing:manage"))],
 )
-def reopen_period(
-    data: AdminClosingReopenRequest,
+def update_period_status(
+    data: AdminClosingStatusUpdateRequest,
     closing_id: int = Path(..., description="ID kỳ chốt"),
     current_admin: dict = Depends(authenticate_user),
     db: Session = Depends(get_db),
 ):
-    return AdminClosingService.reopen_period(
-        db=db,
-        closing_id=closing_id,
-        admin_id=_admin_id(current_admin),
-        reason=data.reason,
-        notify_user=data.notify_user,
-    )
-
-
-@router.post(
-    "/periods/{closing_id}/close",
-    response_model=AdminClosingPeriodDetailResponse,
-    summary="Chốt lại kỳ đang mở (Admin)",
-    description="Tính lại snapshot từ dữ liệu hiện tại, liên kết lại giao dịch và gửi email báo cáo cho chủ sổ.",
-    dependencies=[Depends(require_permission("admin_closing:manage"))],
-)
-def reclose_period(
-    data: Optional[AdminClosingRecloseRequest] = None,
-    closing_id: int = Path(..., description="ID kỳ chốt"),
-    current_admin: dict = Depends(authenticate_user),
-    db: Session = Depends(get_db),
-):
+    if data.status == "OPEN":
+        return AdminClosingService.reopen_period(
+            db=db,
+            closing_id=closing_id,
+            admin_id=_admin_id(current_admin),
+            reason=data.reason,
+            notify_user=data.notify_user,
+        )
     return AdminClosingService.reclose_period(
         db=db,
         closing_id=closing_id,
         admin_id=_admin_id(current_admin),
-        note=data.note if data else None,
+        note=data.note,
     )
 
 
@@ -210,7 +197,8 @@ def list_reports(
 
 
 @router.post(
-    "/reports/{report_id}/resend",
+    "/reports/{report_id}/deliveries",
+    status_code=201,
     summary="Gửi lại email báo cáo chốt sổ (Admin)",
     dependencies=[Depends(require_permission("admin_closing:manage"))],
 )

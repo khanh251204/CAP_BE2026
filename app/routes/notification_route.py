@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional
 
@@ -45,13 +45,21 @@ def create_notification(
 
 
 # MARK AS READ
-@router.put(
-    "/notifications/{notification_id}/read"
+class NotificationUpdateSchema(BaseModel):
+    is_read: bool
+
+
+@router.patch(
+    "/notifications/{notification_id}"
 )
 def mark_notification_as_read(
     notification_id: str,
+    data: NotificationUpdateSchema,
     payload: dict = Depends(authenticate_user)
 ):
+    """Cập nhật một phần thông báo. Hiện chỉ hỗ trợ đánh dấu đã đọc: {"is_read": true}."""
+    if not data.is_read:
+        raise HTTPException(status_code=422, detail="Chỉ hỗ trợ đánh dấu đã đọc (is_read = true)")
     user_id = payload.get("sub")
 
     return NotificationController.mark_as_read(
@@ -66,7 +74,7 @@ class FCMTokenRegisterSchema(BaseModel):
 
 
 # REGISTER FCM TOKEN
-@router.post("/notifications/fcm-token")
+@router.post("/users/me/devices", status_code=201)
 def register_fcm_token(
     data: FCMTokenRegisterSchema,
     payload: dict = Depends(authenticate_user)

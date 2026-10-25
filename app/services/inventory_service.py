@@ -5,14 +5,26 @@ from app.repositories.inventory_repo import InventoryRepository
 from app.services.debt_service import DebtService
 from app.models.intent_model import Intent
 from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError
+from app.services.new_product_service import (
+    NEW_PRODUCT_KEY,
+    get_or_create_from_spec,
+    notification_message,
+    notify_new_products,
+    product_summary,
+)
+from app.services.new_customer_service import resolve_customer_id
+from app.services.new_supplier_service import resolve_supplier_id
 from app.services.sales_policy import (
     STRICT,
     MADE_TO_ORDER,
     RAW_MATERIAL_BLOCKED,
     ERROR_INSUFFICIENT_STOCK,
     ERROR_CANNOT_SELL_RAW_MATERIAL,
+    ERROR_INVALID_UNIT,
     get_sale_stock_policy,
     get_user_business_type,
+    is_unit_valid,
+    invalid_unit_message,
     normalize_product_type,
     is_unpaid_payment,
 )
@@ -22,6 +34,30 @@ class InventoryService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = InventoryRepository(db)
+        # Sản phẩm được tạo mới trong giao dịch hiện tại (để thông báo sau khi commit)
+        self.created_products: List[Dict[str, Any]] = []
+
+    def _create_new_product(self, user_id: int, payload: Dict[str, Any], name: str, unit: Any = None, price: Any = None):
+        """
+        Tạo sản phẩm chưa có trong danh mục nếu bản nháp đã đánh dấu payload["new_product"].
+        Chưa commit: sản phẩm được commit cùng giao dịch, lỗi thì rollback cả hai.
+        """
+        spec = payload.get(NEW_PRODUCT_KEY)
+        if not isinstance(spec, dict):
+            return None
+        product, created = get_or_create_from_spec(self.db, user_id, name, spec, unit=unit, unit_price=price)
+        if created:
+            self.created_products.append(product_summary(product))
+        return product
+
+    def _finish_new_products(self, user_id: int, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Gọi SAU khi commit thành công: gắn danh sách sản phẩm mới vào kết quả và gửi thông báo."""
+        if self.created_products and result.get("success"):
+            result["created_products"] = list(self.created_products)
+            base = str(result.get("message") or "").rstrip(". ")
+            result["message"] = f"{base}. {notification_message(self.created_products)}" if base else notification_message(self.created_products)
+            notify_new_products(user_id, self.created_products)
+        return result
 
     def _normalize_payload_items(
         self, user_id: int, payload: Dict[str, Any], is_import: bool = False, **kwargs
@@ -49,7 +85,15 @@ class InventoryService:
             if not p_id and p_name:
                 p_id = self.repo.get_product_id_by_name(user_id=user_id, name=p_name)
                 if not p_id:
-                    raise ValueError(f"Không tìm thấy sản phẩm '{p_name}' trong hệ thống.")
+                    # Sản phẩm chưa có: tạo mới nếu người dùng đã xác nhận ở bản nháp
+                    new_product = self._create_new_product(
+                        user_id, payload, p_name,
+                        unit=item.get("unit"),
+                        price=item.get("unit_price") if item.get("unit_price") is not None else item.get("price"),
+                    )
+                    if not new_product:
+                        raise ValueError(f"Không tìm thấy sản phẩm '{p_name}' trong hệ thống.")
+                    p_id = new_product.product_id
 
             # 2. Lấy Object Product từ DB để truy xuất giá & đơn vị mặc định
             product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=p_id)
@@ -104,13 +148,14 @@ class InventoryService:
                 ),
                 "quantity": qty_val,
                 "unit": unit,
+                "default_unit": getattr(product_obj, "default_unit", None) or "",
                 "unit_price": final_unit_price,
                 "product_type": normalize_product_type(getattr(product_obj, "product_type", None)),
             })
 
         return normalized_items
 
-    def import_goods(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _import_goods_impl(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Thực hiện nghiệp vụ nhập hàng (Import Goods Transaction)
         """
@@ -128,6 +173,19 @@ class InventoryService:
             processed_items = []
 
             for item in items:
+                if not is_unit_valid(item.get("unit"), item.get("default_unit")):
+                    self.db.rollback()
+                    return {
+                        "status": "invalid_unit",
+                        "error_code": ERROR_INVALID_UNIT,
+                        "success": False,
+                        "message": invalid_unit_message(
+                            item.get("product_name") or item["product_id"], item.get("unit"), item.get("default_unit")
+                        ),
+                    }
+                if item.get("default_unit"):
+                    item["unit"] = item["default_unit"]
+
                 qty = Decimal(str(item["quantity"]))
                 price = Decimal(str(item["unit_price"]))
                 subtotal = qty * price
@@ -167,15 +225,15 @@ class InventoryService:
             else:
                 payment_status_str = "PENDING"
 
-            # Xử lý supplier_id & supplier_name (Chỉ tìm kiếm trong DB, KHÔNG tự ý tạo mới Supplier)
+            # Xử lý supplier_id & supplier_name: tìm trong DB; chỉ tạo mới khi người dùng đã đồng ý
+            # ở bản nháp (payload[new_supplier]). Nhà cung cấp mới được flush cùng session -> lỗi thì rollback chung.
             supplier_id = payload.get("supplier_id")
             supplier_name = payload.get("supplier_name") or payload.get("supplier")
-            
+
             if not supplier_id and supplier_name:
-                existing_supplier = self.repo.get_supplier_by_name(user_id=user_id, name=str(supplier_name))
-                if existing_supplier:
-                    supplier_id = existing_supplier.supplier_id
-                else:
+                supplier_id = resolve_supplier_id(self.db, user_id, payload)
+                if not supplier_id:
+                    self.db.rollback()
                     return {
                         "status": "error",
                         "success": False,
@@ -286,7 +344,7 @@ class InventoryService:
                 "message": f"Lỗi xử lý nhập hàng: {str(e)}"
             }
 
-    def sell_goods(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _sell_goods_impl(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Thực hiện nghiệp vụ bán hàng (Sale Goods Transaction)
         """
@@ -323,6 +381,18 @@ class InventoryService:
                         "success": False,
                         "message": f"Sản phẩm '{display_name}' là nguyên liệu sản xuất (RAW_MATERIAL), không thể bán trực tiếp."
                     }
+
+                if not is_unit_valid(item.get("unit"), item.get("default_unit")):
+                    self.db.rollback()
+                    return {
+                        "status": "invalid_unit",
+                        "error_code": ERROR_INVALID_UNIT,
+                        "success": False,
+                        "message": invalid_unit_message(display_name, item.get("unit"), item.get("default_unit")),
+                    }
+                if item.get("default_unit"):
+                    # Lưu đúng cách viết đơn vị trong DB
+                    item["unit"] = item["default_unit"]
 
                 current_stock = self.repo.get_latest_stock(user_id, product_id)
                 if policy == STRICT and current_stock < qty:
@@ -384,15 +454,15 @@ class InventoryService:
             else:
                 payment_status_str = "PENDING"
 
-            # Xử lý customer_id & customer_name (Chỉ tìm kiếm trong DB Customer, KHÔNG tự ý tạo mới Customer)
+            # Xử lý customer_id & customer_name: tìm trong DB; chỉ tạo mới khi người dùng đã đồng ý
+            # ở bản nháp (payload[new_customer]). Khách hàng mới được flush cùng session -> lỗi thì rollback chung.
             customer_id = payload.get("customer_id")
             customer_name = payload.get("customer_name") or payload.get("customer")
 
             if not customer_id and customer_name:
-                existing_customer = self.repo.get_customer_by_name(user_id=user_id, name=str(customer_name))
-                if existing_customer:
-                    customer_id = existing_customer.customer_id
-                else:
+                customer_id = resolve_customer_id(self.db, user_id, payload)
+                if not customer_id:
+                    self.db.rollback()
                     return {
                         "status": "error",
                         "success": False,
@@ -498,7 +568,7 @@ class InventoryService:
             return {
                 "status": "success",
                 "success": True,
-                "message": "Bán hàng thành công",
+                "message": "Bán nợ thành công" if unpaid_amount > 0 else "Bán hàng thành công",
                 "transaction_id": tx.transaction_id,
                 "total_amount": float(total_amount),
                 "quantity": float(sum([item["quantity"] for item in processed_items])),
@@ -541,9 +611,12 @@ class InventoryService:
                     }
 
             if not product_id:
+                # Trạng thái riêng để handler biết có thể đề xuất tạo sản phẩm mới
                 return {
-                    "status": "error",
+                    "status": "product_not_found",
                     "success": False,
+                    "product_name": product_name,
+                    "business_type": get_user_business_type(self.db, user_id),
                     "message": f"Không tìm thấy sản phẩm '{product_name}'."
                 }
 
@@ -611,7 +684,7 @@ class InventoryService:
                 "message": f"Lỗi kiểm tra tồn kho: {str(e)}"
             }
 
-    def nhap_kho(
+    def _nhap_kho_impl(
         self,
         user_id: int,
         payload: Dict[str, Any]
@@ -653,12 +726,18 @@ class InventoryService:
             if not product_id and product_name:
                 product_id = self.repo.get_product_id_by_name(user_id=user_id, name=str(product_name))
                 if not product_id:
-                    return {
-                        "status": "error",
-                        "success": False,
-                        "missing_fields": ["product"],
-                        "message": f"Không tìm thấy sản phẩm '{product_name}' trong hệ thống."
-                    }
+                    new_product = self._create_new_product(
+                        user_id, payload, str(product_name),
+                        unit=payload.get("unit"), price=payload.get("unit_price"),
+                    )
+                    if not new_product:
+                        return {
+                            "status": "error",
+                            "success": False,
+                            "missing_fields": ["product"],
+                            "message": f"Không tìm thấy sản phẩm '{product_name}' trong hệ thống."
+                        }
+                    product_id = new_product.product_id
             elif not product_id and not product_name:
                 return {
                     "status": "error",
@@ -683,7 +762,16 @@ class InventoryService:
                     "success": False,
                     "message": f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh."
                 }
-            unit = payload.get("unit") or (getattr(product_obj, "default_unit", "") if product_obj else "")
+            product_unit = getattr(product_obj, "default_unit", "") or ""
+            if not is_unit_valid(payload.get("unit"), product_unit):
+                self.db.rollback()
+                return {
+                    "status": "invalid_unit",
+                    "error_code": ERROR_INVALID_UNIT,
+                    "success": False,
+                    "message": invalid_unit_message(product_obj.product_name, payload.get("unit"), product_unit),
+                }
+            unit = product_unit or payload.get("unit") or ""
             actual_product_name = product_name or (getattr(product_obj, "product_name", "") if product_obj else f"ID {product_id}")
 
             # 2. Cập nhật tồn kho qua InventoryTransaction
@@ -969,6 +1057,32 @@ class InventoryService:
                 "success": False,
                 "message": f"Lỗi ghi nhận hàng hư hỏng: {str(e)}"
             }
+
+    # =========================================================
+    # GIAO DỊCH CÓ THỂ TẠO SẢN PHẨM MỚI (payload["new_product"])
+    # =========================================================
+    def _run_with_new_products(self, user_id: int, impl, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self.created_products = []
+        result = impl(user_id=user_id, payload=payload)
+        if not (isinstance(result, dict) and result.get("success")):
+            # Giao dịch thất bại: không giữ lại sản phẩm vừa tạo tạm trong session
+            if self.created_products:
+                self.db.rollback()
+                self.created_products = []
+            return result
+        return self._finish_new_products(user_id, result)
+
+    def import_goods(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Nhập hàng (Import Goods Transaction); tạo sản phẩm mới nếu bản nháp đã đánh dấu."""
+        return self._run_with_new_products(user_id, self._import_goods_impl, payload)
+
+    def sell_goods(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Bán hàng (Sale Goods Transaction); tạo sản phẩm mới nếu bản nháp đã đánh dấu."""
+        return self._run_with_new_products(user_id, self._sell_goods_impl, payload)
+
+    def nhap_kho(self, user_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Nhập kho đơn thuần (Inventory IN); tạo sản phẩm mới nếu bản nháp đã đánh dấu."""
+        return self._run_with_new_products(user_id, self._nhap_kho_impl, payload)
 
     # Alias phương thức
     process_export = sell_goods

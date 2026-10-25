@@ -5,8 +5,6 @@ from sqlalchemy.orm import Session
 from app.configs.database import get_db
 from app.configs.jwt import get_current_user_id, require_permission
 from app.controllers.debt_controller import DebtController
-from app.routes.debt.customer_debt_route import customer_debt_router
-from app.routes.debt.supplier_debt_route import supplier_debt_router
 from app.schemas.debt_schema import (
     DebtSummaryResponse,
     PaginatedDebtListResponse,
@@ -17,8 +15,6 @@ from app.schemas.debt_schema import (
 )
 
 debt_router = APIRouter(prefix="/debts", tags=["Debt Management"])
-debt_router.include_router(customer_debt_router)
-debt_router.include_router(supplier_debt_router)
 
 
 @debt_router.get(
@@ -89,12 +85,6 @@ def get_debt_detail(
     "",
     response_model=PaginatedDebtListResponse,
     summary="Lấy danh sách tất cả công nợ có phân trang và bộ lọc (Mục 6.2)",
-    dependencies=[Depends(require_permission("debt:read"))],
-)
-@debt_router.get(
-    "/",
-    response_model=PaginatedDebtListResponse,
-    include_in_schema=False,
     dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_all_debts(

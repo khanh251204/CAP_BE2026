@@ -3,6 +3,13 @@ from typing import Any
 
 from app.ai.core.router import IntentRouter
 from app.services.session_store_service import SessionStoreService
+from app.services.sales_policy import resolve_credit_sale_intent, resolve_total_price
+
+UNKNOWN_INTENT_MESSAGE = (
+    "Mình chưa hiểu bạn muốn ghi nghiệp vụ gì. Bạn nói rõ hơn giúp mình, ví dụ: "
+    "\"bán 5 lon coca\", \"nhập 10 thùng bia giá 200k\", \"khách An trả nợ 500k tiền mặt\", "
+    "\"chi tiền điện 500k\"."
+)
 
 
 CONFIRM_WORDS = {
@@ -86,8 +93,8 @@ class Agent:
         intent = analysis.get("intent")
         entities = analysis.get("entities", {}) or {}
 
-        # 5. LLM Error
-        if analysis.get("status") == "error":
+        # 5. LLM Error (thiếu field) — intent lạ được xử lý ở bước 6
+        if analysis.get("status") == "error" and self.router.get_handler(intent):
             return {
                 "success": False,
                 "user_id": user_id,
@@ -95,15 +102,26 @@ class Agent:
                 "analysis": analysis
             }
 
-        # 6. Intent Khác / Không xác định
-        if intent == "khac":
+        # 6. Intent Khác / Không xác định / LLM tự đặt ra intent không tồn tại
+        if intent == "khac" or not self.router.get_handler(intent):
+            if intent != "khac":
+                analysis = {**analysis, "intent": "khac", "llm_intent": intent}
             return {
                 "success": False,
+                "status": "unknown_intent",
                 "user_id": user_id,
-                "intent": intent,
+                "intent": "khac",
                 "analysis": analysis,
-                "message": "Không xác định được nghiệp vụ"
+                "message": UNKNOWN_INTENT_MESSAGE
             }
+
+        # 6b. Bán nợ có hàng (product + quantity) luôn đi qua ban_hang để trừ kho,
+        # kể cả khi LLM phân loại là khach_ghi_no
+        llm_intent = intent
+        intent, entities = resolve_credit_sale_intent(intent, entities)
+        entities = resolve_total_price(intent, entities)
+        if intent != llm_intent:
+            analysis = {**analysis, "intent": intent, "entities": entities, "llm_intent": llm_intent}
 
         # 7. Router điều phối sang Intent Handler
         handler_result = await self.router.route(

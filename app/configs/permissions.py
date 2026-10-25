@@ -124,7 +124,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, List[str]] = {
 # Role dùng khi tài khoản chưa được gán role (dữ liệu cũ trước khi có RBAC).
 FALLBACK_ROLE = "OWNER"
 
-# Quyền cần có để xác nhận từng intent của AI Agent (/agent/confirm).
+# Quyền cần có để xác nhận từng intent của AI Agent (POST /agent/pending-action/confirmation).
 INTENT_PERMISSIONS: Dict[str, str] = {
     "ban_hang": "transaction:create",
     "mua_hang": "transaction:purchase",

@@ -56,25 +56,10 @@ transaction_agent = TransactionAgent(
 
 
 # ============================================================
-# STT
-# ============================================================
-
-from app.api.stt import stt_groq
-
-router.add_api_route(
-    "/stt/groq",
-    stt_groq,
-    methods=["POST"],
-    tags=["Speech to Text"],
-    dependencies=[Depends(require_permission("voice:use"))],
-)
-
-
-# ============================================================
 # TRANSACTION - AGENT
 # ============================================================
 
-@router.post("/analyze/groq", dependencies=[Depends(require_permission("voice:use"))])
+@router.post("/agent/messages", dependencies=[Depends(require_permission("voice:use"))])
 async def voice_transaction(
     request: AnalysisRequest,
     current_user_id: int = Depends(
@@ -179,7 +164,7 @@ def _resolve_account_id(db: Session, user_id: int, payload: dict) -> int:
     return account.account_id
 
 
-@router.post("/agent/confirm", dependencies=[Depends(require_permission("voice:use"))])
+@router.post("/agent/pending-action/confirmation", dependencies=[Depends(require_permission("voice:use"))])
 async def confirm_action(
     body: Optional[AgentConfirmRequest] = None,
     session_id: Optional[str] = Query(None),
@@ -211,6 +196,25 @@ async def confirm_action(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Bạn không có quyền '{required_permission}' để xác nhận thao tác '{intent}'"
+        )
+    # Giao dịch kèm thêm sản phẩm mới vào danh mục cần thêm quyền tạo sản phẩm
+    if (pending.get("payload") or {}).get("new_product") and not PermissionService.has_permission(current_user_id, "product:create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền 'product:create' để thêm sản phẩm mới vào danh mục"
+        )
+
+    # Giao dịch kèm tạo nhà cung cấp mới cần thêm quyền quản lý nhà cung cấp
+    if (pending.get("payload") or {}).get("new_supplier") and not PermissionService.has_permission(current_user_id, "supplier:manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền 'supplier:manage' để tạo nhà cung cấp mới"
+        )
+    # Giao dịch kèm tạo khách hàng mới cần thêm quyền quản lý khách hàng
+    if (pending.get("payload") or {}).get("new_customer") and not PermissionService.has_permission(current_user_id, "customer:manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền 'customer:manage' để tạo khách hàng mới"
         )
 
     ai_result = copy.deepcopy(pending["payload"])
@@ -249,9 +253,33 @@ async def confirm_action(
     elif intent == "xoa_san_pham":
         result = await asyncio.to_thread(ProductController.delete_product, product_id=payload["product_id"], user_id=current_user_id, db=db)
     elif intent == "ban_hang":
+        # Kiểm tra lại giá sau khi người dùng có thể đã sửa
+        sale_price = payload.get("unit_price")
+        if sale_price is not None:
+            try:
+                sale_price = float(sale_price)
+            except (TypeError, ValueError):
+                sale_price = 0.0
+            if sale_price <= 0:
+                return {"success": False, "message": "Giá bán phải lớn hơn 0đ. Vui lòng nhập lại giá bán."}
         res = await call_mcp_tool("export_inventory", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent in ("mua_hang", "nhap_hang"):
+        # Kiểm tra lại sau khi người dùng có thể đã sửa số lượng / giá
+        try:
+            import_qty = float(payload.get("quantity") or 0)
+        except (TypeError, ValueError):
+            import_qty = 0.0
+        if not payload.get("items") and import_qty <= 0:
+            return {"success": False, "message": "Số lượng nhập phải lớn hơn 0. Vui lòng nhập lại số lượng."}
+        import_price = payload.get("unit_price")
+        if import_price is not None:
+            try:
+                import_price = float(import_price)
+            except (TypeError, ValueError):
+                import_price = 0.0
+            if import_price <= 0:
+                return {"success": False, "message": "Giá nhập phải lớn hơn 0đ. Vui lòng nhập lại giá nhập."}
         res = await call_mcp_tool("import_inventory", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent == "nhap_kho":
@@ -264,10 +292,20 @@ async def confirm_action(
         res = await call_mcp_tool("report_damage", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent in ("ghi_no_khach_hang", "khach_ghi_no"):
+        # Ưu tiên số tiền người dùng đã sửa (amount), không thì dùng số tiền bản nháp
+        debt_amount = payload.get("amount") if payload.get("amount") is not None else payload.get("original_amount")
+        try:
+            debt_amount = float(debt_amount)
+        except (TypeError, ValueError):
+            debt_amount = 0.0
+        if debt_amount <= 0:
+            return {"success": False, "message": "Số tiền ghi nợ phải lớn hơn 0. Vui lòng nhập lại số tiền khách nợ."}
         res = await call_mcp_tool("ghi_no_khach_hang", {
             "input": {
-                "customer_id": payload["customer_id"],
-                "original_amount": payload["original_amount"],
+                "customer_id": payload.get("customer_id"),
+                "customer_name": payload.get("customer_name"),
+                "new_customer": bool(payload.get("new_customer")),
+                "original_amount": debt_amount,
                 "transaction_id": payload.get("transaction_id"),
                 "input_method": payload.get("input_method", "MANUAL"),
             },
@@ -287,10 +325,18 @@ async def confirm_action(
         res = await call_mcp_tool("thu_no_khach_hang", {"input": input_data, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent in ("ghi_no_nha_cung_cap", "ncc_ghi_no"):
+        # Ưu tiên số tiền người dùng đã sửa (amount), không thì dùng số tiền bản nháp
+        supplier_debt_amount = payload.get("amount") if payload.get("amount") is not None else payload.get("original_amount")
+        try:
+            supplier_debt_amount = float(supplier_debt_amount)
+        except (TypeError, ValueError):
+            supplier_debt_amount = 0.0
+        if supplier_debt_amount <= 0:
+            return {"success": False, "message": "Số tiền ghi nợ phải lớn hơn 0. Vui lòng nhập lại số tiền nợ nhà cung cấp."}
         res = await call_mcp_tool("ghi_no_nha_cung_cap", {
             "input": {
                 "supplier_id": payload["supplier_id"],
-                "original_amount": payload["original_amount"],
+                "original_amount": supplier_debt_amount,
                 "transaction_id": payload.get("transaction_id"),
                 "note": payload.get("note"),
                 "input_method": payload.get("input_method", "MANUAL"),
@@ -406,8 +452,7 @@ async def confirm_action(
     return result
 
 
-@router.post("/agent/cancel", dependencies=[Depends(require_permission("voice:use"))])
-@router.post("/agent/reject", include_in_schema=False, dependencies=[Depends(require_permission("voice:use"))])
+@router.delete("/agent/pending-action", dependencies=[Depends(require_permission("voice:use"))])
 async def cancel_action(
     session_id: Optional[str] = Query(None),
     current_user_id: int = Depends(get_current_user_id),

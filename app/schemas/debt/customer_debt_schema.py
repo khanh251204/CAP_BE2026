@@ -5,10 +5,10 @@ from datetime import datetime
 
 class CreateCustomerDebtRequest(BaseModel):
     """
-    POST /debts/customer
+    POST /customers/{customer_id}/debts
     intent: create_customer_debt (ghi_no_khach_hang)
     """
-    customer_id: int = Field(..., description="ID khách hàng")
+    customer_id: Optional[int] = Field(None, description="ID khách hàng (bỏ qua, lấy từ URL)")
     total_debt: float = Field(..., gt=0, description="Số tiền nợ gốc")
     transaction_id: Optional[int] = Field(
         None,

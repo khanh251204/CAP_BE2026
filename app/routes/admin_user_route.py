@@ -67,7 +67,7 @@ def get_user_detail(
 
 
 @router.patch(
-    "/{user_id}/status",
+    "/{user_id}",
     response_model=AdminUserStatusUpdateResponse,
     summary="Khóa hoặc mở khóa tài khoản người dùng",
     description="Cho phép Admin khóa hoặc mở khóa tài khoản người dùng. Khi khóa, thời gian lock_until được thiết lập và toàn bộ refresh token hiện có của người dùng sẽ bị vô hiệu hóa.",

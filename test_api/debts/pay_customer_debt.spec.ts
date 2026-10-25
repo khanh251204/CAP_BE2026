@@ -17,7 +17,8 @@ const cases = readCsv<{
   note_tc: string;
 }>(csvFilePath);
 
-const COLLECT_DEBT_ENDPOINT = process.env.COLLECT_DEBT_ENDPOINT || '/api/v1/debts/customer/payments';
+// POST /api/v1/customers/{customer_id}/debt-payments (thanh toán FIFO)
+const COLLECT_DEBT_ENDPOINT = (customerId: unknown) => `/api/v1/customers/${customerId}/debt-payments`;
 
 let authToken = '';
 let targetCustomerId = 240002;
@@ -62,7 +63,7 @@ for (const tc of cases) {
     };
 
     if (tc.expected === '200' && authToken) {
-      await request.post('/api/v1/debts/customer', {
+      await request.post(`/api/v1/customers/${customerIdToUse}/debts`, {
         headers,
         data: {
           customer_id: customerIdToUse,
@@ -72,7 +73,7 @@ for (const tc of cases) {
       });
     }
 
-    const res = await request.post(COLLECT_DEBT_ENDPOINT, {
+    const res = await request.post(COLLECT_DEBT_ENDPOINT(customerIdToUse), {
       data: payload,
       headers,
     });
@@ -88,7 +89,7 @@ for (const tc of cases) {
         {
           test_id: tc.test_id,
           note: tc.note_tc,
-          url: COLLECT_DEBT_ENDPOINT,
+          url: COLLECT_DEBT_ENDPOINT(customerIdToUse),
           actual_status: res.status(),
           expected_status: tc.expected,
           response_body: body,
@@ -114,7 +115,7 @@ for (const tc of cases) {
         testId: tc.test_id,
         feature: 'Debts - Pay Customer Debt',
         summary: tc.note_tc,
-        endpoint: COLLECT_DEBT_ENDPOINT,
+        endpoint: COLLECT_DEBT_ENDPOINT(customerIdToUse),
         headers,
         payload,
         expectedStatus,

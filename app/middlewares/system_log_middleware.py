@@ -173,8 +173,8 @@ def resolve_log_step(api_path: str = None, current_step: str = None) -> str:
         return current_step
 
     path = (api_path or "").lower()
-    # 1. STT: CHỈ API /api/v1/stt/groq (hoặc /stt/groq)
-    if "/stt/groq" in path or path.endswith("/stt"):
+    # 1. STT: API POST /api/v1/speech/transcriptions
+    if "/speech/transcriptions" in path:
         return "STT"
 
     # 2. AI (NLP): phân tích ý định và bóc tách thực thể

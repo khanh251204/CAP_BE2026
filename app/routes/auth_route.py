@@ -28,7 +28,6 @@ from app.schemas.auth_schema import (
     LoginRequest,
     SendOTPRequest,
     VerifyOTPRequest,
-    VerifyForgotOTPRequest,
     ResetPasswordRequest,
     ForgotPasswordRequest,
     ChangePasswordRequest,
@@ -53,7 +52,10 @@ from app.controllers.auth_controller import (
 )
 
 
-router = APIRouter()
+# /auth/*      : đăng ký, đăng nhập, token, OTP, đặt lại mật khẩu (công khai)
+# /users/me/*  : tài nguyên của chính người dùng đang đăng nhập
+router = APIRouter(prefix="/auth", tags=["Auth"])
+me_router = APIRouter(prefix="/users/me", tags=["Current User"])
 
 
 # REGISTER
@@ -72,7 +74,7 @@ def register(
 
 
 # SEND OTP
-@router.post("/send-otp")
+@router.post("/otp")
 def send_otp(
     request: SendOTPRequest,
     db: Session = Depends(get_db)
@@ -84,7 +86,7 @@ def send_otp(
 
 
 # VERIFY OTP
-@router.post("/verify-otp")
+@router.post("/otp/verification")
 def verify_otp(
     request: VerifyOTPRequest,
     response: Response,
@@ -97,32 +99,8 @@ def verify_otp(
     )
 
 
-# VERIFY FORGOT PASSWORD OTP (ALIAS CHO MOBILE)
-@router.post("/verify-forgot-otp")
-def verify_forgot_otp(
-    request: VerifyForgotOTPRequest,
-    response: Response,
-    db: Session = Depends(get_db)
-):
-    """
-    Alias xác thực OTP quên mật khẩu (Bước 2):
-    Ép purpose = 'forgot_password', gọi chung verify_otp_controller và trả về reset_token.
-    """
-    verify_req = VerifyOTPRequest(
-        email=request.email,
-        code=request.code,
-        purpose="forgot_password"
-    )
-    return verify_otp_controller(
-        request=verify_req,
-        response=response,
-        db=db
-    )
-
-
 # FORGOT PASSWORD / RESET PASSWORD
-@router.post("/forgot-password")
-@router.post("/reset-password")
+@router.post("/password-reset")
 def forgot_password(
     request: ForgotPasswordRequest,
     request_obj: Request,
@@ -168,7 +146,7 @@ def google_login(
 
 
 # REFRESH TOKEN
-@router.post("/refresh-token")
+@router.post("/refresh")
 def refresh_token(
     response: Response,
     refresh_token: str | None = Cookie(
@@ -202,7 +180,7 @@ def logout(
 
 
 # CURRENT USER
-@router.get("/me")
+@me_router.get("")
 def me(
     payload: dict = Depends(
         authenticate_user
@@ -216,7 +194,7 @@ def me(
 
 
 # CURRENT USER PERMISSIONS (frontend dùng để ẩn/hiện chức năng)
-@router.get("/me/permissions")
+@me_router.get("/permissions")
 def my_permissions(
     payload: dict = Depends(
         authenticate_user
@@ -237,22 +215,8 @@ def my_permissions(
     }
 
 
-# PROFILE DETAILS (ALIAS TO /me)
-@router.get("/profile")
-def profile(
-    payload: dict = Depends(
-        authenticate_user
-    ),
-    db: Session = Depends(get_db)
-):
-    return me_controller(
-        payload=payload,
-        db=db
-    )
-
-
 # CHANGE PASSWORD
-@router.post("/change-password")
+@me_router.put("/password")
 def change_password(
     request: ChangePasswordRequest,
     response: Response,
@@ -270,10 +234,7 @@ def change_password(
 
 
 # UPDATE PROFILE
-@router.put("/profile")
-@router.patch("/profile")
-@router.put("/me")
-@router.patch("/me")
+@me_router.patch("")
 def update_profile(
     request: UpdateProfileRequest,
     payload: dict = Depends(

@@ -1,8 +1,10 @@
+from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db_session
 from app.controllers.debt_controller import DebtController
+from app.services.new_customer_service import NEW_CUSTOMER_KEY, resolve_customer_id
 from app.ai.mcp.debt.tools import (
     GhiNoKhachHangInput,
     GhiNoKhachHangOutput,
@@ -26,10 +28,22 @@ def ghi_no_khach_hang(input: GhiNoKhachHangInput, user_id: int) -> GhiNoKhachHan
     """
     db: Session = get_db_session()
     try:
+        # Khách hàng mới (nếu có) chỉ được flush; create_customer_debt commit/rollback chung một session
+        customer_id = resolve_customer_id(db, user_id, {
+            "customer_id": input.customer_id,
+            "customer_name": input.customer_name,
+            NEW_CUSTOMER_KEY: input.new_customer,
+        })
+        if not customer_id:
+            db.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail=f"Không tìm thấy khách hàng '{input.customer_name or ''}' trong hệ thống.",
+            )
         result = DebtController.create_customer_debt(
             db=db,
             user_id=user_id,
-            customer_id=input.customer_id,
+            customer_id=customer_id,
             total_debt=input.original_amount,
             transaction_id=input.transaction_id,
             input_method=getattr(input, "input_method", "MANUAL"),

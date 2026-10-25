@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
@@ -14,8 +15,12 @@ from app.schemas.admin_dataset_schema import (
 )
 from app.services.admin_dataset_service import AdminDatasetService
 
+
+class DatasetIngestRequest(BaseModel):
+    voice_id: int = Field(..., ge=1, description="ID bản ghi giọng nói (Voice_Record) cần đưa vào dataset")
+
 router = APIRouter(
-    prefix="/admin/dataset",
+    prefix="/admin/datasets",
     tags=["Admin - Data Lake & Dataset Management"],
     dependencies=[Depends(require_admin_area)],
 )
@@ -98,11 +103,12 @@ def get_dataset_detail(id: int, db: Session = Depends(get_db)):
 
 
 @router.post(
-    "/ingest/{id}",
+    "",
+    status_code=status.HTTP_201_CREATED,
     response_model=AdminDatasetIngestResponse,
     summary="Ingest bản ghi Voice Processing vào Data Lake",
     description="Kích hoạt quá trình snapshot lưu trữ bản ghi vào các vùng Raw, Processed, Feedback và Dataset trong Data Lake.",
     dependencies=[Depends(require_permission("admin_dataset:manage"))],
 )
-def ingest_voice_record_to_lake(id: int, db: Session = Depends(get_db)):
-    return AdminDatasetService.ingest_voice_record(db=db, voice_id=id)
+def ingest_voice_record_to_lake(data: DatasetIngestRequest, db: Session = Depends(get_db)):
+    return AdminDatasetService.ingest_voice_record(db=db, voice_id=data.voice_id)

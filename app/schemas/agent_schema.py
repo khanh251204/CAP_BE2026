@@ -57,7 +57,7 @@ class CorrectedTransactionSchema(BaseModel):
 
 class AgentConfirmRequest(BaseModel):
     """
-    Body tùy chọn cho endpoint POST /api/v1/agent/confirm.
+    Body tùy chọn cho endpoint POST /api/v1/agent/pending-action/confirmation.
     """
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 

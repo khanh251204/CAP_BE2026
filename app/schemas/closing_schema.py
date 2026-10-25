@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import date, datetime, time
 from decimal import Decimal
 from app.schemas.report_schema import LiveSummary, TransactionReportItem
@@ -64,6 +64,16 @@ class ClosingTransactionsResponse(BaseModel):
 
 
 class ClosingReopenRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class ClosingStatusUpdateRequest(BaseModel):
+    """
+    PATCH /closing-periods/{id}: đổi trạng thái kỳ chốt.
+    - status = "OPEN"   : mở lại kỳ đã chốt (có thể kèm reason)
+    - status = "CLOSED" : chốt lại kỳ đang mở (tính lại số liệu, gửi lại email)
+    """
+    status: Literal["OPEN", "CLOSED"]
     reason: Optional[str] = None
 
 

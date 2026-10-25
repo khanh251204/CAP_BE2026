@@ -3,7 +3,9 @@ from pydantic import BaseModel, Field
 
 
 class GhiNoKhachHangInput(BaseModel):
-    customer_id: int = Field(..., description="ID khách hàng cần ghi nợ (bắt buộc)")
+    customer_id: Optional[int] = Field(None, description="ID khách hàng cần ghi nợ")
+    customer_name: Optional[str] = Field(None, description="Tên khách hàng (dùng khi chưa có customer_id)")
+    new_customer: bool = Field(False, description="True: người dùng đã đồng ý tạo khách hàng mới nếu chưa tồn tại")
     original_amount: float = Field(..., gt=0, description="Số tiền gốc còn nợ, tương ứng cột Debt.original_amount trong erd.md")
     transaction_id: Optional[int] = Field(
         None,

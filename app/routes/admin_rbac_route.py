@@ -127,7 +127,7 @@ def list_permissions(db: Session = Depends(get_db)):
     return RBACService.get_permissions_grouped(db)
 
 
-@router.post(
+@router.put(
     "/users/{user_id}/role",
     summary="Gán vai trò cho người dùng",
     description="Chỉ định vai trò (role_id) cho một người dùng cụ thể.",

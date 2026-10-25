@@ -12,8 +12,8 @@ const cases = readCsv<{
   note: string;
 }>(csvFilePath);
 
-const REFRESH_ENDPOINT = process.env.REFRESH_ENDPOINT || '/api/v1/refresh-token';
-const LOGIN_ENDPOINT = process.env.LOGIN_ENDPOINT || '/api/v1/login';
+const REFRESH_ENDPOINT = process.env.REFRESH_ENDPOINT || '/api/v1/auth/refresh';
+const LOGIN_ENDPOINT = process.env.LOGIN_ENDPOINT || '/api/v1/auth/login';
 
 let validRefreshToken = '';
 const actualResults = new Map<string, string>();

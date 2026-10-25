@@ -14,9 +14,12 @@ from app.schemas.supplier_schema import (
     SupplierDebtListResponse,
     PaginatedSupplierListResponse,
 )
+from app.controllers.debt_controller import DebtController
 from app.schemas.debt_schema import (
     FIFODebtPaymentRequest,
     SupplierFIFOPaymentResponse,
+    CreateSupplierDebtRequest,
+    CreateSupplierDebtResponse,
 )
 
 supplier_router = APIRouter(tags=["Supplier Management"])
@@ -135,6 +138,29 @@ def get_supplier_debts(
         supplier_id=supplier_id,
         user_id=user_id,
         db=db,
+    )
+
+
+@supplier_router.post(
+    "/suppliers/{supplier_id}/debts",
+    response_model=CreateSupplierDebtResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ghi nợ mới với nhà cung cấp (PAYABLE)",
+    dependencies=[Depends(require_permission("debt:manage"))],
+)
+def create_supplier_debt(
+    supplier_id: int = Path(..., ge=1, description="ID nhà cung cấp"),
+    request: CreateSupplierDebtRequest = ...,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return DebtController.create_supplier_debt(
+        db=db,
+        user_id=user_id,
+        supplier_id=supplier_id,
+        total_debt=request.total_debt,
+        transaction_id=request.transaction_id,
+        note=request.note,
     )
 
 

@@ -1,10 +1,17 @@
 from typing import Any
 
-# unit không bắt buộc: nếu thiếu sẽ lấy default_unit của sản phẩm (khớp với prompt intent.py)
+# unit cũng bắt buộc (trừ dịch vụ) nhưng được kiểm tra trong handler (sau khi tra cứu sản phẩm)
+# để gợi ý đúng đơn vị tính của sản phẩm / các đơn vị user đang dùng.
+# price không bắt buộc: thiếu thì lấy giá bán trong danh mục.
 REQUIRED_FIELDS = [
     "product",
     "quantity",
 ]
+
+FIELD_LABELS = {
+    "product": "tên sản phẩm",
+    "quantity": "số lượng",
+}
 
 
 def validate(entities: dict[str, Any]) -> dict:
@@ -18,11 +25,12 @@ def validate(entities: dict[str, Any]) -> dict:
             missing_fields.append(field)
 
     if missing_fields:
+        labels = ", ".join(FIELD_LABELS[f] for f in missing_fields)
         return {
             "success": False,
             "status": "need_information",
             "missing_fields": missing_fields,
-            "message": "Thiếu thông tin bắt buộc"
+            "message": f"Bạn chưa nói {labels}. Ví dụ: \"bán 2 lon Coca\"."
         }
 
     return {

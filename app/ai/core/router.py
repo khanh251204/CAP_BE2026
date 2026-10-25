@@ -1,7 +1,6 @@
 import inspect
 from typing import Any
 
-from app.ai.intents.nhap_hang.handler import NhapHangHandler
 from app.ai.intents.mua_hang.handler import MuaHangHandler
 from app.ai.intents.ban_hang.handler import BanHangHandler
 from app.ai.intents.khach_ghi_no.handler import KhachGhiNoHandler
@@ -19,7 +18,6 @@ from app.ai.intents.bao_cao.handler import BaoCaoHandler
 from app.ai.intents.nhap_kho.handler import NhapKhoHandler
 from app.ai.intents.xuat_kho.handler import XuatKhoHandler
 
-_nhap_hang = NhapHangHandler()
 _mua_hang = MuaHangHandler()
 _ban_hang = BanHangHandler()
 _nhap_kho = NhapKhoHandler()
@@ -39,7 +37,7 @@ _bao_cao = BaoCaoHandler()
 
 HANDLERS = {
     "mua_hang": _mua_hang,
-    "nhap_hang": _nhap_hang,
+    "nhap_hang": _mua_hang,  # cùng một nghiệp vụ với mua_hang
     "nhap_kho": _nhap_kho,
     "xuat_kho": _xuat_kho,
     "ban_hang": _ban_hang,
