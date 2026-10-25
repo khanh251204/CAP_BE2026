@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.customer_model import Customer
 from app.repositories.customer_repository import CustomerRepository
+from app.services.duplicate_guard import clean_name, ensure_unique_customer
 from app.schemas.customer_schema import (
     CustomerCreateRequest,
     CustomerUpdateRequest,
@@ -19,9 +20,15 @@ class CustomerService:
         request: CustomerCreateRequest,
         db: Session
     ) -> Dict[str, Any]:
+        name = clean_name(request.customer_name)
+        if not name:
+            raise HTTPException(status_code=400, detail="Tên khách hàng không được để trống")
+        # Không cho trùng tên hoặc số điện thoại với khách hàng đã có
+        ensure_unique_customer(db, user_id, name=name, phone=request.phone_number)
+
         customer = Customer(
             user_id=user_id,
-            customer_name=request.customer_name.strip(),
+            customer_name=name,
             phone_number=request.phone_number.strip() if request.phone_number else None,
             email=request.email.strip() if request.email else None,
             address=request.address.strip() if request.address else None,
@@ -123,8 +130,18 @@ class CustomerService:
                 detail=f"Khách hàng {customer_id} không tồn tại hoặc không thuộc quyền quản lý"
             )
 
-        if request.customer_name is not None:
-            customer.customer_name = request.customer_name.strip()
+        new_name = clean_name(request.customer_name) if request.customer_name is not None else None
+        if request.customer_name is not None and not new_name:
+            raise HTTPException(status_code=400, detail="Tên khách hàng không được để trống")
+        ensure_unique_customer(
+            db, user_id,
+            name=new_name,
+            phone=request.phone_number if request.phone_number else None,
+            exclude_id=customer.customer_id,
+        )
+
+        if new_name is not None:
+            customer.customer_name = new_name
         if request.phone_number is not None:
             customer.phone_number = request.phone_number.strip() if request.phone_number else None
         if request.email is not None:

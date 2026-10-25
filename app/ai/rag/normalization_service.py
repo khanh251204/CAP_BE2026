@@ -12,15 +12,32 @@ class NormalizationService:
 
     DEFAULT_DATA_PATH = Path(__file__).resolve().parent / "knowledge" / "normalization_data.json"
 
-    def __init__(
-        self,
-        data_path: Optional[str | Path] = None,
-        vector_store: Optional[Any] = None
-    ):
+    def __init__(self, data_path: Optional[str | Path] = None):
         self.data_path = Path(data_path or self.DEFAULT_DATA_PATH)
-        self.vector_store = vector_store
         self.knowledge_entries: List[Dict[str, Any]] = []
+        # (entry, compiled_pattern) đã sắp xếp cụm từ dài trước — build 1 lần thay vì mỗi request
+        self._compiled_entries: List[Tuple[Dict[str, Any], "re.Pattern[str]"]] = []
         self._load_knowledge()
+
+    @staticmethod
+    def _term_pattern(term: str) -> "re.Pattern[str]":
+        # Tránh match 'mi' trong 'bánh mì' / 'bánh mi'
+        if term.lower() == "mi":
+            raw = rf"(?<!bánh\s)(?<!banh\s)(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
+        else:
+            raw = rf"(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
+        return re.compile(raw, flags=re.IGNORECASE)
+
+    def _build_patterns(self):
+        sorted_entries = sorted(
+            self.knowledge_entries,
+            key=lambda item: len(item["term"]),
+            reverse=True
+        )
+        self._compiled_entries = [
+            (entry, self._term_pattern(entry["term"].strip()))
+            for entry in sorted_entries
+        ]
 
     def _load_knowledge(self):
         """Nạp danh mục mapping chuẩn hóa từ JSON."""
@@ -36,6 +53,8 @@ class NormalizationService:
             print(f"[Warning] Lỗi khi đọc {self.data_path}: {e}")
             self.knowledge_entries = []
 
+        self._build_patterns()
+
     def retrieve_normalization_candidates(self, text: str) -> Dict[str, str]:
         """
         Trích xuất các ứng viên chuẩn hóa (term -> normalized) xuất hiện trong câu.
@@ -46,25 +65,9 @@ class NormalizationService:
             return {}
 
         candidates: Dict[str, str] = {}
-        # Sắp xếp ưu tiên các cụm từ dài trước (greedy longest match)
-        sorted_entries = sorted(
-            self.knowledge_entries,
-            key=lambda item: len(item["term"]),
-            reverse=True
-        )
-
-        for entry in sorted_entries:
-            term = entry["term"].strip()
-            normalized = entry["normalized"].strip()
-
-            # Tránh match 'mi' trong 'bánh mì' / 'bánh mi'
-            if term.lower() == "mi":
-                pattern = rf"(?<!bánh\s)(?<!banh\s)(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
-            else:
-                pattern = rf"(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
-
-            if re.search(pattern, text, flags=re.IGNORECASE):
-                candidates[term] = normalized
+        for entry, pattern in self._compiled_entries:
+            if pattern.search(text):
+                candidates[entry["term"].strip()] = entry["normalized"].strip()
 
         return candidates
 
@@ -73,24 +76,7 @@ class NormalizationService:
         if not text or not text.strip():
             return []
 
-        matched = []
-        sorted_entries = sorted(
-            self.knowledge_entries,
-            key=lambda item: len(item["term"]),
-            reverse=True
-        )
-
-        for entry in sorted_entries:
-            term = entry["term"].strip()
-            if term.lower() == "mi":
-                pattern = rf"(?<!bánh\s)(?<!banh\s)(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
-            else:
-                pattern = rf"(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
-
-            if re.search(pattern, text, flags=re.IGNORECASE):
-                matched.append(entry)
-
-        return matched
+        return [entry for entry, pattern in self._compiled_entries if pattern.search(text)]
 
     def _normalize_money(self, text: str) -> Tuple[str, Dict[str, str]]:
         """
@@ -107,7 +93,9 @@ class NormalizationService:
         def repl_ruoi(match):
             orig = match.group(0)
             prefix = match.group(1).lower() if match.group(1) else "1"
-            val = 1500000 if prefix in ("1", "một", "mot") else int(prefix) * 1000000 + 500000
+            word_digits = {"một": 1, "mot": 1, "hai": 2, "ba": 3, "bốn": 4, "năm": 5}
+            millions = word_digits[prefix] if prefix in word_digits else int(prefix)
+            val = millions * 1000000 + 500000
             res = f"{val} đồng"
             changes[orig] = res
             return res
@@ -215,10 +203,7 @@ class NormalizationService:
             for term in sorted_terms:
                 target_norm = candidates[term]
 
-                if term.lower() == "mi":
-                    pattern = rf"(?<!bánh\s)(?<!banh\s)(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
-                else:
-                    pattern = rf"(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
+                pattern = self._term_pattern(term)
 
                 def replace_fn(match):
                     original_chunk = match.group(0)
@@ -226,7 +211,7 @@ class NormalizationService:
                         return target_norm.capitalize()
                     return target_norm
 
-                new_text, count = re.subn(pattern, replace_fn, normalized_text, flags=re.IGNORECASE)
+                new_text, count = pattern.subn(replace_fn, normalized_text)
                 if count > 0:
                     normalized_text = new_text
                     changes_applied[term] = target_norm

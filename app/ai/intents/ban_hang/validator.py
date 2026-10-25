@@ -1,9 +1,9 @@
 from typing import Any
 
+# unit không bắt buộc: nếu thiếu sẽ lấy default_unit của sản phẩm (khớp với prompt intent.py)
 REQUIRED_FIELDS = [
     "product",
     "quantity",
-    "unit"
 ]
 
 

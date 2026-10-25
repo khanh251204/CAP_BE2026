@@ -1,9 +1,9 @@
+import logging
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.controllers.notification_controller import NotificationController
 from app.configs.jwt import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.configs.roles import Roles
 from app.configs.security import verify_password
@@ -12,6 +12,7 @@ from app.repositories.user_repository import (
     get_user_by_email,
     get_user_by_id,
     get_user_by_google_id,
+    link_google_account,
 )
 from app.schemas.auth_schema import LoginRequest, GoogleLoginRequest
 from app.services.google_auth_service import verify_google_id_token
@@ -23,6 +24,20 @@ from app.services.refresh_token_service import (
 )
 from app.services.auth.auth_registration_service import normalize_email, user_to_dict
 from app.services.system_log_service import log_event
+
+logger = logging.getLogger(__name__)
+
+
+def record_user_login(user_id: int | str):
+    try:
+        from app.configs.firebase import db
+        from firebase_admin import firestore
+        db.collection("user_activity").document(str(user_id)).set({
+            "userId": str(user_id),
+            "lastLoginAt": firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+    except Exception as e:
+        logger.warning(f"Failed to record user activity for {user_id}: {e}")
 
 
 def create_session(db: Session, user) -> dict:
@@ -39,6 +54,8 @@ def create_session(db: Session, user) -> dict:
         email=user.email,
         role=user.role
     )
+
+    record_user_login(user.user_id)
 
     return {
         "accessToken": access_token,
@@ -109,18 +126,6 @@ def login_user(db: Session, data: LoginRequest):
         session = create_session(db, user)
         db.commit()
         db.refresh(user)
-
-        NotificationController.create_notification({
-            "userId": str(user.user_id),
-            "title": "Đăng nhập thành công 👋",
-            "description": f"Chào mừng {user.full_name} quay trở lại VoiceCashBook!",
-            "icon": "check",
-            "iconColor": "#FFFFFF",
-            "borderColor": "#20D66B",
-            "notificationType": "login",
-            "isRead": False
-        })
-
         return {
             "success": True,
             **session,
@@ -138,6 +143,9 @@ def login_user(db: Session, data: LoginRequest):
         )
 
 
+DEFAULT_GOOGLE_BUSINESS_TYPE = "RESELLER"
+
+
 def google_login(db: Session, data: GoogleLoginRequest):
     google_data = verify_google_id_token(data.idToken)
     google_id = google_data["googleId"]
@@ -148,24 +156,32 @@ def google_login(db: Session, data: GoogleLoginRequest):
         if not user:
             existing_user = get_user_by_email(db, email)
             if existing_user:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Email đã tồn tại. Vui lòng đăng nhập bằng mật khẩu."
+                # Email đã đăng ký bằng mật khẩu -> liên kết Google vào tài khoản đó
+                if existing_user.google_id and existing_user.google_id != google_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Email đã được liên kết với một tài khoản Google khác"
+                    )
+                user = link_google_account(db, existing_user, google_id)
+                if not user.is_verified:
+                    user.is_verified = True
+            else:
+                user = create_user(
+                    db=db,
+                    full_name=google_data["fullName"],
+                    email=email,
+                    password_hash=None,
+                    region=None,
+                    account_type="personal",
+                    store_name=None,
+                    business_type=DEFAULT_GOOGLE_BUSINESS_TYPE,
+                    google_id=google_id,
+                    role=Roles.USER,
+                    is_verified=True
                 )
 
-            user = create_user(
-                db=db,
-                full_name=google_data["fullName"],
-                email=email,
-                password_hash=None,
-                region=None,
-                account_type="personal",
-                store_name=None,
-                business_type=None,
-                google_id=google_id,
-                role=Roles.USER,
-                is_verified=True
-            )
+        if not user.business_type:
+            user.business_type = DEFAULT_GOOGLE_BUSINESS_TYPE
 
         session = create_session(db, user)
         db.commit()

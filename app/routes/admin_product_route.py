@@ -6,7 +6,7 @@ Endpoints:
   GET /admin/products/{product_id}  — Chi tiết sản phẩm
   PATCH /admin/products/{product_id}/status — Cập nhật trạng thái sản phẩm (kích hoạt / ngừng kinh doanh)
 
-Authorization: JWT + Role ADMIN (reuse authorize_roles từ jwt.py)
+Authorization: JWT + quyền admin_* (require_admin_area + require_permission)
 """
 from typing import Optional
 
@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Query, Path
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import authorize_roles
+from app.configs.jwt import require_permission, require_admin_area
 from app.schemas.admin_product_schema import (
     AdminProductListResponse,
     AdminProductDetailResponse,
@@ -27,7 +27,7 @@ from app.services.admin_product_service import AdminProductService
 router = APIRouter(
     prefix="/admin/products",
     tags=["Admin - Product Management"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_admin_area)]
 )
 
 
@@ -41,6 +41,7 @@ router = APIRouter(
         "bộ lọc (product_type, is_active, user_id), "
         "và sắp xếp."
     ),
+    dependencies=[Depends(require_permission("admin_product:read"))],
 )
 def list_products(
     page: int = Query(1, ge=1, description="Trang hiện tại (bắt đầu từ 1)"),
@@ -86,6 +87,7 @@ def list_products(
     response_model=AdminProductDetailResponse,
     summary="Xem chi tiết sản phẩm (Admin)",
     description="Truy xuất thông tin chi tiết của một sản phẩm kèm thông tin người dùng sở hữu, tồn kho và số liệu liên quan.",
+    dependencies=[Depends(require_permission("admin_product:read"))],
 )
 def get_product_detail(
     product_id: int = Path(..., description="ID sản phẩm"),
@@ -102,6 +104,7 @@ def get_product_detail(
     response_model=AdminProductStatusUpdateResponse,
     summary="Cập nhật trạng thái sản phẩm (Admin)",
     description="Cập nhật trạng thái kích hoạt/ngừng kinh doanh (is_active) cho sản phẩm.",
+    dependencies=[Depends(require_permission("admin_product:manage"))],
 )
 def update_product_status(
     product_id: int = Path(..., description="ID sản phẩm"),

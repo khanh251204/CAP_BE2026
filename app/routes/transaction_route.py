@@ -3,10 +3,11 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.controllers.transaction_controller import TransactionController
 from app.schemas.transaction_schema import (
     TransactionCreateRequest,
+    TransactionUpdateRequest,
     TransactionListResponse,
     TransactionResponseItem,
     IntentTypeEnum,
@@ -30,7 +31,7 @@ def parse_and_validate_transaction_query(
     Validate query params cho API GET /transactions:
     - 401: Xác thực người dùng trước qua get_current_user_id.
     - 200: Nếu param không có hoặc để rỗng ("") thì không lọc, coi như None -> trả 200 OK bình thường.
-    - 400: Nếu có truyền param nhưng sai giá trị / sai enum / tham số lạ / không khớp tổ hợp -> HTTP 400 Bad Request.
+    - 422: Nếu có truyền param nhưng sai giá trị / sai enum / tham số lạ / không khớp tổ hợp -> HTTP 422 Unprocessable Entity.
     """
     errors = []
     query_params = request.query_params
@@ -124,7 +125,7 @@ def parse_and_validate_transaction_query(
 
     if errors:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=errors
         )
 
@@ -140,16 +141,14 @@ def parse_and_validate_transaction_query(
 @transaction_router.get(
     "/transactions",
     response_model=TransactionListResponse,
-    summary="Lấy danh sách giao dịch (Transaction) có phân trang và bộ lọc intent_type"
+    summary="Lấy danh sách giao dịch (Transaction) có phân trang và bộ lọc intent_type",
+    dependencies=[Depends(require_permission("transaction:read"))],
 )
 def get_transactions(
     params: dict = Depends(parse_and_validate_transaction_query),
     db: Session = Depends(get_db),
 ):
-    """
-    Lấy danh sách giao dịch của người dùng hiện tại theo đúng cấu trúc model Transaction và docs/erd_new.md:
-    Bao gồm thông tin Transaction, Transaction_Detail, Product, Customer, Supplier, Account, Intent (kèm intent_type).
-    """
+
     return TransactionController.get_transactions(
         db=db,
         user_id=params["user_id"],
@@ -163,7 +162,8 @@ def get_transactions(
 @transaction_router.get(
     "/transaction/{transaction_id}",
     response_model=TransactionResponseItem,
-    summary="Lấy chi tiết giao dịch theo transaction_id"
+    summary="Lấy chi tiết giao dịch theo transaction_id",
+    dependencies=[Depends(require_permission("transaction:read"))],
 )
 def get_transaction_by_id(
     transaction_id: int,
@@ -191,14 +191,10 @@ def get_transaction_by_id(
 @transaction_router.post(
     "/transaction",
     status_code=status.HTTP_201_CREATED,
-    summary="Tạo hoặc lưu giao dịch mới"
+    summary="Tạo hoặc lưu giao dịch mới",
+    dependencies=[Depends(require_permission("transaction:create"))],
 )
-@transaction_router.post(
-    "/transactions",
-    status_code=status.HTTP_201_CREATED,
-    summary="Tạo hoặc lưu giao dịch mới (alias)",
-    include_in_schema=False
-)
+
 def save_transaction(
     request: TransactionCreateRequest,
     db: Session = Depends(get_db),
@@ -248,8 +244,8 @@ def save_transaction(
         except Exception:
             pass
 
-        # Các lỗi về giá trị sai (âm, = 0, vượt tồn kho, sai đơn vị tính, sản phẩm không tồn tại) -> trả 422 UNPROCESSABLE ENTITY theo chuẩn QA testcases
-        if any(kw in err_msg.lower() for kw in ["phải lớn hơn", "không đủ tồn kho", "không khớp với đơn vị", "không tồn tại"]):
+        # Các lỗi về giá trị sai (âm, = 0, vượt tồn kho, sai đơn vị tính, sản phẩm không tồn tại, vượt quá số nợ) -> trả 422 UNPROCESSABLE ENTITY theo chuẩn QA testcases
+        if any(kw in err_msg.lower() for kw in ["phải lớn hơn", "không đủ tồn kho", "không khớp với đơn vị", "không tồn tại", "vượt quá", "vượt"]):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Dữ liệu không hợp lệ: {err_msg}"
@@ -283,13 +279,10 @@ def save_transaction(
 
 @transaction_router.delete(
     "/transaction/{transaction_id}",
-    summary="Xóa giao dịch và hoàn lại tồn kho, công nợ liên quan"
+    summary="Xóa giao dịch và hoàn lại tồn kho, công nợ liên quan",
+    dependencies=[Depends(require_permission("transaction:delete"))],
 )
-@transaction_router.delete(
-    "/transactions/{transaction_id}",
-    summary="Xóa giao dịch (alias)",
-    include_in_schema=False
-)
+
 def delete_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
@@ -306,3 +299,43 @@ def delete_transaction(
         user_id=user_id,
         transaction_id=transaction_id
     )
+
+
+@transaction_router.put(
+    "/transaction/{transaction_id}",
+    summary="Cập nhật giao dịch và đồng bộ tồn kho, công nợ, số dư tài khoản",
+    dependencies=[Depends(require_permission("transaction:update"))],
+)
+def update_transaction(
+    transaction_id: int,
+    request: TransactionUpdateRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """
+    Cập nhật giao dịch theo transaction_id (partial update, đối chiếu docs/erd_new.md):
+    - Bắt buộc kiểm tra quyền sở hữu (user_id) -> 404.
+    - Chặn sửa nếu giao dịch / ngày mới thuộc kỳ chốt sổ đã đóng -> 409.
+    - Không cho đổi intent.
+    - Gửi `details` sẽ thay thế toàn bộ chi tiết cũ; hệ thống tự đồng bộ Inventory_Transaction,
+      Account.balance, Debt/Debt_Payment trong cùng một DB transaction.
+    - Lỗi nghiệp vụ (thiếu tồn kho, vượt số nợ, sai khóa ngoại...) -> 422.
+    """
+    try:
+        updated = TransactionController.update_transaction(
+            db=db,
+            user_id=user_id,
+            transaction_id=transaction_id,
+            request=request
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Dữ liệu không hợp lệ: {str(ve)}"
+        )
+
+    return {
+        "success": True,
+        "message": "Đã cập nhật giao dịch thành công!",
+        "data": updated
+    }

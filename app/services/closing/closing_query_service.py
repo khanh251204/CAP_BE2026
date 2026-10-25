@@ -11,6 +11,16 @@ from app.models.intent_model import Intent
 from app.models.category_model import Category
 from app.models.customer_model import Customer
 from app.models.supplier_model import Supplier
+from app.services.closing.closing_guard import count_late_transactions
+
+
+def _late_info(db, r) -> dict:
+    """Giao dịch phát sinh sau giờ chốt → kỳ cần chốt lại."""
+    try:
+        late = count_late_transactions(db, r)
+    except Exception:
+        late = 0
+    return {"late_transaction_count": late, "needs_reclose": late > 0}
 
 
 class ClosingQueryService:
@@ -60,7 +70,8 @@ class ClosingQueryService:
                 "note": r.note,
                 "closed_at": r.closed_at.isoformat() if r.closed_at else "",
                 "created_at": r.created_at.isoformat() if r.created_at else "",
-                "transaction_count": tx_count
+                "transaction_count": tx_count,
+            **_late_info(db, r)
             })
 
         return {
@@ -112,7 +123,8 @@ class ClosingQueryService:
             "note": r.note,
             "closed_at": r.closed_at.isoformat() if r.closed_at else "",
             "created_at": r.created_at.isoformat() if r.created_at else "",
-            "transaction_count": tx_count
+            "transaction_count": tx_count,
+            **_late_info(db, r)
         }
 
     @classmethod

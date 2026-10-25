@@ -2,20 +2,20 @@ test_id,product_name,product_type,default_unit,unit_price,min_quantity,expected,
 TC01,Coca Khong Duong,RESALE,lon,10000,5,401,Status 401 (PASSED),[NO_TOKEN] Khong gui token Authorization
 TC02,Coca Zero,RESALE,lon,10000,5,401,Status 401 (PASSED),[INVALID_TOKEN] Gui token Authorization sai hoac het han
 TC03,Banh Snack Khoai Tay,RESALE,goi,15000,10,401,Status 401 (PASSED),[MALFORMED_TOKEN] Gui token sai format (khong phai JWT)
-TC04,<MISSING>,RESALE,lon,10000,5,400,Status 400 (PASSED),Thieu field bat buoc product_name
-TC05,Pepsi Can,RESALE,<MISSING>,10000,5,400,Status 400 (PASSED),Thieu field bat buoc default_unit
-TC06,Tra Oolong,RESALE,chai,<MISSING>,5,400,Status 400 (PASSED),Thieu field bat buoc unit_price
-TC07,,RESALE,lon,10000,5,400,Status 400 (PASSED),product_name rong
+TC04,<MISSING>,RESALE,lon,10000,5,422,Status 422 (PASSED),Thieu field bat buoc product_name
+TC05,Pepsi Can,RESALE,<MISSING>,10000,5,422,Status 422 (PASSED),Thieu field bat buoc default_unit
+TC06,Tra Oolong,RESALE,chai,<MISSING>,5,422,Status 422 (PASSED),Thieu field bat buoc unit_price
+TC07,,RESALE,lon,10000,5,422,Status 422 (PASSED),product_name rong
 TC08,   ,RESALE,lon,10000,5,400,Status 400 (PASSED),product_name chi chua khoang trang
-TC09,San pham co ten dai vuot qua 255 ky tu AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,RESALE,hop,20000,2,400,Status 400 (PASSED),product_name dai hon 255 ky tu
+TC09,San pham co ten dai vuot qua 255 ky tu AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,RESALE,hop,20000,2,422,Status 422 (PASSED),product_name dai hon 255 ky tu
 TC10,Coca Cola 330ml,RESALE,lon,10000,5,400,Status 400 (PASSED),product_name trung ten san pham da ton tai
-TC11,Banh Mi Pate,,o,15000,10,400,Status 400 (PASSED),product_type de rong
-TC12,Banh Mi Trung,INVALID_TYPE,o,15000,10,400,Status 400 (PASSED),product_type khong thuoc enum hop le
-TC13,Mi Hao Hao,RESALE,goi,0,10,400,Status 400 (PASSED),unit_price bang 0
-TC14,Mi Omachi,RESALE,goi,-5000,10,400,Status 400 (PASSED),unit_price la so am
-TC15,Nuoc Ngot Sting,RESALE,chai,abc,10,400,Status 400 (PASSED),unit_price la dang chuoi khong hop le
-TC16,Banh Quy Oreo,RESALE,goi,12000,-1,400,Status 400 (PASSED),min_quantity la so am
-TC17,Keo Cao Su,RESALE,thanh,5000,xyz,400,Status 400 (PASSED),min_quantity la dang chuoi khong hop le
+TC11,Banh Mi Pate,,o,15000,10,422,Status 422 (PASSED),product_type de rong
+TC12,Banh Mi Trung,INVALID_TYPE,o,15000,10,422,Status 422 (PASSED),product_type khong thuoc enum hop le
+TC13,Mi Hao Hao,RESALE,goi,0,10,422,Status 422 (PASSED),unit_price bang 0
+TC14,Mi Omachi,RESALE,goi,-5000,10,422,Status 422 (PASSED),unit_price la so am
+TC15,Nuoc Ngot Sting,RESALE,chai,abc,10,422,Status 422 (PASSED),unit_price la dang chuoi khong hop le
+TC16,Banh Quy Oreo,RESALE,goi,12000,-1,422,Status 422 (PASSED),min_quantity la so am
+TC17,Keo Cao Su,RESALE,thanh,5000,xyz,422,Status 422 (PASSED),min_quantity la dang chuoi khong hop le
 TC18,Coca Cola 330ml,RESALE,lon,10000,5,200,Status 200 (PASSED),Positive: Tao san pham hop le RESALE
 TC19,Ca phe sua da,FINISHED_GOOD,ly,25000,0,200,Status 200 (PASSED),Positive: Tao san pham FINISHED_GOOD (min_quantity=0)
 TC20,Hat ca phe Robusta,RAW_MATERIAL,kg,150000,1,200,Status 200 (PASSED),Positive: Tao san pham RAW_MATERIAL (min_quantity=1)

@@ -9,6 +9,7 @@ server = FastMCP(
 
 
 server.tool()(ProductTools.search_products)
+server.tool()(ProductTools.find_duplicate_product)
 server.tool()(ProductTools.get_product_by_id)
 server.tool()(ProductTools.get_all_products)
 server.tool()(ProductTools.get_products_with_stock)

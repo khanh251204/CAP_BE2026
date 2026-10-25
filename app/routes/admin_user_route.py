@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import authorize_roles, authenticate_user
+from app.configs.jwt import authenticate_user, require_permission, require_admin_area
 from app.schemas.admin_user_schema import (
     AdminUserListResponse,
     AdminUserDetailResponse,
@@ -17,7 +17,7 @@ from app.services.admin_user_service import AdminUserService
 router = APIRouter(
     prefix="/admin/users",
     tags=["Admin - User Management"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_admin_area)]
 )
 
 
@@ -25,7 +25,8 @@ router = APIRouter(
     "",
     response_model=AdminUserListResponse,
     summary="Xem danh sách người dùng",
-    description="Truy vấn danh sách người dùng với phân trang, tìm kiếm theo tên/email/SĐT và bộ lọc theo vai trò (role), trạng thái (status), loại hình kinh doanh (business_type) và ngày tạo."
+    description="Truy vấn danh sách người dùng với phân trang, tìm kiếm theo tên/email/SĐT và bộ lọc theo vai trò (role), trạng thái (status), loại hình kinh doanh (business_type) và ngày tạo.",
+    dependencies=[Depends(require_permission("admin_user:read"))],
 )
 def list_users(
     page: int = Query(1, ge=1, description="Trang hiện tại (bắt đầu từ 1)"),
@@ -55,7 +56,8 @@ def list_users(
     "/{user_id}",
     response_model=AdminUserDetailResponse,
     summary="Xem thông tin chi tiết một người dùng",
-    description="Truy xuất đầy đủ thông tin chi tiết của người dùng theo ID, bao gồm định danh, liên hệ, loại hình kinh doanh, địa chỉ, trạng thái tài khoản. Tuyệt đối không trả về mật khẩu hay thông tin nhạy cảm."
+    description="Truy xuất đầy đủ thông tin chi tiết của người dùng theo ID, bao gồm định danh, liên hệ, loại hình kinh doanh, địa chỉ, trạng thái tài khoản. Tuyệt đối không trả về mật khẩu hay thông tin nhạy cảm.",
+    dependencies=[Depends(require_permission("admin_user:read"))],
 )
 def get_user_detail(
     user_id: int,
@@ -68,7 +70,8 @@ def get_user_detail(
     "/{user_id}/status",
     response_model=AdminUserStatusUpdateResponse,
     summary="Khóa hoặc mở khóa tài khoản người dùng",
-    description="Cho phép Admin khóa hoặc mở khóa tài khoản người dùng. Khi khóa, thời gian lock_until được thiết lập và toàn bộ refresh token hiện có của người dùng sẽ bị vô hiệu hóa."
+    description="Cho phép Admin khóa hoặc mở khóa tài khoản người dùng. Khi khóa, thời gian lock_until được thiết lập và toàn bộ refresh token hiện có của người dùng sẽ bị vô hiệu hóa.",
+    dependencies=[Depends(require_permission("admin_user:manage"))],
 )
 def update_user_status(
     user_id: int,

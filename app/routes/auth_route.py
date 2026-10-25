@@ -2,6 +2,7 @@ from fastapi import (
     APIRouter,
     Cookie,
     Depends,
+    HTTPException,
     Request,
     Response,
     status
@@ -212,6 +213,28 @@ def me(
         payload=payload,
         db=db
     )
+
+
+# CURRENT USER PERMISSIONS (frontend dùng để ẩn/hiện chức năng)
+@router.get("/me/permissions")
+def my_permissions(
+    payload: dict = Depends(
+        authenticate_user
+    )
+):
+    from app.configs.permissions import PERMISSION_CODES
+    from app.services.permission_service import PermissionService
+
+    access = PermissionService.get_user_access(int(payload["sub"]))
+    if not access.exists:
+        raise HTTPException(status_code=401, detail="Tài khoản không tồn tại hoặc phiên đăng nhập đã hết hạn")
+    return {
+        "user_id": access.user_id,
+        "role": access.role_name,
+        "is_admin": access.is_admin,
+        # ADMIN có toàn quyền -> trả đủ danh sách để frontend không phải xử lý riêng
+        "permissions": sorted(PERMISSION_CODES if access.is_admin else access.permissions),
+    }
 
 
 # PROFILE DETAILS (ALIAS TO /me)

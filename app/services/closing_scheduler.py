@@ -98,6 +98,11 @@ class ClosingScheduler:
 
         period = PeriodService.resolve_period(**period_params)
 
+        # Tháng / quý / năm: chỉ chốt vào NGÀY CUỐI KỲ (đúng giờ người dùng đặt).
+        # Trước đây chạy mỗi ngày → ngày 1/10 đã chốt cả tháng 10 khi tháng chưa kết thúc.
+        if p_type != "DAY" and now.date() != period["period_end"]:
+            return
+
         # Kiểm tra xem kỳ này đã chốt chưa
         existing = db.query(ClosingPeriod).filter(
             ClosingPeriod.user_id == setting.user_id,

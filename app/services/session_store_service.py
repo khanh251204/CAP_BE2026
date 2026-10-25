@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from collections.abc import MutableMapping
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
 
@@ -248,43 +247,3 @@ class SessionStoreService:
         except Exception as e:
             logger.warning("[SessionStore] Lỗi cleanup_expired: %s", e)
         return count
-
-
-class PendingConfirmationsProxy(MutableMapping):
-    """
-    Dict-like Proxy tương thích 100% với biến toàn cục `pending_confirmations` trước đây,
-    nhưng chuyển toàn bộ thao tác read/write xuống SessionStoreService (Redis / DB).
-    """
-
-    def __getitem__(self, key: Any) -> Any:
-        val = SessionStoreService.get_confirmation(key)
-        if val is None:
-            raise KeyError(key)
-        return val
-
-    def __setitem__(self, key: Any, value: Any) -> None:
-        if not isinstance(value, dict):
-            value = {"data": value}
-        SessionStoreService.save_confirmation(key, value)
-
-    def __delitem__(self, key: Any) -> None:
-        deleted = SessionStoreService.delete_confirmation(key)
-        if not deleted:
-            raise KeyError(key)
-
-    def __iter__(self):
-        # Không khuyến khích iterate qua toàn bộ session store phân tán
-        return iter([])
-
-    def __len__(self) -> int:
-        return 0
-
-    def __contains__(self, key: Any) -> bool:
-        return SessionStoreService.get_confirmation(key) is not None
-
-    def get(self, key: Any, default: Any = None) -> Any:
-        val = SessionStoreService.get_confirmation(key)
-        return val if val is not None else default
-
-    def pop(self, key: Any, default: Any = None) -> Any:
-        return SessionStoreService.pop_confirmation(key, default)

@@ -170,6 +170,31 @@ class AgentConfirmService:
             payload["total_amount"] = float(corr_dict["amount"])
         if "note" in corr_dict:
             payload["note"] = corr_dict["note"]
+        if corr_dict.get("date"):
+            payload["date"] = corr_dict["date"]
+        if corr_dict.get("category_name"):
+            payload["category_name"] = corr_dict["category_name"]
+            payload["category"] = corr_dict["category_name"]
+
+        # Chi phí: số tiền là TỔNG người dùng nhập (không phải SL × đơn giá).
+        # MCP create_expense đọc `amount` → phải cập nhật, nếu không bản sửa bị bỏ qua.
+        if intent in ("chi_phi", "chi_tien"):
+            amt = corr_dict.get("amount") if corr_dict.get("amount") is not None else corr_dict.get("total_amount")
+            if amt is not None:
+                try:
+                    amt = float(amt)
+                except (ValueError, TypeError):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Số tiền chi phí không hợp lệ"
+                    )
+                if amt <= 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Số tiền chi phí phải lớn hơn 0"
+                    )
+                payload["amount"] = amt
+                payload["total_amount"] = amt
 
         # 3. Tính diff và correction_type
         diff_ai: Dict[str, Any] = {}

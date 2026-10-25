@@ -178,6 +178,15 @@ class AdminUserService:
 
         raw_status = request.status.strip().upper()
 
+        # Chỉ ADMIN mới được khóa / mở khóa tài khoản ADMIN khác
+        from app.services.permission_service import PermissionService
+        actor = PermissionService.get_user_access(current_admin_id, db)
+        if (user.role or "").upper() == "ADMIN" and not actor.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Chỉ ADMIN mới được thay đổi trạng thái tài khoản ADMIN"
+            )
+
         if raw_status in ("LOCKED", "LOCK"):
             if user.user_id == current_admin_id:
                 raise HTTPException(
@@ -193,6 +202,8 @@ class AdminUserService:
             revoke_all_user_refresh_tokens(db, user_id=user.user_id, revoked_at=datetime.utcnow())
             db.commit()
             db.refresh(user)
+            # Trạng thái khóa được kiểm tra ở mỗi request -> xóa cache để có hiệu lực ngay
+            PermissionService.clear_cache(user.user_id)
 
             return AdminUserStatusUpdateResponse(
                 success=True,
@@ -206,6 +217,8 @@ class AdminUserService:
             AdminUserRepository.unlock_user(db, user)
             db.commit()
             db.refresh(user)
+            # Trạng thái khóa được kiểm tra ở mỗi request -> xóa cache để có hiệu lực ngay
+            PermissionService.clear_cache(user.user_id)
 
             return AdminUserStatusUpdateResponse(
                 success=True,

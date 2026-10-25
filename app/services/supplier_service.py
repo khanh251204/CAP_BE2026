@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.supplier_model import Supplier
 from app.repositories.supplier_repository import SupplierRepository
+from app.services.duplicate_guard import clean_name, ensure_unique_supplier
 from app.schemas.supplier_schema import (
     SupplierCreateRequest,
     SupplierUpdateRequest,
@@ -19,9 +20,15 @@ class SupplierService:
         request: SupplierCreateRequest,
         db: Session
     ) -> Dict[str, Any]:
+        name = clean_name(request.supplier_name)
+        if not name:
+            raise HTTPException(status_code=400, detail="Tên nhà cung cấp không được để trống")
+        # Không cho trùng tên, số điện thoại hoặc mã số thuế với nhà cung cấp đã có
+        ensure_unique_supplier(db, user_id, name=name, phone=request.phone_number, tax_code=request.tax_code)
+
         supplier = Supplier(
             user_id=user_id,
-            supplier_name=request.supplier_name.strip(),
+            supplier_name=name,
             phone_number=request.phone_number.strip() if request.phone_number else None,
             email=request.email.strip() if request.email else None,
             address=request.address.strip() if request.address else None,
@@ -131,8 +138,19 @@ class SupplierService:
                 detail=f"Nhà cung cấp {supplier_id} không tồn tại hoặc không thuộc quyền quản lý"
             )
 
-        if request.supplier_name is not None:
-            supplier.supplier_name = request.supplier_name.strip()
+        new_name = clean_name(request.supplier_name) if request.supplier_name is not None else None
+        if request.supplier_name is not None and not new_name:
+            raise HTTPException(status_code=400, detail="Tên nhà cung cấp không được để trống")
+        ensure_unique_supplier(
+            db, user_id,
+            name=new_name,
+            phone=request.phone_number if request.phone_number else None,
+            tax_code=request.tax_code if request.tax_code else None,
+            exclude_id=supplier.supplier_id,
+        )
+
+        if new_name is not None:
+            supplier.supplier_name = new_name
         if request.phone_number is not None:
             supplier.phone_number = request.phone_number.strip() if request.phone_number else None
         if request.email is not None:

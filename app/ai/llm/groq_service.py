@@ -44,8 +44,9 @@ class GroqService:
             self.analysis_model = "openai/gpt-oss-120b"
             
         elif self.active_ai_model == "qwen_local":
-            self.provider = get_model_provider(provider_name="llama_local", model_name="Qwen/Qwen2.5-2.5B-Instruct")
-            self.analysis_model = "Qwen/Qwen2.5-2.5B-Instruct"
+            # Qwen2.5 không có bản 2.5B; dùng 1.5B (khớp mặc định của LlamaLocalModel)
+            self.provider = get_model_provider(provider_name="llama_local", model_name="Qwen/Qwen2.5-1.5B-Instruct")
+            self.analysis_model = "Qwen/Qwen2.5-1.5B-Instruct"
 
             
         else:
@@ -100,9 +101,10 @@ class GroqService:
         try:
             # Sử dụng Model Provider từ app.ai.models
             # (Hàm predict sẽ tự động ghép system prompt và format JSON)
+            # business_type không được dùng trong prompt: LLM chỉ trích xuất intent/entity,
+            # quy tắc theo loại hình kinh doanh do backend áp dụng (AGENTS.md 2.1)
             benchmark_result = self.provider.predict(
-                text=text, 
-                business_type="PRODUCER", # Mặc định hoặc truyền động nếu cần
+                text=text,
                 knowledge=knowledge
             )
             
@@ -117,7 +119,7 @@ class GroqService:
             parsed.setdefault("model", self.analysis_model)
             parsed.setdefault("prompt_version", PROMPT_VERSION)
             parsed.setdefault("pipeline_version", AI_PIPELINE_VERSION)
-            parsed.setdefault("_ai_metadata", get_ai_metadata())
+            parsed.setdefault("_ai_metadata", get_ai_metadata(self.analysis_model))
             
             return parsed
 

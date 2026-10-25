@@ -65,6 +65,18 @@ class ProductInventoryService:
         db.commit()
         db.refresh(inv_tx)
 
+        # Kích hoạt cảnh báo tồn kho nếu sau kiểm kho hàng bị hết hoặc dưới min_quantity
+        try:
+            from app.services.stock_alert_service import StockAlertService
+            StockAlertService.check_and_notify_stock(
+                db=db,
+                user_id=user_id,
+                product_id=product_id,
+                current_stock=qty_after
+            )
+        except Exception:
+            pass
+
         min_qty = Decimal(str(product.min_quantity)) if product.min_quantity is not None else Decimal("0.0")
         status_display = "Còn hàng" if qty_after > min_qty and qty_after > Decimal("0.0") else "Hết hàng"
 
@@ -140,6 +152,19 @@ class ProductInventoryService:
 
         db.commit()
         db.refresh(inv_tx)
+
+        # Kích hoạt cảnh báo tồn kho nếu xuất kho làm hàng bị hết hoặc dưới min_quantity
+        if inv_type == "OUT":
+            try:
+                from app.services.stock_alert_service import StockAlertService
+                StockAlertService.check_and_notify_stock(
+                    db=db,
+                    user_id=user_id,
+                    product_id=product_id,
+                    current_stock=qty_after
+                )
+            except Exception:
+                pass
 
         return {
             "product_id": product.product_id,

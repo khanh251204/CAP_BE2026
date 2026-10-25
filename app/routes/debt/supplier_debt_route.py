@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Path, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.controllers.debt_controller import DebtController
 from app.repositories.debt_repository import DebtRepository
 from app.schemas.debt_schema import (
@@ -22,6 +22,7 @@ supplier_debt_router = APIRouter()
     "/supplier",
     response_model=CreateSupplierDebtResponse,
     summary="Tạo công nợ nhà cung cấp (create_supplier_debt / ghi_no_nha_cung_cap)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def create_supplier_debt(
     request: CreateSupplierDebtRequest,
@@ -42,6 +43,7 @@ def create_supplier_debt(
     "/supplier",
     response_model=List[SupplierDebtItemResponse],
     summary="Lấy danh sách công nợ nhà cung cấp (PAYABLE)",
+    dependencies=[Depends(require_permission("debt:read"))],
 )
 def get_supplier_debts(
     supplier_id: Optional[int] = Query(None, description="Lọc theo ID nhà cung cấp"),
@@ -63,6 +65,7 @@ def get_supplier_debts(
     "/supplier/payments",
     response_model=PaySupplierDebtResponse,
     summary="Trả tiền nợ nhà cung cấp linh hoạt qua body (Mục 7)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def pay_supplier_debt_by_body(
     request: PaySupplierDebtRequest,
@@ -85,6 +88,7 @@ def pay_supplier_debt_by_body(
     "/supplier/{id}/payments",
     response_model=PaySupplierDebtResponse,
     summary="Trả tiền nợ nhà cung cấp (đích danh theo debt_id hoặc FIFO theo supplier_id)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def pay_supplier_debt_by_id(
     id: int = Path(..., description="ID công nợ cần trả (nếu nợ cụ thể) hoặc ID nhà cung cấp (nếu trả tổng FIFO)"),
@@ -125,6 +129,7 @@ def pay_supplier_debt_by_id(
     "/supplier-account/{supplier_id}/payments",
     response_model=PaySupplierDebtBySupplierResponse,
     summary="Trả tiền nợ nhà cung cấp - tự động phân bổ FIFO qua nhiều khoản nợ (Compatibility alias)",
+    dependencies=[Depends(require_permission("debt:manage"))],
 )
 def pay_supplier_debt_fifo(
     supplier_id: int = Path(..., description="ID nhà cung cấp cần trả nợ"),

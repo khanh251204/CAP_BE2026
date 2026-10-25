@@ -188,6 +188,10 @@ class ExpenseService:
 
         tx_date = transaction_date or datetime.now()
 
+        # Quy tắc chốt sổ: không ghi chi phí mới vào kỳ đã chốt
+        from app.services.closing.closing_guard import assert_date_open
+        assert_date_open(db, user_id, tx_date)
+
         # Tạo Transaction
         tx = Transaction(
             user_id=user_id,

@@ -4,6 +4,18 @@ from sqlalchemy.orm import Session
 from app.repositories.inventory_repo import InventoryRepository
 from app.services.debt_service import DebtService
 from app.models.intent_model import Intent
+from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError
+from app.services.sales_policy import (
+    STRICT,
+    MADE_TO_ORDER,
+    RAW_MATERIAL_BLOCKED,
+    ERROR_INSUFFICIENT_STOCK,
+    ERROR_CANNOT_SELL_RAW_MATERIAL,
+    get_sale_stock_policy,
+    get_user_business_type,
+    normalize_product_type,
+    is_unpaid_payment,
+)
 
 
 class InventoryService:
@@ -43,6 +55,8 @@ class InventoryService:
             product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=p_id)
             if not product_obj:
                 raise ValueError(f"Sản phẩm (ID: {p_id}) không tồn tại hoặc không thuộc quyền sở hữu của bạn.")
+            if getattr(product_obj, "is_active", True) is False:
+                raise ValueError(f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh.")
 
             # Validate quantity > 0
             raw_qty = item.get("quantity")
@@ -90,7 +104,8 @@ class InventoryService:
                 ),
                 "quantity": qty_val,
                 "unit": unit,
-                "unit_price": final_unit_price
+                "unit_price": final_unit_price,
+                "product_type": normalize_product_type(getattr(product_obj, "product_type", None)),
             })
 
         return normalized_items
@@ -134,12 +149,7 @@ class InventoryService:
                 })
 
             # Xử lý payment_status & amount_paid
-            raw_payment_status = str(payload.get("payment_status") or "").strip()
-            payment_status_upper = raw_payment_status.upper()
-
-            # Các từ khóa biểu thị chưa trả tiền
-            unpaid_keywords = ["CHƯA TRẢ", "CHƯA THANH TOÁN", "CHUA TRA", "CHUA THANH TOAN", "NỢ", "NO", "PENDING", "UNPAID"]
-            is_unpaid = any(kw in payment_status_upper for kw in unpaid_keywords) or payment_status_upper in ("UNPAID", "PENDING")
+            is_unpaid = is_unpaid_payment(payload.get("payment_status"))
 
             amount_paid_input = payload.get("amount_paid")
             if amount_paid_input is not None:
@@ -213,6 +223,8 @@ class InventoryService:
                     product_name=item.get("product_name"),
                 )
 
+                # Khóa dòng sản phẩm để tồn kho đọc ra không bị lệch khi có giao dịch đồng thời
+                self.repo.lock_product(user_id, item["product_id"])
                 qty_before = self.repo.get_latest_stock(user_id, item["product_id"])
                 qty_after = qty_before + item["quantity"]
 
@@ -287,22 +299,51 @@ class InventoryService:
                     "message": "Danh sách sản phẩm bán không được rỗng."
                 }
 
-            # 1. Kiểm tra tồn kho & Tính tổng tiền đơn hàng
+            # 1. Áp dụng quy tắc business_type/product_type, kiểm tra tồn kho & tính tổng tiền
+            business_type = get_user_business_type(self.db, user_id)
             total_amount = Decimal("0.0")
             processed_items = []
+
+            # Khóa theo thứ tự product_id tăng dần để tránh deadlock khi 2 đơn cùng chứa nhiều sản phẩm
+            for item in sorted(items, key=lambda it: it["product_id"]):
+                self.repo.lock_product(user_id, item["product_id"])
 
             for item in items:
                 qty = Decimal(str(item["quantity"]))
                 product_id = item["product_id"]
                 price = Decimal(str(item["unit_price"]))
+                display_name = item.get("product_name") or product_id
+                policy = get_sale_stock_policy(business_type, item.get("product_type"))
+
+                if policy == RAW_MATERIAL_BLOCKED:
+                    self.db.rollback()
+                    return {
+                        "status": ERROR_CANNOT_SELL_RAW_MATERIAL,
+                        "error_code": ERROR_CANNOT_SELL_RAW_MATERIAL,
+                        "success": False,
+                        "message": f"Sản phẩm '{display_name}' là nguyên liệu sản xuất (RAW_MATERIAL), không thể bán trực tiếp."
+                    }
 
                 current_stock = self.repo.get_latest_stock(user_id, product_id)
-                if current_stock < qty:
+                if policy == STRICT and current_stock < qty:
+                    self.db.rollback()
                     return {
-                        "status": "error",
+                        "status": "out_of_stock",
+                        "error_code": ERROR_INSUFFICIENT_STOCK,
                         "success": False,
-                        "message": f"Sản phẩm '{item.get('product_name', product_id)}' không đủ tồn kho (Tồn: {current_stock}, Yêu cầu: {qty})"
+                        "message": f"Sản phẩm '{display_name}' không đủ tồn kho (Tồn: {current_stock}, Yêu cầu: {qty})"
                     }
+
+                # Số lượng thực trừ kho:
+                # - STRICT: trừ đủ số bán
+                # - MADE_TO_ORDER: chỉ trừ phần thành phẩm đang có sẵn, phần còn lại làm theo yêu cầu (không âm kho)
+                # - NO_INVENTORY: dịch vụ, không trừ kho
+                if policy == STRICT:
+                    stock_out_qty = qty
+                elif policy == MADE_TO_ORDER:
+                    stock_out_qty = min(qty, max(current_stock, Decimal("0")))
+                else:
+                    stock_out_qty = Decimal("0")
 
                 subtotal = qty * price
                 total_amount += subtotal
@@ -321,17 +362,11 @@ class InventoryService:
                     "unit_price": price,
                     "subtotal": subtotal,
                     "stock_before": current_stock,
+                    "stock_out_qty": stock_out_qty,
                 })
 
             # Xử lý payment_status & amount_paid
-            raw_payment_status = str(payload.get("payment_status") or "").strip()
-            payment_status_upper = raw_payment_status.upper()
-
-            unpaid_keywords = [
-                "CHƯA TRẢ", "CHƯA THANH TOÁN", "CHUA TRA", "CHUA THANH TOAN",
-                "NỢ", "NO", "PENDING", "UNPAID", "GHI NỢ", "GHI NO"
-            ]
-            is_unpaid = any(kw in payment_status_upper for kw in unpaid_keywords) or payment_status_upper in ("UNPAID", "PENDING")
+            is_unpaid = is_unpaid_payment(payload.get("payment_status"))
 
             amount_paid_input = payload.get("amount_paid")
             if amount_paid_input is not None:
@@ -404,15 +439,18 @@ class InventoryService:
                     subtotal=item["subtotal"],
                     product_name=item.get("product_name"),
                 )
+                if item["stock_out_qty"] <= 0:
+                    continue
+
                 qty_before = item["stock_before"]
-                qty_after = qty_before - item["quantity"]
+                qty_after = qty_before - item["stock_out_qty"]
 
                 self.repo.create_inventory_transaction(
                     user_id=user_id,
                     product_id=item["product_id"],
                     transaction_id=tx.transaction_id,
                     type="OUT",
-                    quantity=item["quantity"],
+                    quantity=item["stock_out_qty"],
                     unit=item["unit"],
                     quantity_before=qty_before,
                     quantity_after=qty_after,
@@ -441,6 +479,21 @@ class InventoryService:
 
             self.db.commit()
             self.db.refresh(tx)
+
+            # Kích hoạt cảnh báo tồn kho nếu hàng đã bán hết hoặc dưới min_quantity
+            for item in processed_items:
+                if item["stock_out_qty"] <= 0:
+                    continue
+                try:
+                    from app.services.stock_alert_service import StockAlertService
+                    StockAlertService.check_and_notify_stock(
+                        db=self.db,
+                        user_id=user_id,
+                        product_id=item["product_id"],
+                        current_stock=item["stock_before"] - item["stock_out_qty"]
+                    )
+                except Exception:
+                    pass
 
             return {
                 "status": "success",
@@ -474,10 +527,18 @@ class InventoryService:
             product_name = payload.get("product_name")
 
             if not product_id and product_name:
-                product_id = self.repo.get_product_id_by_name(
-                    user_id=user_id,
-                    name=product_name
-                )
+                try:
+                    product_id = self.repo.get_product_id_by_name(
+                        user_id=user_id,
+                        name=product_name
+                    )
+                except AmbiguousMatchError as amb:
+                    return {
+                        "status": "ambiguous_product",
+                        "success": False,
+                        "candidates": amb.candidates,
+                        "message": str(amb)
+                    }
 
             if not product_id:
                 return {
@@ -492,6 +553,12 @@ class InventoryService:
                     "status": "error",
                     "success": False,
                     "message": f"Không tìm thấy sản phẩm hoặc sản phẩm không thuộc quyền sở hữu (ID: {product_id})."
+                }
+            if getattr(product_obj, "is_active", True) is False:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh."
                 }
 
             stock = self.repo.get_latest_stock(
@@ -532,7 +599,9 @@ class InventoryService:
                 "product_name": actual_product_name,
                 "quantity": float(stock),
                 "unit_price": unit_price,
-                "default_unit": default_unit
+                "default_unit": default_unit,
+                "product_type": normalize_product_type(getattr(product_obj, "product_type", None)),
+                "business_type": get_user_business_type(self.db, user_id),
             }
 
         except Exception as e:
@@ -598,7 +667,22 @@ class InventoryService:
                     "message": "Thiếu thông tin sản phẩm cần nhập kho."
                 }
 
-            product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
+            # Khóa dòng sản phẩm (chống race condition) và chỉ cho thao tác trên sản phẩm của chính user
+            product_obj = self.repo.lock_product(user_id=user_id, product_id=product_id)
+            if not product_obj:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Không tìm thấy sản phẩm hoặc sản phẩm không thuộc quyền sở hữu (ID: {product_id})."
+                }
+            if getattr(product_obj, "is_active", True) is False:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh."
+                }
             unit = payload.get("unit") or (getattr(product_obj, "default_unit", "") if product_obj else "")
             actual_product_name = product_name or (getattr(product_obj, "product_name", "") if product_obj else f"ID {product_id}")
 
@@ -700,7 +784,22 @@ class InventoryService:
                     "message": "Thiếu thông tin sản phẩm cần xuất kho."
                 }
 
-            product_obj = self.repo.get_product_by_id(user_id=user_id, product_id=product_id)
+            # Khóa dòng sản phẩm (chống race condition) và chỉ cho thao tác trên sản phẩm của chính user
+            product_obj = self.repo.lock_product(user_id=user_id, product_id=product_id)
+            if not product_obj:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Không tìm thấy sản phẩm hoặc sản phẩm không thuộc quyền sở hữu (ID: {product_id})."
+                }
+            if getattr(product_obj, "is_active", True) is False:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh."
+                }
             unit = payload.get("unit") or (getattr(product_obj, "default_unit", "") if product_obj else "")
             actual_product_name = product_name or (getattr(product_obj, "product_name", "") if product_obj else f"ID {product_id}")
 
@@ -730,6 +829,18 @@ class InventoryService:
             self.db.commit()
             self.db.refresh(inv_tx)
 
+            # Kích hoạt cảnh báo tồn kho nếu hết hàng hoặc dưới min_quantity
+            try:
+                from app.services.stock_alert_service import StockAlertService
+                StockAlertService.check_and_notify_stock(
+                    db=self.db,
+                    user_id=user_id,
+                    product_id=product_id,
+                    current_stock=qty_after
+                )
+            except Exception:
+                pass
+
             return {
                 "status": "success",
                 "success": True,
@@ -750,6 +861,113 @@ class InventoryService:
                 "status": "error",
                 "success": False,
                 "message": f"Lỗi xử lý xuất kho: {str(e)}"
+            }
+
+    def report_damage(
+        self,
+        user_id: int,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Báo hàng hư hỏng / hết hạn: tạo Inventory_Transaction loại DAMAGE và trừ tồn kho.
+        Không tạo Transaction tài chính, không được làm tồn kho âm.
+        """
+        try:
+            product_id = payload.get("product_id")
+            product_name = payload.get("product_name") or payload.get("product")
+
+            try:
+                qty = Decimal(str(payload.get("quantity")))
+            except Exception:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Số lượng không hợp lệ: {payload.get('quantity')}"
+                }
+            if qty <= 0:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": "Số lượng hàng hỏng phải lớn hơn 0."
+                }
+
+            if not product_id and product_name:
+                product_id = self.repo.get_product_id_by_name(user_id=user_id, name=str(product_name))
+            if not product_id:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "missing_fields": ["product"],
+                    "message": f"Không tìm thấy sản phẩm '{product_name}' trong hệ thống."
+                }
+
+            product_obj = self.repo.lock_product(user_id=user_id, product_id=product_id)
+            if not product_obj:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Không tìm thấy sản phẩm hoặc sản phẩm không thuộc quyền sở hữu (ID: {product_id})."
+                }
+
+            unit = payload.get("unit") or product_obj.default_unit or ""
+            qty_before = self.repo.get_latest_stock(user_id, product_id)
+            if qty_before < qty:
+                self.db.rollback()
+                return {
+                    "status": "out_of_stock",
+                    "error_code": ERROR_INSUFFICIENT_STOCK,
+                    "success": False,
+                    "message": f"Sản phẩm '{product_obj.product_name}' chỉ còn {qty_before}, không thể báo hỏng {qty}."
+                }
+            qty_after = qty_before - qty
+
+            inv_tx = self.repo.create_inventory_transaction(
+                user_id=user_id,
+                product_id=product_id,
+                transaction_id=None,
+                type="DAMAGE",
+                quantity=qty,
+                unit=unit,
+                quantity_before=qty_before,
+                quantity_after=qty_after,
+                note=payload.get("note") or payload.get("input_text") or "Hàng hư hỏng",
+            )
+
+            self.db.commit()
+            self.db.refresh(inv_tx)
+
+            try:
+                from app.services.stock_alert_service import StockAlertService
+                StockAlertService.check_and_notify_stock(
+                    db=self.db,
+                    user_id=user_id,
+                    product_id=product_id,
+                    current_stock=qty_after
+                )
+            except Exception:
+                pass
+
+            return {
+                "status": "success",
+                "success": True,
+                "message": f"Đã ghi nhận {qty} {unit} {product_obj.product_name} bị hư hỏng.",
+                "inventory_transaction_id": inv_tx.inventory_transaction_id,
+                "product_id": product_id,
+                "product_name": product_obj.product_name,
+                "quantity": float(qty),
+                "unit": unit,
+                "quantity_before": float(qty_before),
+                "quantity_after": float(qty_after),
+                "inventory_type": "DAMAGE"
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            return {
+                "status": "error",
+                "success": False,
+                "message": f"Lỗi ghi nhận hàng hư hỏng: {str(e)}"
             }
 
     # Alias phương thức

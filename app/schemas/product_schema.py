@@ -28,12 +28,12 @@ class ProductCreateRequest(BaseModel):
     product_name: str = Field(..., min_length=1, max_length=255, description="Tên sản phẩm")
     default_unit: str = Field(..., min_length=1, max_length=50, description="Đơn vị tính mặc định")
     unit_price: float = Field(..., gt=0, description="Đơn giá bán lẻ (phải > 0)")
-    min_quantity: float = Field(0.0, ge=0, description="Ngưỡng tồn kho tối thiểu (phải >= 0)")
-    product_type: ProductTypeEnum = Field(ProductTypeEnum.RESALE, description="Loại sản phẩm: RESALE, RAW_MATERIAL, FINISHED_GOOD")
+    min_quantity: Optional[float] = Field(0.0, ge=0, description="Ngưỡng tồn kho tối thiểu (phải >= 0)")
+    product_type: Optional[ProductTypeEnum] = Field(None, description="Loại sản phẩm: RESALE, RAW_MATERIAL, FINISHED_GOOD")
     img: Optional[str] = Field(None, description="Link hình ảnh sản phẩm")
     category_id: Optional[int] = Field(None, description="ID danh mục sản phẩm")
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
 
 
 class ProductUpdateRequest(BaseModel):
@@ -46,7 +46,7 @@ class ProductUpdateRequest(BaseModel):
     category_id: Optional[int] = Field(None, description="ID danh mục sản phẩm")
     img: Optional[str] = Field(None, description="Link hình ảnh sản phẩm")
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
 
 
 class ProductResponse(BaseModel):
@@ -87,3 +87,34 @@ ProductCreateSchema = ProductCreateRequest
 ProductUpdateStrictSchema = ProductUpdateRequest
 InventoryCheckRequestSchema = InventoryCheckRequest
 ManualInventoryTransactionSchema = ManualInventoryTransactionRequest
+
+
+# ==============================================================================
+# STOCK ALERT SCHEMAS
+# ==============================================================================
+
+class StockAlertItem(BaseModel):
+    product_id: int
+    product_name: str
+    product_type: Optional[str] = None
+    default_unit: Optional[str] = None
+    unit_price: float
+    min_quantity: float
+    current_stock: float
+    total_imported: float
+    total_sold: float
+    alert_type: str
+    alert_message: str
+    severity: str
+
+
+class StockAlertSummary(BaseModel):
+    total_alerts: int
+    total_out_of_stock: int
+    total_low_stock: int
+
+
+class StockAlertResponse(BaseModel):
+    success: bool
+    summary: StockAlertSummary
+    data: List[StockAlertItem]

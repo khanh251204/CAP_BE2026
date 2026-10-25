@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 
 from app.services.audio import (
     AudioPipeline,
@@ -279,7 +279,7 @@ async def _run_stt_pipeline(
                 logger.warning(f"Lỗi khi xóa file tạm WAV sau xử lý {processed_wav_path}: {e}")
 
 
-@router.post("/stt/groq")
+@router.post("/stt/groq", dependencies=[Depends(require_permission("voice:use"))])
 async def stt_groq(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
@@ -294,7 +294,7 @@ async def stt_groq(
     return await _run_stt_pipeline(file, groq_service.transcribe, "Groq Whisper", user_id=user_id, db=db)
 
 
-@router.post("/voice/recognize")
+@router.post("/voice/recognize", dependencies=[Depends(require_permission("voice:use"))])
 async def voice_recognize(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
@@ -307,7 +307,7 @@ async def voice_recognize(
     return await _run_stt_pipeline(file, groq_service.transcribe, "Groq Whisper", user_id=user_id, db=db)
 
 
-@router.post("/stt/gemini")
+@router.post("/stt/gemini", dependencies=[Depends(require_permission("voice:use"))])
 async def stt_gemini(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),

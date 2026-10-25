@@ -24,17 +24,24 @@ const defects: DefectItem[] = [];
 test.beforeAll(async ({ request }) => {
   authToken = await getAuthToken(request);
 
-  // Lấy 1 product_id thực tế có sẵn từ danh sách
+  // Tạo 1 product_id thực tế độc lập để test
   if (authToken) {
     try {
-      const listRes = await request.get(PRODUCTS_ENDPOINT, {
-        headers: { Authorization: `Bearer ${authToken}` },
+      const createRes = await request.post(PRODUCTS_ENDPOINT, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        data: {
+          product_name: `Temp Detail Test Product ${Date.now()}`,
+          product_type: 'RESALE',
+          default_unit: 'cai',
+          unit_price: 1000,
+          min_quantity: 0,
+        },
       });
-      const listData = await listRes.json();
-      const items = listData?.data || listData;
-      if (Array.isArray(items) && items.length > 0) {
-        sampleProductId = items[0].product_id || items[0].id || 1;
-      }
+      const createdData = await createRes.json();
+      sampleProductId = createdData?.data?.product_id || 1;
     } catch {}
   }
 });

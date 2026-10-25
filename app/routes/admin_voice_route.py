@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import authorize_roles
+from app.configs.jwt import require_permission, require_admin_area
 from app.schemas.admin_voice_schema import (
     AdminVoiceListResponse,
     AdminVoiceDetailResponse,
@@ -22,7 +22,7 @@ from app.services.user_correction_service import UserCorrectionService
 router = APIRouter(
     prefix="/admin/voice-processing",
     tags=["Admin - Voice Processing History"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_admin_area)]
 )
 
 
@@ -30,7 +30,8 @@ router = APIRouter(
     "",
     response_model=AdminVoiceListResponse,
     summary="Xem danh sách lịch sử xử lý voice",
-    description="Truy vấn danh sách lịch sử xử lý voice có phân trang, tìm kiếm transcript và bộ lọc theo người dùng, intent, status, độ tin cậy, thời gian."
+    description="Truy vấn danh sách lịch sử xử lý voice có phân trang, tìm kiếm transcript và bộ lọc theo người dùng, intent, status, độ tin cậy, thời gian.",
+    dependencies=[Depends(require_permission("admin_voice:read"))],
 )
 def list_voice_processing(
     page: int = Query(1, ge=1, description="Trang hiện tại (bắt đầu từ 1)"),
@@ -64,7 +65,8 @@ def list_voice_processing(
     "/corrections",
     response_model=AdminUserCorrectionListResponse,
     summary="Danh sách hiệu chỉnh người dùng (Human-in-the-Loop)",
-    description="Truy xuất danh sách bản ghi người dùng đã xác nhận hoặc chỉnh sửa kết quả AI, phục vụ đánh giá (Evaluation) và cải tiến mô hình."
+    description="Truy xuất danh sách bản ghi người dùng đã xác nhận hoặc chỉnh sửa kết quả AI, phục vụ đánh giá (Evaluation) và cải tiến mô hình.",
+    dependencies=[Depends(require_permission("admin_voice:read"))],
 )
 def list_user_corrections(
     page: int = Query(1, ge=1, description="Trang hiện tại"),
@@ -111,7 +113,8 @@ def list_user_corrections(
 
     response_model=AdminVoiceDetailResponse,
     summary="Xem chi tiết một bản ghi xử lý voice",
-    description="Truy xuất đầy đủ thông tin chi tiết của một bản ghi voice processing: thông tin người dùng, file ghi âm, kết quả AI (transcript, intent, entities, confidence), validation, transaction liên kết và processing logs."
+    description="Truy xuất đầy đủ thông tin chi tiết của một bản ghi voice processing: thông tin người dùng, file ghi âm, kết quả AI (transcript, intent, entities, confidence), validation, transaction liên kết và processing logs.",
+    dependencies=[Depends(require_permission("admin_voice:read"))],
 )
 def get_voice_processing_detail(
     id: int,
@@ -124,7 +127,8 @@ def get_voice_processing_detail(
     "/{id}/ai-result",
     response_model=AdminVoiceAiResultResponse,
     summary="Xem kết quả AI của bản ghi xử lý voice",
-    description="Xem kết quả AI đã xử lý từ một Voice Record: transcript, intent, entities, confidence thực tế, validation, user correction, transaction và processing metadata."
+    description="Xem kết quả AI đã xử lý từ một Voice Record: transcript, intent, entities, confidence thực tế, validation, user correction, transaction và processing metadata.",
+    dependencies=[Depends(require_permission("admin_voice:read"))],
 )
 def get_voice_ai_result(
     id: int,
@@ -136,7 +140,8 @@ def get_voice_ai_result(
 @router.get(
     "/{id}/audio",
     summary="Nghe/tải file âm thanh ghi âm",
-    description="Endpoint stream file âm thanh gốc bảo mật dành riêng cho Admin, không làm lộ đường dẫn hệ thống nội bộ."
+    description="Endpoint stream file âm thanh gốc bảo mật dành riêng cho Admin, không làm lộ đường dẫn hệ thống nội bộ.",
+    dependencies=[Depends(require_permission("admin_voice:read"))],
 )
 def stream_voice_audio(
     id: int,

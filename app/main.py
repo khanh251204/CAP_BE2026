@@ -15,6 +15,7 @@ from app.services.closing_scheduler import ClosingScheduler
 from app.services.data_lake_service import DataLakeService
 from app.services.notification_cleanup_service import NotificationCleanupScheduler
 from app.services.token_cleanup_service import TokenCleanupScheduler
+from app.services.inactivity_reminder_service import InactivityReminderScheduler
 
 # Core routers
 from app.api.stt import router as stt_router
@@ -39,13 +40,31 @@ from app.routes.admin_user_route import router as admin_user_router
 from app.routes.admin_voice_route import router as admin_voice_router
 from app.routes.admin_system_log_route import router as admin_system_log_router
 from app.routes.admin_notification_route import router as admin_notification_router
-from app.routes.admin_rbac_route import router as admin_rbac_router
+from app.routes.admin_rbac_route import router as admin_rbac_router, ui_router as admin_rbac_ui_router
+from app.routes.admin_closing_route import router as admin_closing_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Xác thực kết nối DB (SELECT 1 ping), không chạy DDL lock trong lifespan đa tiến trình
     auth_db()
+
+    # 1b. Quy tắc chốt sổ: chặn ghi giao dịch mới vào kỳ đã chốt (mọi luồng: API, MCP, admin)
+    from app.services.closing.closing_guard import install_transaction_guard
+    install_transaction_guard()
+
+    # 1c. Đồng bộ danh mục quyền (app/configs/permissions.py) vào DB: thêm quyền/role còn thiếu,
+    #     không ghi đè các chỉnh sửa ma trận quyền của Admin. Nhiều worker chạy song song vẫn an toàn
+    #     (worker thua bị lỗi unique sẽ bỏ qua vì worker kia đã đồng bộ).
+    try:
+        from app.configs.database import SessionLocal
+        from app.services.permission_service import PermissionService
+        with SessionLocal() as rbac_db:
+            rbac_summary = PermissionService.sync_catalog(rbac_db)
+        if any(rbac_summary.values()):
+            logger.info(f"[RBAC] Đồng bộ danh mục quyền: {rbac_summary}")
+    except Exception as e:
+        logger.warning(f"[RBAC] Bỏ qua đồng bộ danh mục quyền: {e}")
 
     # 2. Khởi động Closing Scheduler
     try:
@@ -71,6 +90,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[TokenCleanupScheduler] Start error: {e}")
 
+    # 6. Khởi động Inactivity Reminder Scheduler (tự động nhắc nhở người dùng không vào app 7 ngày qua FCM)
+    try:
+        InactivityReminderScheduler.start()
+    except Exception as e:
+        logger.error(f"[InactivityReminderScheduler] Start error: {e}")
+
     yield
 
     try:
@@ -88,6 +113,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    try:
+        InactivityReminderScheduler.stop()
+    except Exception:
+        pass
+
 
 app = FastAPI(
     title="Expense Tracker API",
@@ -96,19 +126,9 @@ app = FastAPI(
 )
 
 
-from fastapi.encoders import jsonable_encoder
+from app.services.error_handler_service import ErrorHandlerService
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc: RequestValidationError):
-    return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content=jsonable_encoder({
-            "status": "error",
-            "success": False,
-            "message": "Dữ liệu không hợp lệ",
-            "detail": exc.errors()
-        })
-    )
+ErrorHandlerService.register_exception_handlers(app)
 
 
 # =====================================================
@@ -162,6 +182,8 @@ ADMIN_ROUTERS = [
     admin_system_log_router,
     admin_notification_router,
     admin_rbac_router,
+    admin_rbac_ui_router,
+    admin_closing_router,
 ]
 
 

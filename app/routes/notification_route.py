@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.controllers.notification_controller import NotificationController
-from app.configs.jwt import authenticate_user, authorize_roles
+from app.configs.jwt import authenticate_user, require_permission
 
 router = APIRouter()
 
@@ -30,11 +30,11 @@ def get_notifications(
     )
 
 
-# CREATE (Yêu cầu quyền ADMIN - Trả 401 nếu chưa login/invalid token, 403 nếu user thường)
+# CREATE (Yêu cầu quyền admin_notification:manage - 401 nếu chưa login/invalid token, 403 nếu không đủ quyền)
 @router.post(
     "/notifications",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_permission("admin_notification:manage"))]
 )
 def create_notification(
     data: NotificationCreateSchema
@@ -81,4 +81,29 @@ def register_fcm_token(
     return {
         "success": success,
         "message": "Đã lưu FCM device token thành công" if success else "Lưu token thất bại"
-    }
+    }
+
+# DELETE ALL (của user hiện tại)
+@router.delete("/notifications")
+def delete_all_notifications(
+    payload: dict = Depends(authenticate_user)
+):
+    user_id = payload.get("sub")
+
+    return NotificationController.delete_all_notifications(
+        str(user_id)
+    )
+
+
+# DELETE ONE
+@router.delete("/notifications/{notification_id}")
+def delete_notification(
+    notification_id: str,
+    payload: dict = Depends(authenticate_user)
+):
+    user_id = payload.get("sub")
+
+    return NotificationController.delete_notification(
+        notification_id,
+        str(user_id)
+    )

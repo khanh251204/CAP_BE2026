@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.services.closing_service import ClosingService
+from app.services.permission_service import PermissionService
 from app.services.websocket_manager import ws_manager, authenticate_websocket
 from app.schemas.closing_schema import (
     
@@ -27,7 +28,7 @@ router = APIRouter(tags=["Closing Periods"])
 # =========================================================
 # 1. PREVIEW CLOSING PERIOD
 # =========================================================
-@router.post("/closing-periods/preview", response_model=ClosingPreviewResponse)
+@router.post("/closing-periods/preview", response_model=ClosingPreviewResponse, dependencies=[Depends(require_permission("closing:manage"))])
 def preview_closing_period(
     data: ClosingPeriodRequest,
     user_id: int = Depends(get_current_user_id),
@@ -50,7 +51,7 @@ def preview_closing_period(
 # =========================================================
 # 2. CREATE CLOSING PERIOD (CHỐT SỔ)
 # =========================================================
-@router.post("/closing-periods", response_model=ClosingPeriodResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/closing-periods", response_model=ClosingPeriodResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("closing:manage"))])
 def create_closing_period(
     data: ClosingPeriodRequest,
     user_id: int = Depends(get_current_user_id),
@@ -85,7 +86,7 @@ def create_closing_period(
 # =========================================================
 # 3. LIST CLOSING PERIODS (SNAPSHOT HISTORY)
 # =========================================================
-@router.get("/closing-periods", response_model=ClosingPeriodListResponse)
+@router.get("/closing-periods", response_model=ClosingPeriodListResponse, dependencies=[Depends(require_permission("closing:read"))])
 def get_closing_periods(
     status_val: Optional[str] = Query(None, alias="status", description="OPEN hoặc CLOSED"),
     period_type: Optional[str] = Query(None, description="DAY, MONTH, QUARTER, YEAR"),
@@ -111,7 +112,7 @@ def get_closing_periods(
 # =========================================================
 # 4. CLOSING PERIOD DETAIL
 # =========================================================
-@router.get("/closing-periods/{closing_id}", response_model=ClosingPeriodResponse)
+@router.get("/closing-periods/{closing_id}", response_model=ClosingPeriodResponse, dependencies=[Depends(require_permission("closing:read"))])
 def get_closing_period_detail(
     closing_id: int,
     user_id: int = Depends(get_current_user_id),
@@ -127,7 +128,7 @@ def get_closing_period_detail(
 # =========================================================
 # 5. CLOSING TRANSACTIONS (DRILL-DOWN)
 # =========================================================
-@router.get("/closing-periods/{closing_id}/transactions", response_model=ClosingTransactionsResponse)
+@router.get("/closing-periods/{closing_id}/transactions", response_model=ClosingTransactionsResponse, dependencies=[Depends(require_permission("closing:read"))])
 def get_closing_transactions(
     closing_id: int,
     page: int = Query(1, ge=1),
@@ -149,9 +150,26 @@ def get_closing_transactions(
 
 
 # =========================================================
+# 5b. RECLOSE (cập nhật snapshot với giao dịch phát sinh sau giờ chốt)
+# =========================================================
+@router.post("/closing-periods/{closing_id}/reclose", response_model=ClosingPeriodResponse, dependencies=[Depends(require_permission("closing:reopen"))])
+def reclose_closing_period(
+    closing_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """
+    POST /closing-periods/{id}/reclose:
+    Chốt lại kỳ đã chốt — tính lại số liệu & danh sách giao dịch, gửi lại email báo cáo.
+    """
+    ClosingService.reclose_closing(db, user_id, closing_id)
+    return ClosingService.get_closing_period_detail(db, user_id, closing_id)
+
+
+# =========================================================
 # 6. REOPEN CLOSING PERIOD
 # =========================================================
-@router.patch("/closing-periods/{closing_id}/reopen", response_model=ClosingPeriodResponse)
+@router.patch("/closing-periods/{closing_id}/reopen", response_model=ClosingPeriodResponse, dependencies=[Depends(require_permission("closing:reopen"))])
 def reopen_closing_period(
     closing_id: int,
     data: Optional[ClosingReopenRequest] = None,
@@ -170,7 +188,7 @@ def reopen_closing_period(
 # =========================================================
 # 7. GET CLOSING SETTINGS
 # =========================================================
-@router.get("/closing-settings", response_model=ClosingSettingResponse)
+@router.get("/closing-settings", response_model=ClosingSettingResponse, dependencies=[Depends(require_permission("closing:read"))])
 def get_closing_settings(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
@@ -185,7 +203,7 @@ def get_closing_settings(
 # =========================================================
 # 8. UPDATE CLOSING SETTINGS
 # =========================================================
-@router.put("/closing-settings", response_model=ClosingSettingResponse)
+@router.put("/closing-settings", response_model=ClosingSettingResponse, dependencies=[Depends(require_permission("closing:settings"))])
 def update_closing_settings(
     data: ClosingSettingUpdateRequest,
     user_id: int = Depends(get_current_user_id),
@@ -206,7 +224,7 @@ def update_closing_settings(
 # =========================================================
 # 9. GET CLOSING REPORTS HISTORY
 # =========================================================
-@router.get("/closing-reports", response_model=List[ClosingReportResponse])
+@router.get("/closing-reports", response_model=List[ClosingReportResponse], dependencies=[Depends(require_permission("closing:read"))])
 def get_closing_reports(
     closing_id: Optional[int] = Query(None),
     status_val: Optional[str] = Query(None, alias="status"),
@@ -228,7 +246,7 @@ def get_closing_reports(
 # =========================================================
 # 10. RESEND CLOSING REPORT EMAIL
 # =========================================================
-@router.post("/closing-reports/{report_id}/resend")
+@router.post("/closing-reports/{report_id}/resend", dependencies=[Depends(require_permission("closing:manage"))])
 def resend_closing_report(
     report_id: int,
     user_id: int = Depends(get_current_user_id),
@@ -259,6 +277,10 @@ async def ws_closing_endpoint(
     try:
         user_id = authenticate_websocket(token)
     except Exception:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    if not PermissionService.has_permission(user_id, "closing:read"):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 

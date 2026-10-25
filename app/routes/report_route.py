@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session  
 
 from app.configs.database import get_db
-from app.configs.jwt import get_current_user_id
+from app.configs.jwt import get_current_user_id, require_permission
 from app.services.report_service import ReportService
 from app.routes.reports.report_ws_route import (
     ws_router,
@@ -47,7 +47,7 @@ def extract_period_params(
     }
 
 
-@router.get("/reports/live", response_model=LiveReportResponse)
+@router.get("/reports/live", response_model=LiveReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_live_report(
     params: dict = Depends(extract_period_params),
     user_id: int = Depends(get_current_user_id),
@@ -56,7 +56,7 @@ def get_live_report(
     return ReportService.get_live_report(db, user_id, params)
 
 
-@router.get("/reports/summary", response_model=SummaryReportResponse)
+@router.get("/reports/summary", response_model=SummaryReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_summary_report(
     params: dict = Depends(extract_period_params),
     user_id: int = Depends(get_current_user_id),
@@ -65,7 +65,7 @@ def get_summary_report(
     return ReportService.get_summary_report(db, user_id, params)
 
 
-@router.get("/reports/sales", response_model=SalesReportResponse)
+@router.get("/reports/sales", response_model=SalesReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_sales_report(
     params: dict = Depends(extract_period_params),
     user_id: int = Depends(get_current_user_id),
@@ -74,7 +74,7 @@ def get_sales_report(
     return ReportService.get_sales_report(db, user_id, params)
 
 
-@router.get("/reports/purchases", response_model=PurchaseReportResponse)
+@router.get("/reports/purchases", response_model=PurchaseReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_purchase_report(
     params: dict = Depends(extract_period_params),
     user_id: int = Depends(get_current_user_id),
@@ -83,7 +83,7 @@ def get_purchase_report(
     return ReportService.get_purchase_report(db, user_id, params)
 
 
-@router.get("/reports/expenses", response_model=ExpenseReportResponse)
+@router.get("/reports/expenses", response_model=ExpenseReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_expense_report(
     params: dict = Depends(extract_period_params),
     user_id: int = Depends(get_current_user_id),
@@ -92,7 +92,7 @@ def get_expense_report(
     return ReportService.get_expense_report(db, user_id, params)
 
 
-@router.get("/reports/debts", response_model=DebtReportResponse)
+@router.get("/reports/debts", response_model=DebtReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_debt_report(
     params: dict = Depends(extract_period_params),
     user_id: int = Depends(get_current_user_id),
@@ -101,7 +101,7 @@ def get_debt_report(
     return ReportService.get_debt_report(db, user_id, params)
 
 
-@router.get("/reports/inventory", response_model=InventoryReportResponse)
+@router.get("/reports/inventory", response_model=InventoryReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_inventory_report(
     params: dict = Depends(extract_period_params),
     user_id: int = Depends(get_current_user_id),
@@ -110,7 +110,7 @@ def get_inventory_report(
     return ReportService.get_inventory_report(db, user_id, params)
 
 
-@router.get("/reports/transactions", response_model=TransactionReportResponse)
+@router.get("/reports/transactions", response_model=TransactionReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_transactions_report(
     params: dict = Depends(extract_period_params),
     intent: Optional[str] = Query(None, max_length=100, description="Tên intent (vd: ban_hang, mua_hang, chi_tien)"),
@@ -133,7 +133,7 @@ def get_transactions_report(
     )
 
 
-@router.get("/reports/transactions/{transaction_id}", response_model=TransactionDetailReportResponse)
+@router.get("/reports/transactions/{transaction_id}", response_model=TransactionDetailReportResponse, dependencies=[Depends(require_permission("report:read"))])
 def get_transaction_detail(
     transaction_id: int,
     user_id: int = Depends(get_current_user_id),

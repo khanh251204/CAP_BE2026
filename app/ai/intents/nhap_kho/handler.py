@@ -36,29 +36,19 @@ class NhapKhoHandler:
 
         product_name = entities.get("product")
 
-        # 2. Tìm kiếm sản phẩm qua MCP
-        search_res = await call_mcp_tool(
-            "search_products",
+        # 2. Tra cứu sản phẩm qua MCP check_stock (khớp chính xác trước, tên mơ hồ thì hỏi lại,
+        #    bỏ qua sản phẩm đã ngừng kinh doanh) — cùng cách với xuat_kho / ban_hang
+        stock_call = await call_mcp_tool(
+            "check_stock",
             {
-                "name": product_name,
+                "payload": {"product_name": product_name},
                 "user_id": user_id
             }
         )
-        result = normalize_mcp_result(search_res)
-        if not result.get("success"):
-            return result
-
-        products = result.get("products", [])
-        if not products:
-            return {
-                "success": False,
-                "status": "product_not_found",
-                "intent": intent,
-                "product_name": product_name,
-                "message": f"Không tìm thấy sản phẩm '{product_name}' trong hệ thống. Vui lòng tạo sản phẩm trước khi nhập kho."
-            }
-
-        product = products[0]
+        product = normalize_mcp_result(stock_call)
+        if not product.get("success"):
+            product.setdefault("intent", intent)
+            return product
 
         # 3. Build payload
         payload = build_payload(entities=entities, text=text)

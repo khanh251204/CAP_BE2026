@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
-from app.configs.jwt import authorize_roles
+from app.configs.jwt import require_permission, require_admin_area
 from app.schemas.admin_system_log_schema import (
     SystemLogListResponse,
     SystemLogSummaryResponse
@@ -15,7 +15,7 @@ from app.services.admin_system_log_service import AdminSystemLogService
 router = APIRouter(
     prefix="/admin/system-logs",
     tags=["Admin - System Logs"],
-    dependencies=[Depends(authorize_roles("ADMIN", "admin"))]
+    dependencies=[Depends(require_admin_area)]
 )
 
 
@@ -23,7 +23,8 @@ router = APIRouter(
     "/summary",
     response_model=SystemLogSummaryResponse,
     summary="Thống kê tổng quan sức khỏe hệ thống theo ngày",
-    description="Tính toán các chỉ số sức khỏe hệ thống theo ngày: tổng requests, tỷ lệ thành công, số lỗi, cảnh báo, thời gian xử lý trung bình và P95."
+    description="Tính toán các chỉ số sức khỏe hệ thống theo ngày: tổng requests, tỷ lệ thành công, số lỗi, cảnh báo, thời gian xử lý trung bình và P95.",
+    dependencies=[Depends(require_permission("system:log_read"))],
 )
 def get_system_logs_summary(
     date: Optional[str] = Query(None, description="Ngày cần thống kê theo định dạng YYYY-MM-DD (mặc định là hôm nay)"),
@@ -40,7 +41,8 @@ def get_system_logs_summary(
     "",
     response_model=SystemLogListResponse,
     summary="Xem danh sách System Logs",
-    description="Truy vấn danh sách System Logs có phân trang và bộ lọc theo level, step, khoảng thời gian, từ khóa tìm kiếm."
+    description="Truy vấn danh sách System Logs có phân trang và bộ lọc theo level, step, khoảng thời gian, từ khóa tìm kiếm.",
+    dependencies=[Depends(require_permission("system:log_read"))],
 )
 def list_system_logs(
     level: Optional[str] = Query(None, description="Lọc theo level: INFO, WARNING, ERROR"),
