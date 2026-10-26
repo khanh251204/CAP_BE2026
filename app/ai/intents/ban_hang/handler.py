@@ -24,6 +24,7 @@ from app.services.sales_policy import (
     normalize_business_type,
     is_unpaid_payment,
     resolve_payment,
+    order_total,
 )
 from .validator import validate
 from .payload import build_payload
@@ -271,12 +272,9 @@ class BanHangHandler:
             }
 
         # 4. Tổng tiền và thanh toán / công nợ
-        total_amount = None
-        if unit_price is not None:
-            try:
-                total_amount = float(unit_price) * qty_requested
-            except (ValueError, TypeError):
-                total_amount = None
+        total_amount = order_total(entities.get("total_price"), unit_price, qty_requested)
+        if total_amount is not None:
+            payload["total_amount"] = total_amount
 
         is_unpaid = is_unpaid_payment(entities.get("payment"))
 

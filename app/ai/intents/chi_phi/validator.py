@@ -15,16 +15,16 @@ def validate(entities: dict[str, Any]) -> dict:
             "success": False,
             "status": "need_information",
             "missing_fields": ["price"],
-            "message": "Vui lòng cung cấp số tiền chi phí (VD: 'Chi 500k tiền điện')"
+            "message": 'Bạn chưa nói số tiền chi. Ví dụ: "chi 500k tiền điện".'
         }
 
     try:
         if float(val) <= 0:
             return {
                 "success": False,
-                "status": "error",
+                "status": "invalid_amount",
                 "missing_fields": ["price"],
-                "message": "Số tiền chi phí phải lớn hơn 0"
+                "message": 'Số tiền chi phí phải lớn hơn 0. Vui lòng nói lại số tiền, ví dụ: "chi 500k tiền điện".'
             }
     except (ValueError, TypeError):
         return {

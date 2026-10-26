@@ -5,6 +5,7 @@ from app.configs.database import get_db_session
 from app.models.customer_model import Customer
 from app.services.account_service import AccountService
 from app.repositories.debt_repository import DebtRepository
+from app.ai.intents.missing_info import first_value
 from .validator import validate
 from .payload import build_payload
 
@@ -43,21 +44,20 @@ class ThuNoKhachHandler:
                 "status": "need_information",
                 "intent": intent,
                 "missing_fields": ["customer"],
-                "message": "Thiếu thông tin khách hàng cần thu nợ"
+                "message": "Bạn chưa nói tên khách hàng cần thu nợ. Ví dụ: \"thu nợ chị Lan 300k\"."
             }
 
-        raw_amount = (
-            entities.get("price")
-            or entities.get("amount")
-            or entities.get("total_price")
-        )
+        raw_amount = first_value(entities.get("price"), entities.get("amount"), entities.get("total_price"))
         if raw_amount is None:
             return {
                 "success": False,
                 "status": "need_information",
                 "intent": intent,
                 "missing_fields": ["price"],
-                "message": "Thiếu thông tin số tiền cần thu nợ"
+                "message": (
+                    f"Bạn chưa nói số tiền thu nợ của {customer_name}. "
+                    f"Ví dụ: \"thu nợ {customer_name} 300k\"."
+                )
             }
 
         try:
@@ -69,7 +69,11 @@ class ThuNoKhachHandler:
                 "success": False,
                 "status": "invalid_amount",
                 "intent": intent,
-                "message": "Số tiền thu nợ phải lớn hơn 0"
+                "missing_fields": ["price"],
+                "message": (
+                    f"Số tiền thu nợ phải lớn hơn 0. Vui lòng nói lại số tiền {customer_name} trả. "
+                    f"Ví dụ: \"thu nợ {customer_name} 300k\"."
+                )
             }
 
         debt_id = entities.get("debt_id")
@@ -187,6 +191,7 @@ class ThuNoKhachHandler:
         payload["account_id"] = account_id
         payload["account_name"] = account_name
         payload["amount"] = amount
+        payload["total_amount"] = amount
         if debt_id:
             payload["debt_id"] = int(debt_id)
 

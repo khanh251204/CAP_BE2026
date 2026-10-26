@@ -33,7 +33,7 @@ class BaoCaoHandler:
                 "status": "need_information",
                 "intent": intent,
                 "missing_fields": val_result["missing_fields"],
-                "message": "Thiếu thông tin bắt buộc"
+                "message": val_result.get("message") or "Bạn muốn xem báo cáo nào? Ví dụ: \"báo cáo doanh thu hôm nay\"."
             }
 
         payload = build_payload(entities=entities, text=text)

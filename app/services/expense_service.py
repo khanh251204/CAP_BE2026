@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from fastapi import HTTPException, status
@@ -42,6 +42,60 @@ class ExpenseService:
     """
 
     @classmethod
+    def list_expense_categories(cls, db: Session, user_id: int) -> List[Category]:
+        """Danh mục chi (EXPENSE) user được dùng: của chính user + danh mục hệ thống."""
+        return db.query(Category).filter(
+            Category.category_type == "EXPENSE",
+            or_(Category.user_id == user_id, Category.user_id == None),
+        ).order_by(Category.user_id.is_(None), Category.category_id).all()
+
+    @staticmethod
+    def _norm(text: Optional[str]) -> str:
+        t = " ".join(str(text or "").lower().split())
+        for prefix in ("chi phí ", "tiền ", "trả tiền ", "thanh toán "):
+            if t.startswith(prefix):
+                t = t[len(prefix):]
+        return t.strip()
+
+    @classmethod
+    def match_category(
+        cls,
+        db: Session,
+        user_id: int,
+        category_name: Optional[str] = None,
+        category_id: Optional[int] = None,
+    ) -> Optional[Category]:
+        """
+        Tìm danh mục chi phù hợp, KHÔNG tạo mới (dùng được ở bước bản nháp):
+        1. Theo category_id (chỉ danh mục của user hoặc hệ thống)
+        2. Theo tên: từ khóa phổ biến ("tiền điện" -> "Chi phí điện"), rồi so khớp tên
+        3. Danh mục "Chi phí khác"
+        """
+        categories = cls.list_expense_categories(db, user_id)
+
+        if category_id:
+            for cat in categories:
+                if cat.category_id == int(category_id):
+                    return cat
+
+        clean_name = str(category_name or "").strip().lower()
+        if clean_name:
+            target_name = next(
+                (mapped for kw, mapped in COMMON_EXPENSE_KEYWORDS.items() if kw in clean_name), None
+            )
+            wanted = [cls._norm(n) for n in (target_name, clean_name) if n]
+            # Khớp đúng tên trước, rồi tới chứa nhau ("internet" ~ "Chi phí internet")
+            for cat in categories:
+                if cls._norm(cat.category_name) in wanted:
+                    return cat
+            for cat in categories:
+                name = cls._norm(cat.category_name)
+                if name and any(w and (w in name or name in w) for w in wanted):
+                    return cat
+
+        return next((c for c in categories if "chi phí khác" in c.category_name.lower()), None)
+
+    @classmethod
     def resolve_category(
         cls,
         db: Session,
@@ -49,67 +103,11 @@ class ExpenseService:
         category_name: Optional[str] = None,
         category_id: Optional[int] = None
     ) -> Optional[Category]:
-        """
-        Tìm Category chi phí (EXPENSE) phù hợp:
-        1. Theo category_id nếu có
-        2. Theo category_name khớp chính xác hoặc qua từ khóa phổ biến
-        3. Tạo mới nếu chưa có hoặc fallback về 'Chi phí khác'
-        """
-        if category_id:
-            cat = db.query(Category).filter(
-                Category.category_id == category_id,
-                Category.category_type == "EXPENSE"
-            ).first()
-            if cat:
-                return cat
+        """Như match_category; không có danh mục nào phù hợp thì tạo mới cho user."""
+        cat = cls.match_category(db, user_id, category_name=category_name, category_id=category_id)
+        if cat:
+            return cat
 
-        clean_name = str(category_name or "").strip().lower()
-        if not clean_name:
-            clean_name = "chi phí khác"
-
-        # Tra cứu qua từ khóa thông dụng
-        target_name = None
-        for kw, mapped_name in COMMON_EXPENSE_KEYWORDS.items():
-            if kw in clean_name:
-                target_name = mapped_name
-                break
-        if not target_name:
-            target_name = category_name or "Chi phí khác"
-
-        # 1. Tìm Category của chính user
-        user_cat = db.query(Category).filter(
-            Category.user_id == user_id,
-            Category.category_type == "EXPENSE",
-            or_(
-                Category.category_name.ilike(f"%{target_name}%"),
-                Category.category_name.ilike(f"%{clean_name}%")
-            )
-        ).first()
-        if user_cat:
-            return user_cat
-
-        # 2. Tìm Category hệ thống chung (user_id is None)
-        system_cat = db.query(Category).filter(
-            Category.user_id == None,
-            Category.category_type == "EXPENSE",
-            or_(
-                Category.category_name.ilike(f"%{target_name}%"),
-                Category.category_name.ilike(f"%{clean_name}%")
-            )
-        ).first()
-        if system_cat:
-            return system_cat
-
-        # 3. Tìm bất kỳ Category loại EXPENSE có tên 'Chi phí khác' của user hoặc hệ thống
-        fallback_cat = db.query(Category).filter(
-            Category.category_type == "EXPENSE",
-            Category.category_name.ilike("%chi phí khác%"),
-            or_(Category.user_id == user_id, Category.user_id == None)
-        ).first()
-        if fallback_cat:
-            return fallback_cat
-
-        # 4. Tự tạo Category mới cho user
         new_cat = Category(
             user_id=user_id,
             category_name=category_name or "Chi phí khác",

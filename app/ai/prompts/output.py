@@ -17,7 +17,8 @@ Return JSON only:
     "customer": "string|null",
     "supplier": "string|null",
     "date": "string|null",
-    "payment": "string|null"
+    "payment": "string|null",
+    "category": "string|null"
   },
   "missing_fields": [],
   "message": "string|null"

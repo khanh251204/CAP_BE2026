@@ -41,7 +41,7 @@ class KhachGhiNoHandler:
                 "status": "need_information",
                 "intent": intent,
                 "missing_fields": ["customer"],
-                "message": "Thiếu thông tin khách hàng cần ghi nợ"
+                "message": "Bạn chưa nói tên khách hàng cần ghi nợ. Ví dụ: \"ghi nợ chị Lan 200k\"."
             }
 
         product_name = entities.get("product")
@@ -50,15 +50,37 @@ class KhachGhiNoHandler:
         raw_quantity = entities.get("quantity")
         unit = entities.get("unit")
 
-        # Xác định quantity nếu có (mặc định 1.0)
+        # Bán nợ có hàng nhưng không nói số lượng (vd. "Ghi nợ chị Lan bia"):
+        # không tự gán 1 — hỏi lại để tính đúng tiền nợ. Nói đủ số lượng thì agent đã chuyển sang ban_hang.
+        # Chỉ ghi nợ một số tiền ("chị Lan nợ tiền bia 200k") thì không cần số lượng.
+        has_quantity = raw_quantity not in (None, "")
+        if product_name and not has_quantity and raw_price is None and raw_total_price is None:
+            return {
+                "success": False,
+                "status": "need_information",
+                "intent": intent,
+                "missing_fields": ["quantity"],
+                "product_name": product_name,
+                "message": (
+                    f"Bạn chưa nói số lượng '{product_name}' bán nợ cho {customer_name}. "
+                    f"Ví dụ: \"bán nợ 2 {unit or 'thùng'} {product_name} cho {customer_name}\"."
+                ),
+            }
+
         qty = 1.0
-        if raw_quantity is not None:
+        if has_quantity:
             try:
                 qty = float(raw_quantity)
-                if qty <= 0:
-                    qty = 1.0
             except (ValueError, TypeError):
-                qty = 1.0
+                qty = 0.0
+            if qty <= 0:
+                return {
+                    "success": False,
+                    "status": "need_information",
+                    "intent": intent,
+                    "missing_fields": ["quantity"],
+                    "message": "Số lượng bán nợ phải lớn hơn 0. Vui lòng nói lại số lượng.",
+                }
 
         unit_price = None
         original_amount = None
@@ -71,7 +93,10 @@ class KhachGhiNoHandler:
                     "status": "need_information",
                     "intent": intent,
                     "missing_fields": ["price"],
-                    "message": "Thiếu thông tin giá hoặc sản phẩm để tính tiền ghi nợ"
+                    "message": (
+                        f"Bạn chưa nói số tiền ghi nợ cho {customer_name}. "
+                        f"Ví dụ: \"ghi nợ {customer_name} 200k\"."
+                    )
                 }
 
             search_call = await call_mcp_tool(
@@ -206,6 +231,7 @@ class KhachGhiNoHandler:
             payload[NEW_CUSTOMER_KEY] = True
         payload["original_amount"] = original_amount
         payload["amount"] = original_amount
+        payload["total_amount"] = original_amount
         if product_name:
             payload["product_name"] = product_name
         if unit_price is not None:
@@ -231,6 +257,6 @@ class KhachGhiNoHandler:
                 f"{new_customer_question(customer_name) if is_new_customer else ''}"
                 f"{'Nếu đồng ý, hệ thống sẽ tạo khách hàng và ghi nợ cho ' if is_new_customer else 'Bạn có chắc muốn ghi nợ cho khách hàng '}"
                 f"{customer_name} "
-                f"số tiền {original_amount:,.0f}đ{detail_str} không?"
+                f"số tiền {original_amount:,.0f}đ{detail_str}{'.' if is_new_customer else ' không?'}"
             )
         }

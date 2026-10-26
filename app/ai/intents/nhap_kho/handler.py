@@ -32,7 +32,7 @@ class NhapKhoHandler:
         if not val_result["success"]:
             return {
                 "success": False,
-                "status": "error",
+                "status": "need_information",
                 "intent": intent,
                 "missing_fields": val_result["missing_fields"],
                 "message": val_result["message"]

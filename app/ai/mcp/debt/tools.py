@@ -15,6 +15,7 @@ class GhiNoKhachHangInput(BaseModel):
             "(payment_status='PENDING') để thỏa FK bắt buộc Debt.transaction_id theo erd.md."
         ),
     )
+    note: Optional[str] = Field(None, description="Câu người dùng nhập/nói, lưu vào Transaction.input_text")
     input_method: Optional[str] = Field("MANUAL", description="Phương thức nhập theo ERD: 'VOICE' | 'MANUAL'")
 
 
@@ -22,6 +23,7 @@ class GhiNoKhachHangOutput(BaseModel):
     debt_id: int
     status: str          # 'UNPAID' | 'PARTIAL' | 'PAID' — theo enum Debt.status trong erd.md
     remaining_debt: float
+    transaction_id: Optional[int] = None
 
 
 class ThuNoKhachHangInput(BaseModel):
@@ -64,7 +66,9 @@ class ThuNoKhachHangOutput(BaseModel):
 # ============================================================
 
 class GhiNoNhaCungCapInput(BaseModel):
-    supplier_id: int = Field(..., description="ID nhà cung cấp cần ghi nợ (bắt buộc)")
+    supplier_id: Optional[int] = Field(None, description="ID nhà cung cấp cần ghi nợ")
+    supplier_name: Optional[str] = Field(None, description="Tên nhà cung cấp (dùng khi chưa có supplier_id)")
+    new_supplier: bool = Field(False, description="True: người dùng đã đồng ý tạo nhà cung cấp mới nếu chưa tồn tại")
     original_amount: float = Field(..., gt=0, description="Số tiền gốc còn nợ, tương ứng cột Debt.original_amount trong erd.md")
     transaction_id: Optional[int] = Field(
         None,
@@ -82,6 +86,7 @@ class GhiNoNhaCungCapOutput(BaseModel):
     debt_id: int
     status: str          # 'UNPAID' | 'PARTIAL' | 'PAID' — theo enum Debt.status trong erd.md
     remaining_debt: float
+    transaction_id: Optional[int] = None
 
 
 class ThuNoNhaCungCapInput(BaseModel):

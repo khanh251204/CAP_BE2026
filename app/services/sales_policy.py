@@ -5,7 +5,7 @@ Dùng chung cho bước tạo bản nháp (ban_hang handler) và bước xác nh
 để hai nơi không bao giờ lệch nhau.
 """
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -154,6 +154,23 @@ def resolve_credit_sale_intent(intent: Optional[str], entities: dict) -> tuple:
 _GOODS_INTENTS = ("ban_hang", "mua_hang", "nhap_hang")
 
 
+def order_total(total_price: Any, unit_price: Any, quantity: Any) -> Optional[float]:
+    """
+    Tổng tiền đơn hàng: người dùng nói tổng ("2 lốc 50k") thì giữ đúng số đó
+    (tránh 3 x 16.666,67 = 50.000,01); không thì = số lượng x đơn giá (Decimal).
+    """
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        if total_price not in (None, ""):
+            return float(Decimal(str(total_price)))
+        if unit_price in (None, "") or quantity in (None, ""):
+            return None
+        return float(Decimal(str(unit_price)) * Decimal(str(quantity)))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
 def resolve_total_price(intent: Optional[str], entities: dict) -> dict:
     """
     LLM chỉ trích xuất total_price, backend tự tính đơn giá bằng Decimal (không để LLM làm tròn sai).
@@ -174,7 +191,9 @@ def resolve_total_price(intent: Optional[str], entities: dict) -> dict:
     except (InvalidOperation, ValueError):
         return entities
 
-    if intent in _GOODS_INTENTS:
+    # Có hàng + số lượng (kể cả ghi nợ NCC "ghi nợ NCC A 2 lốc sữa chua 50k") -> total là tiền cả đơn
+    has_goods = bool(entities.get("product")) and entities.get("quantity") not in (None, "")
+    if intent in _GOODS_INTENTS or has_goods:
         try:
             qty_dec = Decimal(str(entities.get("quantity")))
         except (InvalidOperation, ValueError, TypeError):

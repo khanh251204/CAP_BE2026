@@ -6,6 +6,8 @@ ENTITY_RULES = """
 1. Thực thể sản phẩm & số lượng:
    - `product`: Tên sản phẩm/hàng hóa (String hoặc null).
    - `quantity`: Số lượng dạng số (Number hoặc null).
+     * Chỉ điền khi người dùng NÓI RÕ số lượng. KHÔNG tự đoán là 1 khi câu chỉ có đơn vị.
+     * VD: "Bán lốc sữa chua 50000, tiền mặt" -> quantity=null, unit="lốc", total_price=50000.
    - `unit`: Đơn vị tính đã chuẩn hóa (kg, lốc, thùng, cái, hộp, gói, lon, chai, ly, vỉ... hoặc null).
    - `price`: Đơn giá của MỘT đơn vị sản phẩm (số nguyên VND, hoặc null).
      * Chỉ điền khi người dùng nói rõ đơn giá: "giá 20k", "mỗi cái 28k", "đơn giá 28k", "20k một lon", "30k/kg".
@@ -28,4 +30,7 @@ ENTITY_RULES = """
 
 3. Chi phí (chi_phi):
    - `price`: Số tiền chi, dạng số nguyên VND (Bắt buộc). VD: "Chi 500k tiền điện" -> price = 500000.
+   - `category`: Tên khoản chi ngắn gọn như người dùng nói (String hoặc null), bỏ các từ "thanh toán", "đóng", "chi".
+     VD: "Thanh toán tiền điện 1 triệu" -> category="tiền điện"; "Đóng tiền internet 300k" -> category="tiền internet";
+     "Trả lương nhân viên 5 triệu" -> category="lương nhân viên". Nghiệp vụ khác -> null.
 """

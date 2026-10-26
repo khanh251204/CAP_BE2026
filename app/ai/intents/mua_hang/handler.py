@@ -10,6 +10,7 @@ from app.services.new_product_service import FLOW_PURCHASE, NEW_PRODUCT_KEY
 from app.services.new_supplier_service import NEW_SUPPLIER_KEY, new_supplier_question
 from app.services.sales_policy import (
     ERROR_INVALID_UNIT,
+    order_total,
     is_unpaid_payment,
     is_unit_valid,
     invalid_unit_message,
@@ -194,12 +195,9 @@ class MuaHangHandler:
         except (ValueError, TypeError):
             qty = 1.0
 
-        total_amount = None
-        if unit_price is not None:
-            try:
-                total_amount = float(unit_price) * qty
-            except (ValueError, TypeError):
-                total_amount = None
+        total_amount = order_total(entities.get("total_price"), unit_price, qty)
+        if total_amount is not None:
+            payload["total_amount"] = total_amount
 
         is_unpaid = is_unpaid_payment(entities.get("payment"))
         amount_paid = entities.get("amount_paid")

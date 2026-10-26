@@ -21,6 +21,9 @@ def validate(entities: dict[str, Any]) -> dict:
     missing_fields = []
     for field in REQUIRED_FIELDS:
         val = entities.get(field)
+        # Có tổng tiền (vd: "5 lốc 50k") thì đơn giá được tính từ tổng tiền / số lượng
+        if field == "price" and val in (None, ""):
+            val = entities.get("total_price")
         if val is None or val == "":
             missing_fields.append(field)
 

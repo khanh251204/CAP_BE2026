@@ -182,7 +182,16 @@ class AgentConfirmService:
             payload["note"] = corr_dict["note"]
         if corr_dict.get("date"):
             payload["date"] = corr_dict["date"]
+        if corr_dict.get("category_id"):
+            payload["category_id"] = corr_dict["category_id"]
+        elif corr_dict.get("category_name") and corr_dict["category_name"] != pending_payload.get("category_name"):
+            # Đổi khoản chi bằng tên (không kèm id) -> bỏ id cũ để backend tìm theo tên mới
+            payload.pop("category_id", None)
         if corr_dict.get("category_name"):
+            # Ghi chú mặc định của chi phí = tên khoản chi cũ -> đổi khoản chi thì đổi theo
+            old_category = pending_payload.get("category_name") or pending_payload.get("category")
+            if "note" not in corr_dict and payload.get("note") in (None, "", old_category, "Chi phí"):
+                payload["note"] = corr_dict["category_name"]
             payload["category_name"] = corr_dict["category_name"]
             payload["category"] = corr_dict["category_name"]
 
