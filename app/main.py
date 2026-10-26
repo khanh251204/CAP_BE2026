@@ -20,7 +20,7 @@ from app.services.inactivity_reminder_service import InactivityReminderScheduler
 # Core routers
 from app.api.stt import router as stt_router
 from app.routes import inventory_route
-from app.routes.auth_route import router as auth_router
+from app.routes.auth_route import router as auth_router, me_router
 from app.routes.closing_route import router as closing_router
 from app.routes.customer_route import customer_router
 from app.routes.debt_route import debt_router
@@ -157,6 +157,7 @@ CORE_ROUTERS = [
     inventory_route.router,
     notification_router,
     auth_router,
+    me_router,
     product_router,
     groq_router,
     debt_router,

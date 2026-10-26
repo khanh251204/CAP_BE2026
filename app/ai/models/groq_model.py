@@ -17,13 +17,11 @@ class GroqModel(ModelProvider):
         name = model_name or "openai/gpt-oss-120b"
         super().__init__(model_name=name, system_prompt=system_prompt)
 
-        from groq import Groq
+        from app.ai.llm.groq_client_pool import GroqFailoverClient, get_groq_pool
 
-        self.api_key = api_key or os.getenv("GROQ_API_KEY")
-        if not self.api_key:
-            raise ValueError("GROQ_API_KEY không được tìm thấy trong biến môi trường.")
-
-        self.client = Groq(api_key=self.api_key)
+        # Truyền api_key -> chỉ dùng đúng key đó (benchmark/evaluation).
+        # Mặc định dùng pool chung: GROQ_API_KEY lỗi thì tự chuyển sang GROQ_API_KEY_2.
+        self.groq = GroqFailoverClient([api_key]) if api_key else get_groq_pool()
         self.temperature = temperature
 
     def predict(
@@ -45,14 +43,16 @@ class GroqModel(ModelProvider):
         output_tokens = None
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                temperature=self.temperature,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
+            response = self.groq.call(
+                lambda client: client.chat.completions.create(
+                    model=self.model_name,
+                    temperature=self.temperature,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ]
+                )
             )
 
             latency_ms = (time.perf_counter() - start_time) * 1000.0

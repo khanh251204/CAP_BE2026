@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
@@ -11,8 +11,10 @@ from app.schemas.admin_user_schema import (
     AdminUserDetailResponse,
     AdminUserStatusUpdateRequest,
     AdminUserStatusUpdateResponse,
+    AdminUserLockHistoryResponse,
 )
 from app.services.admin_user_service import AdminUserService
+from app.services.auth.account_lock_service import client_info
 
 router = APIRouter(
     prefix="/admin/users",
@@ -67,7 +69,7 @@ def get_user_detail(
 
 
 @router.patch(
-    "/{user_id}/status",
+    "/{user_id}",
     response_model=AdminUserStatusUpdateResponse,
     summary="Khóa hoặc mở khóa tài khoản người dùng",
     description="Cho phép Admin khóa hoặc mở khóa tài khoản người dùng. Khi khóa, thời gian lock_until được thiết lập và toàn bộ refresh token hiện có của người dùng sẽ bị vô hiệu hóa.",
@@ -76,6 +78,7 @@ def get_user_detail(
 def update_user_status(
     user_id: int,
     request: AdminUserStatusUpdateRequest,
+    request_obj: Request,
     current_admin: dict = Depends(authenticate_user),
     db: Session = Depends(get_db)
 ):
@@ -84,5 +87,21 @@ def update_user_status(
         db=db,
         user_id=user_id,
         current_admin_id=admin_id,
-        request=request
+        request=request,
+        client=client_info(request_obj)
     )
+
+
+@router.get(
+    "/{user_id}/lock-history",
+    response_model=AdminUserLockHistoryResponse,
+    summary="Lịch sử khóa / mở khóa tài khoản",
+    description="Ai khóa / mở khóa, khi nào, vì sao (hệ thống tự khóa do sai mật khẩu, admin khóa, người dùng mở bằng email...), kèm IP và thiết bị.",
+    dependencies=[Depends(require_permission("admin_user:read"))],
+)
+def get_user_lock_history(
+    user_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db)
+):
+    return AdminUserService.get_lock_history(db=db, user_id=user_id, limit=limit)

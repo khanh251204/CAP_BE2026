@@ -103,7 +103,7 @@ class AdminVoiceService:
             audio_url = (
                 record.audio_path
                 if (record.audio_path and record.audio_path.startswith(("http://", "https://")))
-                else (f"/api/v1/admin/voice-processing/{record.voice_id}/audio" if record.audio_path else None)
+                else (f"/api/v1/admin/voice-records/{record.voice_id}/audio" if record.audio_path else None)
             )
 
             items.append(
@@ -164,7 +164,7 @@ class AdminVoiceService:
         audio_obj = None
         if record.audio_path:
             # An toàn: không để lộ absolute filesystem path ra ngoài API
-            audio_url = record.audio_path if record.audio_path.startswith(("http://", "https://")) else f"/api/v1/admin/voice-processing/{voice_id}/audio"
+            audio_url = record.audio_path if record.audio_path.startswith(("http://", "https://")) else f"/api/v1/admin/voice-records/{voice_id}/audio"
             duration = llm_data.get("audio_duration") or llm_data.get("duration")
             if duration is not None:
                 try:

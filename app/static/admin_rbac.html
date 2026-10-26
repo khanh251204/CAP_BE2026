@@ -577,7 +577,7 @@
 
   async function boot() {
     try {
-      state.me = await api('/me/permissions', { allow401: true });
+      state.me = await api('/users/me/permissions', { allow401: true });
     } catch (e) {
       if (e.status === 401) { showView('login'); return; }
       if (e.status === 403) {
@@ -592,7 +592,7 @@
     if (!can('rbac:read')) { showView('forbidden'); return; }
 
     $('#me-name').textContent = `Tài khoản #${state.me.user_id}`;
-    api('/me').then(res => {
+    api('/users/me').then(res => {
       const u = res && (res.user || res);
       if (u && (u.fullName || u.email)) $('#me-name').textContent = [u.fullName, u.email].filter(Boolean).join(' · ');
     }).catch(() => { /* tên chỉ để hiển thị */ });
@@ -1027,7 +1027,7 @@
 
     sel.disabled = true;
     try {
-      await api(`/admin/rbac/users/${userId}/role`, { method: 'POST', body: { role_id: role.role_id } });
+      await api(`/admin/rbac/users/${userId}/role`, { method: 'PUT', body: { role_id: role.role_id } });
       toast(`Đã đổi vai trò của ${name} sang ${role.role_name}.`);
       await Promise.all([loadUsers(), loadRbac(pendingDraftsOnly())]);
     } catch (e) {
@@ -1065,7 +1065,7 @@
     btn.disabled = true;
     err.textContent = '';
     try {
-      await api('/login', { method: 'POST', body: { email, password }, allow401: true });
+      await api('/auth/login', { method: 'POST', body: { email, password }, allow401: true });
       $('#login-password').value = '';
       await boot();
     } catch (e2) {
@@ -1081,7 +1081,7 @@
 
     if (t.dataset.action === 'logout') {
       if (changedRoleIds().length && !(await confirmDialog('Đăng xuất', 'Bạn có thay đổi chưa lưu. Vẫn đăng xuất?', 'Đăng xuất', true))) return;
-      try { await api('/logout', { method: 'POST', allow401: true }); } catch (_) { /* vẫn chuyển về màn đăng nhập */ }
+      try { await api('/auth/logout', { method: 'POST', allow401: true }); } catch (_) { /* vẫn chuyển về màn đăng nhập */ }
       state.me = null;
       state.draft.clear();
       state.original.clear();

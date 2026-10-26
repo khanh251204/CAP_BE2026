@@ -11,12 +11,14 @@ Return JSON only:
     "product": "string|null",
     "new_product_name": "string|null",
     "price": "number|null",
+    "total_price": "number|null",
     "quantity": "number|null",
     "unit": "string|null",
     "customer": "string|null",
     "supplier": "string|null",
     "date": "string|null",
-    "payment": "string|null"
+    "payment": "string|null",
+    "category": "string|null"
   },
   "missing_fields": [],
   "message": "string|null"

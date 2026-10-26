@@ -5,9 +5,9 @@ Admin xem / quản lý chốt sổ của toàn bộ người dùng.
 Không trả password_hash, token hay dữ liệu nhạy cảm của User.
 """
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.closing_schema import ClosingReportResponse, ClosingSettingResponse
 
@@ -88,6 +88,24 @@ class AdminClosingReopenRequest(BaseModel):
 
 class AdminClosingRecloseRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=500, description="Ghi chú khi chốt lại kỳ")
+
+
+class AdminClosingStatusUpdateRequest(BaseModel):
+    """
+    PATCH /admin/closing/periods/{id}: đổi trạng thái kỳ chốt.
+    - status = "OPEN"   : mở lại kỳ đã chốt (bắt buộc reason, có thể kèm notify_user)
+    - status = "CLOSED" : chốt lại kỳ đang mở (có thể kèm note)
+    """
+    status: Literal["OPEN", "CLOSED"]
+    reason: Optional[str] = Field(None, min_length=3, max_length=500, description="Lý do mở lại (bắt buộc khi status = OPEN)")
+    notify_user: bool = Field(True, description="Gửi thông báo cho chủ sổ khi mở lại")
+    note: Optional[str] = Field(None, max_length=500, description="Ghi chú khi chốt lại")
+
+    @model_validator(mode="after")
+    def _require_reason_when_reopen(self):
+        if self.status == "OPEN" and not (self.reason and self.reason.strip()):
+            raise ValueError("Bắt buộc nhập lý do (reason) khi mở lại kỳ chốt")
+        return self
 
 
 # ========================================

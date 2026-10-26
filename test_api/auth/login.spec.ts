@@ -13,7 +13,7 @@ const cases = readCsv<{
   note: string;
 }>(csvFilePath);
 
-const LOGIN_ENDPOINT = process.env.LOGIN_ENDPOINT || '/api/v1/login';
+const LOGIN_ENDPOINT = process.env.LOGIN_ENDPOINT || '/api/v1/auth/login';
 
 const actualResults = new Map<string, string>();
 const defects: DefectItem[] = [];

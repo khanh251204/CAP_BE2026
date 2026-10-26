@@ -7,10 +7,10 @@ from app.schemas.debt.customer_debt_schema import DebtAllocationItem
 
 class CreateSupplierDebtRequest(BaseModel):
     """
-    POST /debts/supplier
+    POST /suppliers/{supplier_id}/debts
     intent: create_supplier_debt (ghi_no_nha_cung_cap)
     """
-    supplier_id: int = Field(..., description="ID nhà cung cấp")
+    supplier_id: Optional[int] = Field(None, description="ID nhà cung cấp (bỏ qua, lấy từ URL)")
     total_debt: float = Field(..., gt=0, description="Số tiền nợ gốc")
     transaction_id: Optional[int] = Field(
         None,

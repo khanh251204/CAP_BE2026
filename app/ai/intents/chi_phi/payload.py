@@ -15,6 +15,8 @@ def build_payload(
         amount = 0.0
 
     category = entities.get("category") or entities.get("category_name")
+    if isinstance(category, str):
+        category = category.strip().capitalize() or None
     if not category and text:
         text_lower = text.lower()
         for kw in ["tiền điện", "tiền nước", "mặt bằng", "tiền nhà", "thuê nhà", "vận chuyển", "tiền ship", "xăng xe", "văn phòng phẩm"]:

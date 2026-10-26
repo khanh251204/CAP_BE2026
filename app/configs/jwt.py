@@ -193,7 +193,10 @@ def _load_access(user: dict):
     if access.is_locked:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên."
+            detail=(
+                "Tài khoản đã bị tạm khóa. Vui lòng đăng nhập lại để xác minh email mở khóa, "
+                "hoặc liên hệ quản trị viên."
+            )
         )
     return access
 

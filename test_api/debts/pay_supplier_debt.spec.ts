@@ -17,7 +17,8 @@ const cases = readCsv<{
   note_tc: string;
 }>(csvFilePath);
 
-const PAY_SUPPLIER_DEBT_ENDPOINT = process.env.PAY_SUPPLIER_DEBT_ENDPOINT || '/api/v1/debts/supplier/payments';
+// POST /api/v1/suppliers/{supplier_id}/debt-payments (thanh toán FIFO)
+const PAY_SUPPLIER_DEBT_ENDPOINT = (supplierId: unknown) => `/api/v1/suppliers/${supplierId}/debt-payments`;
 
 let authToken = '';
 let targetSupplierId = 270002;
@@ -62,7 +63,7 @@ for (const tc of cases) {
     };
 
     if (tc.expected === '200' && authToken) {
-      await request.post('/api/v1/debts/supplier', {
+      await request.post(`/api/v1/suppliers/${supplierIdToUse}/debts`, {
         headers,
         data: {
           supplier_id: supplierIdToUse,
@@ -72,7 +73,7 @@ for (const tc of cases) {
       });
     }
 
-    const res = await request.post(PAY_SUPPLIER_DEBT_ENDPOINT, {
+    const res = await request.post(PAY_SUPPLIER_DEBT_ENDPOINT(supplierIdToUse), {
       data: payload,
       headers,
     });
@@ -88,7 +89,7 @@ for (const tc of cases) {
         {
           test_id: tc.test_id,
           note: tc.note_tc,
-          url: PAY_SUPPLIER_DEBT_ENDPOINT,
+          url: PAY_SUPPLIER_DEBT_ENDPOINT(supplierIdToUse),
           actual_status: res.status(),
           expected_status: tc.expected,
           response_body: body,
@@ -114,7 +115,7 @@ for (const tc of cases) {
         testId: tc.test_id,
         feature: 'Debts - Pay Supplier Debt',
         summary: tc.note_tc,
-        endpoint: PAY_SUPPLIER_DEBT_ENDPOINT,
+        endpoint: PAY_SUPPLIER_DEBT_ENDPOINT(supplierIdToUse),
         headers,
         payload,
         expectedStatus,

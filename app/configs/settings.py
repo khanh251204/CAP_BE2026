@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # 3. AI Service Keys
     GROQ_API_KEY: Optional[str] = Field(None, description="Groq API Key for Whisper STT and LLM")
+    GROQ_API_KEY_2: Optional[str] = Field(None, description="Groq API Key dự phòng, dùng khi GROQ_API_KEY lỗi")
     GEMINI_API_KEY: Optional[str] = Field(None, description="Google Gemini API Key")
 
     # 4. JWT & Auth Configuration

@@ -20,14 +20,14 @@ from app.services.admin_voice_service import AdminVoiceService
 from app.services.user_correction_service import UserCorrectionService
 
 router = APIRouter(
-    prefix="/admin/voice-processing",
+    prefix="/admin",
     tags=["Admin - Voice Processing History"],
     dependencies=[Depends(require_admin_area)]
 )
 
 
 @router.get(
-    "",
+    "/voice-records",
     response_model=AdminVoiceListResponse,
     summary="Xem danh sách lịch sử xử lý voice",
     description="Truy vấn danh sách lịch sử xử lý voice có phân trang, tìm kiếm transcript và bộ lọc theo người dùng, intent, status, độ tin cậy, thời gian.",
@@ -62,7 +62,7 @@ def list_voice_processing(
 
 
 @router.get(
-    "/corrections",
+    "/voice-corrections",
     response_model=AdminUserCorrectionListResponse,
     summary="Danh sách hiệu chỉnh người dùng (Human-in-the-Loop)",
     description="Truy xuất danh sách bản ghi người dùng đã xác nhận hoặc chỉnh sửa kết quả AI, phục vụ đánh giá (Evaluation) và cải tiến mô hình.",
@@ -109,7 +109,7 @@ def list_user_corrections(
 
 
 @router.get(
-    "/{id}",
+    "/voice-records/{id}",
 
     response_model=AdminVoiceDetailResponse,
     summary="Xem chi tiết một bản ghi xử lý voice",
@@ -124,7 +124,7 @@ def get_voice_processing_detail(
 
 
 @router.get(
-    "/{id}/ai-result",
+    "/voice-records/{id}/ai-result",
     response_model=AdminVoiceAiResultResponse,
     summary="Xem kết quả AI của bản ghi xử lý voice",
     description="Xem kết quả AI đã xử lý từ một Voice Record: transcript, intent, entities, confidence thực tế, validation, user correction, transaction và processing metadata.",
@@ -138,7 +138,7 @@ def get_voice_ai_result(
 
 
 @router.get(
-    "/{id}/audio",
+    "/voice-records/{id}/audio",
     summary="Nghe/tải file âm thanh ghi âm",
     description="Endpoint stream file âm thanh gốc bảo mật dành riêng cho Admin, không làm lộ đường dẫn hệ thống nội bộ.",
     dependencies=[Depends(require_permission("admin_voice:read"))],

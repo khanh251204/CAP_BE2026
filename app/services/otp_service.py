@@ -54,10 +54,13 @@ if not JWT_SECRET_KEY:
 
 VERIFY_EMAIL = "verify_email"
 FORGOT_PASSWORD = "forgot_password"
+# Mở khóa tài khoản bị khóa do nhập sai mật khẩu nhiều lần
+UNLOCK_ACCOUNT = "unlock_account"
 
 ALLOWED_PURPOSES = {
     VERIFY_EMAIL,
-    FORGOT_PASSWORD
+    FORGOT_PASSWORD,
+    UNLOCK_ACCOUNT
 }
 
 

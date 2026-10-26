@@ -88,10 +88,20 @@ class AgentConfirmService:
             prod_val = corr_dict["product_name"] if "product_name" in corr_dict else (corr_dict.get("product") if "product" in corr_dict else payload.get("product_name"))
             qty_val = corr_dict["quantity"] if "quantity" in corr_dict else payload.get("quantity")
             unit_val = corr_dict["unit"] if "unit" in corr_dict else payload.get("unit")
+            # Validator mua_hang bắt buộc `price` → lấy giá user sửa, nếu không thì giá trong draft
+            if corr_dict.get("unit_price") is not None:
+                price_in = corr_dict["unit_price"]
+            elif corr_dict.get("price") is not None:
+                price_in = corr_dict["price"]
+            elif payload.get("unit_price") is not None:
+                price_in = payload["unit_price"]
+            else:
+                price_in = payload.get("price")
             val_entities = {
                 "product": prod_val,
                 "quantity": qty_val,
-                "unit": unit_val
+                "unit": unit_val,
+                "price": price_in,
             }
             if qty_val is not None:
                 try:
@@ -172,7 +182,16 @@ class AgentConfirmService:
             payload["note"] = corr_dict["note"]
         if corr_dict.get("date"):
             payload["date"] = corr_dict["date"]
+        if corr_dict.get("category_id"):
+            payload["category_id"] = corr_dict["category_id"]
+        elif corr_dict.get("category_name") and corr_dict["category_name"] != pending_payload.get("category_name"):
+            # Đổi khoản chi bằng tên (không kèm id) -> bỏ id cũ để backend tìm theo tên mới
+            payload.pop("category_id", None)
         if corr_dict.get("category_name"):
+            # Ghi chú mặc định của chi phí = tên khoản chi cũ -> đổi khoản chi thì đổi theo
+            old_category = pending_payload.get("category_name") or pending_payload.get("category")
+            if "note" not in corr_dict and payload.get("note") in (None, "", old_category, "Chi phí"):
+                payload["note"] = corr_dict["category_name"]
             payload["category_name"] = corr_dict["category_name"]
             payload["category"] = corr_dict["category_name"]
 
@@ -196,6 +215,41 @@ class AgentConfirmService:
                 payload["amount"] = amt
                 payload["total_amount"] = amt
 
+        # Ghi nợ: route đọc `amount` / `original_amount`, không đọc total_amount.
+        # Nếu user sửa SL / đơn giá mà không sửa số tiền → tính lại số tiền nợ.
+        if intent in ("ghi_no_khach_hang", "khach_ghi_no", "ghi_no_nha_cung_cap", "ncc_ghi_no"):
+            if corr_dict.get("amount") is None and (
+                corr_dict.get("quantity") is not None or corr_dict.get("unit_price") is not None
+            ):
+                if payload.get("quantity") and payload.get("unit_price") and payload["unit_price"] > 0:
+                    payload["amount"] = float(payload["quantity"]) * float(payload["unit_price"])
+            if payload.get("amount") is not None:
+                payload["original_amount"] = payload["amount"]
+                payload["total_amount"] = payload["amount"]
+
+        # Thêm sản phẩm: ProductService ưu tiên `name`/`default_unit` cũ → đồng bộ bản sửa.
+        if intent == "them_san_pham":
+            if corr_dict.get("product_name"):
+                payload["name"] = corr_dict["product_name"]
+            if corr_dict.get("unit"):
+                payload["default_unit"] = corr_dict["unit"]
+            if corr_dict.get("unit_price") is not None:
+                payload["price"] = corr_dict["unit_price"]
+
+        # Sửa sản phẩm: route chỉ đọc payload["data"] → đưa bản sửa vào đó.
+        if intent == "sua_san_pham":
+            data = dict(payload.get("data") or {})
+            if corr_dict.get("unit_price") is not None:
+                data["unit_price"] = corr_dict["unit_price"]
+            if corr_dict.get("unit"):
+                data["default_unit"] = corr_dict["unit"]
+            new_name = corr_dict.get("product_name")
+            if new_name and new_name.strip().lower() != str(pending_payload.get("product_name") or "").strip().lower():
+                data["product_name"] = new_name
+            # Giữ tên gốc để hiển thị / diff, không ghi đè bằng tên mới
+            payload["product_name"] = pending_payload.get("product_name")
+            payload["data"] = data
+
         # 3. Tính diff và correction_type
         diff_ai: Dict[str, Any] = {}
         diff_corr: Dict[str, Any] = {}
@@ -208,7 +262,8 @@ class AgentConfirmService:
             ("customer_name", "customer_name", "customer"),
             ("supplier_name", "supplier_name", "supplier"),
             ("payment_status", "payment_status", "payment"),
-            ("amount_paid", "amount_paid", "amount_paid")
+            ("amount_paid", "amount_paid", "amount_paid"),
+            ("amount", "amount", "amount"),
         ]
 
         for p_key, c_key, label in fields_to_check:

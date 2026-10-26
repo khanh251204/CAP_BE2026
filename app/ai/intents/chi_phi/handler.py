@@ -1,7 +1,33 @@
 from typing import Any
 
+from app.configs.database import get_db_session
+from app.services.expense_service import ExpenseService
 from .validator import validate
 from .payload import build_payload
+
+
+def _attach_category(user_id: int, payload: dict) -> None:
+    """
+    Khớp khoản chi với danh mục chi thật của user (chỉ đọc, không tạo mới) và gửi kèm
+    danh sách danh mục để giao diện cho chọn lại.
+    """
+    db = get_db_session()
+    try:
+        spoken = payload.get("category_name")
+        matched = ExpenseService.match_category(db, user_id, category_name=spoken)
+        payload["category_options"] = [
+            {"category_id": c.category_id, "category_name": c.category_name.strip()}
+            for c in ExpenseService.list_expense_categories(db, user_id)
+        ]
+    finally:
+        db.close()
+    if matched:
+        payload["category_id"] = matched.category_id
+        payload["category_name"] = matched.category_name.strip()
+        payload["category"] = payload["category_name"]
+        # Ghi chú giữ lời người dùng nói ("Tiền internet"); không nói khoản chi thì lấy tên danh mục
+        if payload.get("note") in (None, "", "Chi phí"):
+            payload["note"] = payload["category_name"]
 
 
 class ChiPhiHandler:
@@ -31,6 +57,7 @@ class ChiPhiHandler:
             }
 
         payload = build_payload(entities=entities, text=text)
+        _attach_category(user_id, payload)
         cat_label = payload.get("category_name") or "Khác"
         amt = payload.get("amount", 0.0)
 

@@ -86,6 +86,7 @@ class CustomerDebtMixin:
 
             return {
                 "debt_id": debt.debt_id,
+                "transaction_id": debt.transaction_id,
                 "status": debt.status,
                 "total_debt": float(debt.original_amount),
                 "original_amount": float(debt.original_amount),

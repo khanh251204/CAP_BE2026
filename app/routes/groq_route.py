@@ -56,25 +56,10 @@ transaction_agent = TransactionAgent(
 
 
 # ============================================================
-# STT
-# ============================================================
-
-from app.api.stt import stt_groq
-
-router.add_api_route(
-    "/stt/groq",
-    stt_groq,
-    methods=["POST"],
-    tags=["Speech to Text"],
-    dependencies=[Depends(require_permission("voice:use"))],
-)
-
-
-# ============================================================
 # TRANSACTION - AGENT
 # ============================================================
 
-@router.post("/analyze/groq", dependencies=[Depends(require_permission("voice:use"))])
+@router.post("/agent/messages", dependencies=[Depends(require_permission("voice:use"))])
 async def voice_transaction(
     request: AnalysisRequest,
     current_user_id: int = Depends(
@@ -122,6 +107,19 @@ async def voice_transaction(
         return result
 
     except Exception as e:
+        from app.ai.llm.groq_client_pool import get_groq_pool, is_rate_limit_error
+
+        if is_rate_limit_error(e):
+            # Tất cả API key Groq đều hết hạn mức: không cần in traceback, báo người dùng thử lại sau
+            wait_min = max(1, round(get_groq_pool().seconds_until_available() / 60))
+            logger.error(f"Tất cả Groq API key đều hết hạn mức, dùng lại được sau ~{wait_min} phút: {e}")
+            return {
+                "success": False,
+                "status": "rate_limited",
+                "message": f"Hệ thống AI đang hết lượt xử lý, vui lòng thử lại sau khoảng {wait_min} phút.",
+                "retry_after_minutes": wait_min,
+            }
+
         logger.error(f"Lỗi xử lý giao dịch giọng nói: {e}", exc_info=True)
 
         # Chi tiết lỗi đã được log; không trả exception nội bộ (SQL, stacktrace...) ra client
@@ -162,6 +160,15 @@ def _attach_error_message(result: Any) -> None:
         result["code"] = PERIOD_CLOSED_CODE
 
 
+def _debt_input_text(payload: dict) -> Optional[str]:
+    """
+    Nội dung lưu vào Transaction.input_text của giao dịch ghi nợ:
+    câu gốc người dùng nhập/nói (đầu vào NLP), kèm ghi chú nếu có (vd: ghi bổ sung kỳ đã chốt).
+    """
+    parts = [str(payload.get(k)).strip() for k in ("input_text", "note") if payload.get(k)]
+    return " — ".join(dict.fromkeys(p for p in parts if p)) or None
+
+
 def _resolve_account_id(db: Session, user_id: int, payload: dict) -> int:
     """
     Tài khoản nhận/chi tiền cho thu nợ / trả nợ khi xác nhận giao dịch giọng nói.
@@ -179,7 +186,7 @@ def _resolve_account_id(db: Session, user_id: int, payload: dict) -> int:
     return account.account_id
 
 
-@router.post("/agent/confirm", dependencies=[Depends(require_permission("voice:use"))])
+@router.post("/agent/pending-action/confirmation", dependencies=[Depends(require_permission("voice:use"))])
 async def confirm_action(
     body: Optional[AgentConfirmRequest] = None,
     session_id: Optional[str] = Query(None),
@@ -211,6 +218,25 @@ async def confirm_action(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Bạn không có quyền '{required_permission}' để xác nhận thao tác '{intent}'"
+        )
+    # Giao dịch kèm thêm sản phẩm mới vào danh mục cần thêm quyền tạo sản phẩm
+    if (pending.get("payload") or {}).get("new_product") and not PermissionService.has_permission(current_user_id, "product:create"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền 'product:create' để thêm sản phẩm mới vào danh mục"
+        )
+
+    # Giao dịch kèm tạo nhà cung cấp mới cần thêm quyền quản lý nhà cung cấp
+    if (pending.get("payload") or {}).get("new_supplier") and not PermissionService.has_permission(current_user_id, "supplier:manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền 'supplier:manage' để tạo nhà cung cấp mới"
+        )
+    # Giao dịch kèm tạo khách hàng mới cần thêm quyền quản lý khách hàng
+    if (pending.get("payload") or {}).get("new_customer") and not PermissionService.has_permission(current_user_id, "customer:manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền 'customer:manage' để tạo khách hàng mới"
         )
 
     ai_result = copy.deepcopy(pending["payload"])
@@ -249,9 +275,33 @@ async def confirm_action(
     elif intent == "xoa_san_pham":
         result = await asyncio.to_thread(ProductController.delete_product, product_id=payload["product_id"], user_id=current_user_id, db=db)
     elif intent == "ban_hang":
+        # Kiểm tra lại giá sau khi người dùng có thể đã sửa
+        sale_price = payload.get("unit_price")
+        if sale_price is not None:
+            try:
+                sale_price = float(sale_price)
+            except (TypeError, ValueError):
+                sale_price = 0.0
+            if sale_price <= 0:
+                return {"success": False, "message": "Giá bán phải lớn hơn 0đ. Vui lòng nhập lại giá bán."}
         res = await call_mcp_tool("export_inventory", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent in ("mua_hang", "nhap_hang"):
+        # Kiểm tra lại sau khi người dùng có thể đã sửa số lượng / giá
+        try:
+            import_qty = float(payload.get("quantity") or 0)
+        except (TypeError, ValueError):
+            import_qty = 0.0
+        if not payload.get("items") and import_qty <= 0:
+            return {"success": False, "message": "Số lượng nhập phải lớn hơn 0. Vui lòng nhập lại số lượng."}
+        import_price = payload.get("unit_price")
+        if import_price is not None:
+            try:
+                import_price = float(import_price)
+            except (TypeError, ValueError):
+                import_price = 0.0
+            if import_price <= 0:
+                return {"success": False, "message": "Giá nhập phải lớn hơn 0đ. Vui lòng nhập lại giá nhập."}
         res = await call_mcp_tool("import_inventory", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent == "nhap_kho":
@@ -264,11 +314,22 @@ async def confirm_action(
         res = await call_mcp_tool("report_damage", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent in ("ghi_no_khach_hang", "khach_ghi_no"):
+        # Ưu tiên số tiền người dùng đã sửa (amount), không thì dùng số tiền bản nháp
+        debt_amount = payload.get("amount") if payload.get("amount") is not None else payload.get("original_amount")
+        try:
+            debt_amount = float(debt_amount)
+        except (TypeError, ValueError):
+            debt_amount = 0.0
+        if debt_amount <= 0:
+            return {"success": False, "message": "Số tiền ghi nợ phải lớn hơn 0. Vui lòng nhập lại số tiền khách nợ."}
         res = await call_mcp_tool("ghi_no_khach_hang", {
             "input": {
-                "customer_id": payload["customer_id"],
-                "original_amount": payload["original_amount"],
+                "customer_id": payload.get("customer_id"),
+                "customer_name": payload.get("customer_name"),
+                "new_customer": bool(payload.get("new_customer")),
+                "original_amount": debt_amount,
                 "transaction_id": payload.get("transaction_id"),
+                "note": _debt_input_text(payload),
                 "input_method": payload.get("input_method", "MANUAL"),
             },
             "user_id": current_user_id
@@ -287,12 +348,22 @@ async def confirm_action(
         res = await call_mcp_tool("thu_no_khach_hang", {"input": input_data, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent in ("ghi_no_nha_cung_cap", "ncc_ghi_no"):
+        # Ưu tiên số tiền người dùng đã sửa (amount), không thì dùng số tiền bản nháp
+        supplier_debt_amount = payload.get("amount") if payload.get("amount") is not None else payload.get("original_amount")
+        try:
+            supplier_debt_amount = float(supplier_debt_amount)
+        except (TypeError, ValueError):
+            supplier_debt_amount = 0.0
+        if supplier_debt_amount <= 0:
+            return {"success": False, "message": "Số tiền ghi nợ phải lớn hơn 0. Vui lòng nhập lại số tiền nợ nhà cung cấp."}
         res = await call_mcp_tool("ghi_no_nha_cung_cap", {
             "input": {
-                "supplier_id": payload["supplier_id"],
-                "original_amount": payload["original_amount"],
+                "supplier_id": payload.get("supplier_id"),
+                "supplier_name": payload.get("supplier_name"),
+                "new_supplier": bool(payload.get("new_supplier")),
+                "original_amount": supplier_debt_amount,
                 "transaction_id": payload.get("transaction_id"),
-                "note": payload.get("note"),
+                "note": _debt_input_text(payload),
                 "input_method": payload.get("input_method", "MANUAL"),
             },
             "user_id": current_user_id
@@ -338,6 +409,14 @@ async def confirm_action(
             except Exception as ex:
                 logger.warning(f"Lỗi đánh dấu voice record rejected: {ex}")
         return result
+
+    # Tool công nợ (ghi nợ / thu nợ / trả nợ) trả về dữ liệu không có `success`
+    # → app coi là lỗi dù đã lưu DB. Luôn gắn success cho kết quả thành công.
+    if isinstance(result, dict):
+        result.setdefault("success", True)
+        result.setdefault("message", "Đã lưu giao dịch thành công")
+    elif result is not None:
+        result = {"success": True, "message": "Đã lưu giao dịch thành công", "data": result}
 
     # ========================================================
     # LIÊN KẾT VOICE RECORD VỚI TRANSACTION & GHI DATA LAKE (CHẠY TRÊN THREADPOOL)
@@ -406,8 +485,7 @@ async def confirm_action(
     return result
 
 
-@router.post("/agent/cancel", dependencies=[Depends(require_permission("voice:use"))])
-@router.post("/agent/reject", include_in_schema=False, dependencies=[Depends(require_permission("voice:use"))])
+@router.delete("/agent/pending-action", dependencies=[Depends(require_permission("voice:use"))])
 async def cancel_action(
     session_id: Optional[str] = Query(None),
     current_user_id: int = Depends(get_current_user_id),

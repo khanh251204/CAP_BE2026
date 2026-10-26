@@ -18,7 +18,7 @@ const cases = readCsv<{
   note: string;
 }>(csvFilePath);
 
-const REGISTER_ENDPOINT = process.env.REGISTER_ENDPOINT || '/api/v1/register';
+const REGISTER_ENDPOINT = process.env.REGISTER_ENDPOINT || '/api/v1/auth/register';
 
 const actualResults = new Map<string, string>();
 const defects: DefectItem[] = [];

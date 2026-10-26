@@ -88,7 +88,7 @@ def send_otp_email(
     expire_minutes: int,
     purpose: str
 ):
-    """Gửi OTP cho verify_email hoặc forgot_password."""
+    """Gửi OTP cho verify_email, forgot_password hoặc unlock_account."""
     if purpose == "verify_email":
         subject = "Xác thực email - VoiceCashBook"
         title = "Xác thực email"
@@ -97,6 +97,13 @@ def send_otp_email(
         subject = "Khôi phục mật khẩu - VoiceCashBook"
         title = "Khôi phục mật khẩu"
         description = "Bạn đã yêu cầu đặt lại mật khẩu VoiceCashBook."
+    elif purpose == "unlock_account":
+        subject = "Mở khóa tài khoản - VoiceCashBook"
+        title = "Mở khóa tài khoản"
+        description = (
+            "Tài khoản VoiceCashBook của bạn đã bị tạm khóa do nhập sai mật khẩu nhiều lần. "
+            "Nhập mã dưới đây để mở khóa. Nếu không phải bạn, hãy đổi mật khẩu ngay sau khi mở khóa."
+        )
     else:
         raise ValueError("OTP purpose không hợp lệ")
 

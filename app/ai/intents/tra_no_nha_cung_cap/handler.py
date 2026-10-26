@@ -5,6 +5,7 @@ from app.configs.database import get_db_session
 from app.models.supplier_model import Supplier
 from app.services.account_service import AccountService
 from app.repositories.debt_repository import DebtRepository
+from app.ai.intents.missing_info import first_value, is_not_positive
 from .validator import validate
 from .payload import build_payload
 
@@ -44,14 +45,21 @@ class TraNoNhaCungCapHandler:
                 "status": "need_information",
                 "intent": intent,
                 "missing_fields": ["supplier"],
-                "message": "Thiếu thông tin nhà cung cấp cần trả nợ"
+                "message": "Bạn chưa nói tên nhà cung cấp cần trả nợ. Ví dụ: \"trả nợ nhà cung cấp Minh Phát 500k\"."
             }
 
-        raw_amount = (
-            entities.get("price")
-            or entities.get("amount")
-            or entities.get("total_price")
-        )
+        raw_amount = first_value(entities.get("price"), entities.get("amount"), entities.get("total_price"))
+        if is_not_positive(raw_amount):
+            return {
+                "success": False,
+                "status": "invalid_amount",
+                "intent": intent,
+                "missing_fields": ["price"],
+                "message": (
+                    f"Số tiền trả nợ phải lớn hơn 0. Vui lòng nói lại số tiền trả cho {supplier_name}. "
+                    f"Ví dụ: \"trả nợ {supplier_name} 500k\" hoặc \"trả hết nợ {supplier_name}\"."
+                )
+            }
 
         debt_id = entities.get("debt_id")
         supplier_id = entities.get("supplier_id")
@@ -71,7 +79,10 @@ class TraNoNhaCungCapHandler:
                 "status": "need_information",
                 "intent": intent,
                 "missing_fields": ["price"],
-                "message": "Thiếu thông tin số tiền cần trả nợ"
+                "message": (
+                    f"Bạn chưa nói số tiền trả nợ cho {supplier_name}. "
+                    f"Ví dụ: \"trả nợ {supplier_name} 500k\" hoặc \"trả hết nợ {supplier_name}\"."
+                )
             }
 
         db = get_db_session()
@@ -209,6 +220,7 @@ class TraNoNhaCungCapHandler:
         payload["account_id"] = account_id
         payload["account_name"] = account_name
         payload["amount"] = amount
+        payload["total_amount"] = amount
         if debt_id:
             payload["debt_id"] = int(debt_id)
 

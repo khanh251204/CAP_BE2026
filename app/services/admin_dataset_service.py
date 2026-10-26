@@ -85,7 +85,7 @@ class AdminDatasetService:
             audio_url = (
                 record.audio_path
                 if (record.audio_path and record.audio_path.startswith(("http://", "https://")))
-                else (f"/api/v1/admin/voice-processing/{record.voice_id}/audio" if record.audio_path else None)
+                else (f"/api/v1/admin/voice-records/{record.voice_id}/audio" if record.audio_path else None)
             )
 
             items.append(
@@ -144,7 +144,7 @@ class AdminDatasetService:
 
         audio_url = None
         if record.audio_path:
-            audio_url = record.audio_path if record.audio_path.startswith(("http://", "https://")) else f"/api/v1/admin/voice-processing/{voice_id}/audio"
+            audio_url = record.audio_path if record.audio_path.startswith(("http://", "https://")) else f"/api/v1/admin/voice-records/{voice_id}/audio"
 
         tx_dict = None
         if ai_result.transaction:

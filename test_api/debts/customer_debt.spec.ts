@@ -16,7 +16,8 @@ const cases = readCsv<{
   note_tc: string;
 }>(csvFilePath);
 
-const DEBT_CUSTOMER_ENDPOINT = process.env.DEBT_CUSTOMER_ENDPOINT || '/api/v1/debts/customer';
+// POST /api/v1/customers/{customer_id}/debts
+const DEBT_CUSTOMER_ENDPOINT = (customerId: unknown) => `/api/v1/customers/${customerId}/debts`;
 
 let authToken = '';
 let targetCustomerId = 240002;
@@ -59,7 +60,7 @@ for (const tc of cases) {
       note: tc.note,
     };
 
-    const res = await request.post(DEBT_CUSTOMER_ENDPOINT, {
+    const res = await request.post(DEBT_CUSTOMER_ENDPOINT(customerIdToUse), {
       data: payload,
       headers,
     });
@@ -75,7 +76,7 @@ for (const tc of cases) {
         {
           test_id: tc.test_id,
           note: tc.note_tc,
-          url: DEBT_CUSTOMER_ENDPOINT,
+          url: DEBT_CUSTOMER_ENDPOINT(customerIdToUse),
           actual_status: res.status(),
           expected_status: tc.expected,
           response_body: body,
@@ -101,7 +102,7 @@ for (const tc of cases) {
         testId: tc.test_id,
         feature: 'Debts - Create Customer Debt',
         summary: tc.note_tc,
-        endpoint: DEBT_CUSTOMER_ENDPOINT,
+        endpoint: DEBT_CUSTOMER_ENDPOINT(customerIdToUse),
         headers,
         payload,
         expectedStatus,

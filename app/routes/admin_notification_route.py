@@ -26,8 +26,8 @@ class NotificationCleanupRequest(BaseModel):
     )
 
 
-@router.post(
-    "/cleanup",
+@router.delete(
+    "/expired",
     status_code=status.HTTP_200_OK,
     summary="Dọn dẹp xóa cứng thông báo quá hạn (Admin)",
     description=(
@@ -40,6 +40,7 @@ def cleanup_notifications(
     payload: Optional[NotificationCleanupRequest] = None,
     retention_days_query: Optional[int] = Query(
         None,
+        alias="retention_days",
         ge=1,
         le=365,
         description="Số ngày lưu trữ (nếu không gửi trong request body)"
@@ -159,7 +160,7 @@ def send_notification(
 # =====================================================
 # BULK DELETE
 # =====================================================
-@router.post("/bulk-delete", summary="Xóa nhiều thông báo (Admin)", dependencies=[Depends(require_permission("admin_notification:manage"))])
+@router.delete("", summary="Xóa nhiều thông báo theo danh sách ids (Admin)", dependencies=[Depends(require_permission("admin_notification:manage"))])
 def bulk_delete_notifications(data: AdminNotificationBulkDeleteRequest):
     return AdminNotificationService.bulk_delete(data.ids)
 

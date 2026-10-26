@@ -180,6 +180,11 @@ class AdminProductService:
                 detail=f"Không tìm thấy sản phẩm với ID {product_id}"
             )
 
+        # Bật lại sản phẩm đã ngừng kinh doanh: không được trùng tên với sản phẩm đang bán của cùng user
+        if is_active and not product.is_active:
+            from app.services.duplicate_guard import ensure_unique_product
+            ensure_unique_product(db, product.user_id, product.product_name, exclude_id=product.product_id)
+
         product.is_active = is_active
         product.updated_at = datetime.now()
 

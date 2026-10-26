@@ -1,7 +1,10 @@
 import asyncio
 from typing import Any
 
+from app.ai.intents.new_product_draft import new_product_note, prepare_new_product, user_units_hint
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
+from app.services.new_product_service import FLOW_SALE, NEW_PRODUCT_KEY
+from app.services.new_customer_service import NEW_CUSTOMER_KEY, new_customer_question
 from app.configs.database import get_db_session
 from app.repositories.inventory.inventory_lookup_repo import (
     InventoryLookupRepository,
@@ -14,9 +17,14 @@ from app.services.sales_policy import (
     RAW_MATERIAL_BLOCKED,
     ERROR_INSUFFICIENT_STOCK,
     ERROR_CANNOT_SELL_RAW_MATERIAL,
+    ERROR_INVALID_UNIT,
     get_sale_stock_policy,
+    is_unit_valid,
+    invalid_unit_message,
     normalize_business_type,
     is_unpaid_payment,
+    resolve_payment,
+    order_total,
 )
 from .validator import validate
 from .payload import build_payload
@@ -56,6 +64,10 @@ class BanHangHandler:
         intent: str = "ban_hang",
         business_type: str | None = None
     ) -> dict:
+        # LLM bỏ sót payment nhưng câu có "bán chịu", "ghi sổ"... -> PENDING.
+        # Ghi vào entities để payload.payment_status (bước xác nhận) cùng kết quả với bản nháp.
+        entities = {**entities, "payment": resolve_payment(entities.get("payment"), text)}
+
         # 1. Validate
         val_result = validate(entities)
         if not val_result["success"]:
@@ -80,9 +92,27 @@ class BanHangHandler:
         )
         stock_result = normalize_mcp_result(stock_call)
 
+        new_product_spec = None
         if not stock_result.get("success"):
-            stock_result.setdefault("intent", intent)
-            return stock_result
+            if stock_result.get("status") != "product_not_found":
+                stock_result.setdefault("intent", intent)
+                return stock_result
+            # Sản phẩm / dịch vụ chưa có: PRODUCER & SERVICE được thêm mới khi xác nhận
+            found_bt = business_type or stock_result.get("business_type")
+            prepared = prepare_new_product(FLOW_SALE, intent, user_id, product_name, entities, found_bt)
+            if "response" in prepared:
+                return prepared["response"]
+            new_product_spec = prepared["spec"]
+            stock_result = {
+                "success": True,
+                "product_id": None,
+                "product_name": new_product_spec["product_name"],
+                "quantity": 0,
+                "unit_price": new_product_spec["unit_price"],
+                "default_unit": new_product_spec["default_unit"],
+                "product_type": new_product_spec["product_type"],
+                "business_type": found_bt,
+            }
 
         # Dùng tên chuẩn trong DB thay vì tên LLM trích xuất
         product_name = stock_result.get("product_name") or product_name
@@ -118,7 +148,45 @@ class BanHangHandler:
                 "message": f"Sản phẩm '{product_name}' là nguyên liệu sản xuất (RAW_MATERIAL), không thể bán trực tiếp dưới dạng thành phẩm."
             }
 
-        unit_label = entities.get("unit") or stock_result.get("default_unit") or ""
+        # Đơn vị bán phải khớp đơn vị tính của sản phẩm (chỉ với sản phẩm đã có trong DB)
+        requested_unit = entities.get("unit")
+        product_unit = stock_result.get("default_unit")
+
+        # Thiếu đơn vị -> hỏi lại kèm gợi ý (dịch vụ thì bỏ qua, vd. "Cắt tóc 80k")
+        if not new_product_spec and not requested_unit and policy != NO_INVENTORY:
+            hint = (
+                f"Sản phẩm này đang tính theo '{product_unit}'."
+                if product_unit
+                else f"Sản phẩm này chưa có đơn vị tính, các đơn vị bạn đang dùng: {await asyncio.to_thread(user_units_hint, user_id)}."
+            )
+            return {
+                "success": False,
+                "status": "need_information",
+                "intent": intent,
+                "missing_fields": ["unit"],
+                "product_name": product_name,
+                "message": (
+                    f"Bạn chưa nói đơn vị tính khi bán '{product_name}'. "
+                    f"{hint} "
+                    f"Ví dụ: \"bán {qty_requested:g} {product_unit or 'cái'} {product_name}\"."
+                ),
+            }
+        if not new_product_spec and not is_unit_valid(requested_unit, product_unit):
+            return {
+                "success": False,
+                "status": "invalid_unit",
+                "error_code": ERROR_INVALID_UNIT,
+                "intent": intent,
+                "product_name": product_name,
+                "unit_requested": requested_unit,
+                "default_unit": product_unit,
+                "message": invalid_unit_message(product_name, requested_unit, product_unit),
+            }
+        if not new_product_spec and product_unit:
+            # Dùng đúng cách viết đơn vị trong DB (vd. "Lon" thay vì "lon")
+            entities = {**entities, "unit": product_unit}
+
+        unit_label = entities.get("unit") or product_unit or ""
         if policy == STRICT and qty_requested > qty_in_stock:
             return {
                 "success": False,
@@ -138,6 +206,7 @@ class BanHangHandler:
         # 3. Tìm Khách hàng (không tự tạo mới)
         customer_name = entities.get("customer") or entities.get("customer_name")
         customer_id = entities.get("customer_id")
+        is_new_customer = False
 
         if not customer_id and customer_name:
             try:
@@ -151,41 +220,61 @@ class BanHangHandler:
                     "candidates": amb.candidates,
                     "message": str(amb)
                 }
-            if not found_id:
-                return {
-                    "success": False,
-                    "status": "customer_not_found",
-                    "intent": intent,
-                    "customer_name": customer_name,
-                    "message": f"Không tìm thấy khách hàng '{customer_name}' trong hệ thống. Vui lòng tạo khách hàng trước."
-                }
-            customer_id, customer_name = found_id, found_name
+            if found_id:
+                customer_id, customer_name = found_id, found_name
+            else:
+                # Chưa có khách hàng: hỏi tạo mới, tạo thật khi người dùng xác nhận
+                is_new_customer = True
 
         payload = build_payload(entities=entities, text=text)
         payload["product_name"] = product_name
+        if new_product_spec:
+            payload[NEW_PRODUCT_KEY] = new_product_spec
         if stock_result.get("product_id"):
             payload["product_id"] = stock_result["product_id"]
         if customer_id:
             payload["customer_id"] = customer_id
         if customer_name:
             payload["customer_name"] = customer_name
+        if is_new_customer:
+            payload[NEW_CUSTOMER_KEY] = True
 
         # Đơn giá & đơn vị tính mặc định từ sản phẩm nếu chưa có
         if not payload.get("unit") and stock_result.get("default_unit"):
             payload["unit"] = stock_result["default_unit"]
 
         unit_price = payload.get("unit_price")
+        price_from_catalog = False
         if unit_price is None and stock_result.get("unit_price"):
             unit_price = stock_result["unit_price"]
             payload["unit_price"] = unit_price
+            price_from_catalog = True
+
+        # Giá bán phải > 0: không nói giá và danh mục chưa có giá / giá 0đ -> hỏi giá bán
+        try:
+            price_ok = unit_price is not None and float(unit_price) > 0
+        except (ValueError, TypeError):
+            price_ok = False
+        if not price_ok:
+            if unit_price is None:
+                message = f"Sản phẩm '{product_name}' chưa có giá bán trong danh mục. Vui lòng nói rõ giá bán."
+            elif price_from_catalog:
+                message = f"Sản phẩm '{product_name}' đang có giá 0đ trong danh mục. Vui lòng nói rõ giá bán."
+            else:
+                message = "Giá bán phải lớn hơn 0đ. Vui lòng nói rõ giá bán."
+            return {
+                "success": False,
+                "status": "invalid_price",
+                "intent": intent,
+                "missing_fields": ["price"],
+                "product_name": product_name,
+                "message": message,
+            }
 
         # 4. Tổng tiền và thanh toán / công nợ
-        total_amount = None
-        if unit_price is not None:
-            try:
-                total_amount = float(unit_price) * qty_requested
-            except (ValueError, TypeError):
-                total_amount = None
+        total_amount = order_total(entities.get("total_price"), unit_price, qty_requested)
+        if total_amount is not None:
+            payload["total_amount"] = total_amount
 
         is_unpaid = is_unpaid_payment(entities.get("payment"))
 
@@ -211,7 +300,7 @@ class BanHangHandler:
         has_debt = is_unpaid or (unpaid_val is not None and unpaid_val > 0)
 
         # Phát sinh nợ nhưng không có khách hàng -> cần khách hàng để ghi nợ
-        if has_debt and not customer_id:
+        if has_debt and not customer_id and not is_new_customer:
             return {
                 "success": False,
                 "status": "need_information",
@@ -240,14 +329,21 @@ class BanHangHandler:
         elif policy != NO_INVENTORY:
             stock_suffix = f" (còn {qty_in_stock:g} trong kho)"
 
+        if new_product_spec:
+            stock_suffix = new_product_note(new_product_spec)
+
         return {
             "success": True,
             "status": "waiting_confirmation",
             "intent": intent,
             "action": "export_inventory",
+            "new_product": new_product_spec,
             "payload": payload,
+            "new_customer": is_new_customer,
             "message": (
-                f"Bạn có chắc muốn bán "
+                f"{new_customer_question(customer_name) if is_new_customer else ''}"
+                f"{'Nếu đồng ý, hệ thống sẽ tạo khách hàng và ' if is_new_customer else 'Bạn có chắc muốn '}"
+                f"{'bán nợ ' if has_debt else 'bán '}"
                 f"{payload['quantity']} "
                 f"{payload.get('unit') or ''} "
                 f"{payload['product_name']}"

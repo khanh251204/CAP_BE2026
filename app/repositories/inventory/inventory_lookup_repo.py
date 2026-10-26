@@ -1,7 +1,6 @@
 from decimal import Decimal
 from typing import Optional, List
 from datetime import datetime
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.supplier_model import Supplier
@@ -33,14 +32,9 @@ class InventoryLookupRepository:
         if not name:
             return None
         clean_name = name.strip()
-        supplier = (
-            self.db.query(Supplier)
-            .filter(
-                Supplier.user_id == user_id,
-                Supplier.supplier_name == clean_name,
-            )
-            .first()
-        )
+        # Khớp chính xác theo cùng quy tắc chặn trùng (hoa/thường, khoảng trắng, vị trí dấu thanh...)
+        from app.services.duplicate_guard import find_duplicate_supplier
+        supplier, _ = find_duplicate_supplier(self.db, user_id, name=clean_name)
         if not supplier:
             supplier = (
                 self.db.query(Supplier)
@@ -70,14 +64,9 @@ class InventoryLookupRepository:
         if not name:
             return None
         clean_name = name.strip()
-        exact = (
-            self.db.query(Customer)
-            .filter(
-                Customer.user_id == user_id,
-                func.lower(Customer.customer_name) == clean_name.lower(),
-            )
-            .first()
-        )
+        # Khớp chính xác theo cùng quy tắc chặn trùng (hoa/thường, khoảng trắng, vị trí dấu thanh...)
+        from app.services.duplicate_guard import find_duplicate_customer
+        exact, _ = find_duplicate_customer(self.db, user_id, name=clean_name)
         if exact:
             return exact
 
@@ -103,15 +92,9 @@ class InventoryLookupRepository:
             return None
         clean_name = name.strip()
         active = Product.is_active == True  # noqa: E712
-        exact = (
-            self.db.query(Product)
-            .filter(
-                Product.user_id == user_id,
-                active,
-                func.lower(Product.product_name) == clean_name.lower(),
-            )
-            .first()
-        )
+        # Khớp chính xác theo cùng quy tắc chặn trùng (hoa/thường, khoảng trắng, vị trí dấu thanh...)
+        from app.services.duplicate_guard import find_duplicate_product
+        exact = find_duplicate_product(self.db, user_id, clean_name)
         if exact:
             return exact.product_id
 
@@ -128,6 +111,22 @@ class InventoryLookupRepository:
         if len(matches) > 1:
             raise AmbiguousMatchError("sản phẩm", clean_name, [p.product_name for p in matches])
         return matches[0].product_id if matches else None
+
+    def get_user_units(self, user_id: int, limit: int = 8) -> List[str]:
+        """Các đơn vị tính khác nhau đang dùng trong danh mục sản phẩm (đang kinh doanh) của user."""
+        rows = (
+            self.db.query(Product.default_unit)
+            .filter(
+                Product.user_id == user_id,
+                Product.is_active.isnot(False),
+                Product.default_unit.isnot(None),
+                Product.default_unit != "",
+            )
+            .distinct()
+            .limit(limit)
+            .all()
+        )
+        return [r[0] for r in rows]
 
     def get_product_by_id(self, user_id: int, product_id: int) -> Optional[Product]:
         return (

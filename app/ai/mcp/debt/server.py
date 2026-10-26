@@ -1,8 +1,11 @@
+from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db_session
 from app.controllers.debt_controller import DebtController
+from app.services.new_customer_service import NEW_CUSTOMER_KEY, resolve_customer_id
+from app.services.new_supplier_service import NEW_SUPPLIER_KEY, resolve_supplier_id
 from app.ai.mcp.debt.tools import (
     GhiNoKhachHangInput,
     GhiNoKhachHangOutput,
@@ -26,12 +29,25 @@ def ghi_no_khach_hang(input: GhiNoKhachHangInput, user_id: int) -> GhiNoKhachHan
     """
     db: Session = get_db_session()
     try:
+        # Khách hàng mới (nếu có) chỉ được flush; create_customer_debt commit/rollback chung một session
+        customer_id = resolve_customer_id(db, user_id, {
+            "customer_id": input.customer_id,
+            "customer_name": input.customer_name,
+            NEW_CUSTOMER_KEY: input.new_customer,
+        })
+        if not customer_id:
+            db.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail=f"Không tìm thấy khách hàng '{input.customer_name or ''}' trong hệ thống.",
+            )
         result = DebtController.create_customer_debt(
             db=db,
             user_id=user_id,
-            customer_id=input.customer_id,
+            customer_id=customer_id,
             total_debt=input.original_amount,
             transaction_id=input.transaction_id,
+            note=input.note,
             input_method=getattr(input, "input_method", "MANUAL"),
         )
         return GhiNoKhachHangOutput(**result)
@@ -71,10 +87,22 @@ def ghi_no_nha_cung_cap(input: GhiNoNhaCungCapInput, user_id: int) -> GhiNoNhaCu
     """
     db: Session = get_db_session()
     try:
+        # Nhà cung cấp mới (nếu có) chỉ được flush; create_supplier_debt commit/rollback chung một session
+        supplier_id = resolve_supplier_id(db, user_id, {
+            "supplier_id": input.supplier_id,
+            "supplier_name": input.supplier_name,
+            NEW_SUPPLIER_KEY: input.new_supplier,
+        })
+        if not supplier_id:
+            db.rollback()
+            raise HTTPException(
+                status_code=404,
+                detail=f"Không tìm thấy nhà cung cấp '{input.supplier_name or ''}' trong hệ thống.",
+            )
         result = DebtController.create_supplier_debt(
             db=db,
             user_id=user_id,
-            supplier_id=input.supplier_id,
+            supplier_id=supplier_id,
             total_debt=input.original_amount,
             transaction_id=input.transaction_id,
             note=input.note,

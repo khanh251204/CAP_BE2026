@@ -33,7 +33,7 @@ for (const tc of cases) {
 
     if (tc.product_name !== '<MISSING>') {
       let name = tc.product_name === '<NULL>' ? null : tc.product_name;
-      if (name && tc.expected === '200') {
+      if (name && tc.expected === '201') {
         name = `${name} ${Date.now()}`;
       }
       payload.product_name = name;

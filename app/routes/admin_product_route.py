@@ -100,7 +100,7 @@ def get_product_detail(
 
 
 @router.patch(
-    "/{product_id}/status",
+    "/{product_id}",
     response_model=AdminProductStatusUpdateResponse,
     summary="Cập nhật trạng thái sản phẩm (Admin)",
     description="Cập nhật trạng thái kích hoạt/ngừng kinh doanh (is_active) cho sản phẩm.",

@@ -15,7 +15,27 @@ from app.schemas.admin_user_schema import (
     AdminUserDetailResponse,
     AdminUserStatusUpdateRequest,
     AdminUserStatusUpdateResponse,
+    AdminUserLockHistoryItem,
+    AdminUserLockHistoryResponse,
 )
+from app.models.user_lock_history_model import UserLockHistory
+from app.services.auth.account_lock_service import (
+    record_lock_event,
+    LOCK,
+    UNLOCK,
+    REASON_ADMIN_LOCK,
+    REASON_ADMIN_UNLOCK,
+    REASON_TOO_MANY_FAILED_LOGINS,
+    REASON_EMAIL_OTP_UNLOCK,
+)
+
+# Nhãn lý do hiển thị cho admin
+LOCK_REASON_LABELS = {
+    REASON_TOO_MANY_FAILED_LOGINS: "Hệ thống tự khóa do nhập sai mật khẩu nhiều lần",
+    REASON_ADMIN_LOCK: "Admin khóa tài khoản",
+    REASON_EMAIL_OTP_UNLOCK: "Người dùng tự mở khóa bằng mã xác minh email",
+    REASON_ADMIN_UNLOCK: "Admin mở khóa tài khoản",
+}
 
 
 class AdminUserService:
@@ -159,7 +179,60 @@ class AdminUserService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Không tìm thấy người dùng"
             )
-        return cls.user_to_detail_response(user)
+        detail = cls.user_to_detail_response(user)
+        if detail.status == "LOCKED":
+            # Lý do của lần khóa gần nhất
+            last_lock = (
+                db.query(UserLockHistory)
+                .filter(UserLockHistory.user_id == user.user_id, UserLockHistory.action == LOCK)
+                .order_by(UserLockHistory.created_at.desc(), UserLockHistory.id.desc())
+                .first()
+            )
+            if last_lock:
+                actor = db.get(User, last_lock.actor_id) if last_lock.actor_id else None
+                detail.lock_reason_code = last_lock.reason_code
+                detail.lock_reason = last_lock.reason or LOCK_REASON_LABELS.get(last_lock.reason_code)
+                detail.locked_at = last_lock.created_at
+                detail.locked_by_name = actor.full_name if actor else None
+        return detail
+
+    @classmethod
+    def get_lock_history(cls, db: Session, user_id: int, limit: int = 50) -> AdminUserLockHistoryResponse:
+        """Lịch sử khóa / mở khóa của một người dùng, mới nhất trước."""
+        if not AdminUserRepository.get_user_by_id(db, user_id=user_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+
+        rows = (
+            db.query(UserLockHistory)
+            .filter(UserLockHistory.user_id == user_id)
+            .order_by(UserLockHistory.created_at.desc(), UserLockHistory.id.desc())
+            .limit(limit)
+            .all()
+        )
+        actor_ids = {r.actor_id for r in rows if r.actor_id}
+        actors = {
+            u.user_id: u.full_name
+            for u in db.query(User).filter(User.user_id.in_(actor_ids)).all()
+        } if actor_ids else {}
+
+        return AdminUserLockHistoryResponse(
+            user_id=user_id,
+            items=[
+                AdminUserLockHistoryItem(
+                    id=r.id,
+                    action=r.action,
+                    reason_code=r.reason_code,
+                    reason_label=LOCK_REASON_LABELS.get(r.reason_code, r.reason_code),
+                    reason=r.reason,
+                    actor_id=r.actor_id,
+                    actor_name=actors.get(r.actor_id) if r.actor_id else None,
+                    ip_address=r.ip_address,
+                    user_agent=r.user_agent,
+                    created_at=r.created_at,
+                )
+                for r in rows
+            ],
+        )
 
     @classmethod
     def update_user_status(
@@ -167,7 +240,8 @@ class AdminUserService:
         db: Session,
         user_id: int,
         current_admin_id: int,
-        request: AdminUserStatusUpdateRequest
+        request: AdminUserStatusUpdateRequest,
+        client: Optional[dict] = None
     ) -> AdminUserStatusUpdateResponse:
         user = AdminUserRepository.get_user_by_id(db, user_id=user_id)
         if not user:
@@ -197,6 +271,12 @@ class AdminUserService:
             # Khóa tài khoản: gán lock_until xa trong tương lai (năm 2099)
             lock_until = datetime(2099, 12, 31, 23, 59, 59)
             AdminUserRepository.lock_user(db, user, lock_until=lock_until)
+            record_lock_event(
+                db, user, LOCK, REASON_ADMIN_LOCK,
+                reason=(request.reason or "").strip() or None,
+                actor_id=current_admin_id,
+                client=client,
+            )
 
             # Vô hiệu hóa toàn bộ refresh token hiện có của user này để ngắt phiên đăng nhập
             revoke_all_user_refresh_tokens(db, user_id=user.user_id, revoked_at=datetime.utcnow())
@@ -214,7 +294,15 @@ class AdminUserService:
             )
 
         elif raw_status in ("ACTIVE", "UNLOCKED", "UNLOCK"):
+            was_locked = cls.compute_user_status(user) == "LOCKED"
             AdminUserRepository.unlock_user(db, user)
+            if was_locked:
+                record_lock_event(
+                    db, user, UNLOCK, REASON_ADMIN_UNLOCK,
+                    reason=(request.reason or "").strip() or None,
+                    actor_id=current_admin_id,
+                    client=client,
+                )
             db.commit()
             db.refresh(user)
             # Trạng thái khóa được kiểm tra ở mỗi request -> xóa cache để có hiệu lực ngay

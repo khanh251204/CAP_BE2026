@@ -6,6 +6,42 @@ from app.models.product_model import Product
 from sqlalchemy.orm import Session
 from sqlalchemy import  func, case
 from app.models.inventory_model import InventoryTransaction
+from app.models.transactionDetail_model import TransactionDetail
+from app.models.transaction_model import Transaction
+
+
+def get_last_import_prices(db: Session, user_id: int) -> dict:
+    """
+    Giá nhập gần nhất của từng sản phẩm: đơn giá trên dòng hàng của lần nhập kho (IN) mới nhất
+    có gắn giao dịch mua hàng. Bỏ qua IN do khách trả hàng (giao dịch có khách hàng) và
+    nhập kho thủ công / kiểm kê (không có giao dịch nên không có giá).
+    Trả về {product_id: unit_price}.
+    """
+    ranked = (
+        db.query(
+            InventoryTransaction.product_id.label("product_id"),
+            TransactionDetail.unit_price.label("unit_price"),
+            func.row_number().over(
+                partition_by=InventoryTransaction.product_id,
+                order_by=InventoryTransaction.inventory_transaction_id.desc(),
+            ).label("rn"),
+        )
+        .join(
+            TransactionDetail,
+            (TransactionDetail.transaction_id == InventoryTransaction.transaction_id)
+            & (TransactionDetail.product_id == InventoryTransaction.product_id),
+        )
+        .join(Transaction, Transaction.transaction_id == InventoryTransaction.transaction_id)
+        .filter(
+            InventoryTransaction.user_id == user_id,
+            InventoryTransaction.inventory_type == "IN",
+            Transaction.customer_id.is_(None),
+            TransactionDetail.unit_price > 0,
+        )
+        .subquery()
+    )
+    rows = db.query(ranked.c.product_id, ranked.c.unit_price).filter(ranked.c.rn == 1).all()
+    return {pid: float(price) for pid, price in rows}
 
 
 def get_products_with_stock(db: Session, user_id: int):
@@ -67,6 +103,7 @@ def get_products_with_stock(db: Session, user_id: int):
     )
 
     # 3. Format dữ liệu trả về
+    import_prices = get_last_import_prices(db, user_id)
     data = []
     for product, total_imported, total_sold, stock_quantity in results:
         data.append({
@@ -76,6 +113,8 @@ def get_products_with_stock(db: Session, user_id: int):
             "default_unit": product.default_unit,
             "product_type": getattr(product, "product_type", "RESALE"),
             "unit_price": float(product.unit_price) if product.unit_price else 0.0,
+            # Giá nhập gần nhất (null nếu chưa từng nhập qua giao dịch mua hàng)
+            "last_import_price": import_prices.get(product.product_id),
             "min_quantity": float(product.min_quantity) if product.min_quantity else 0.0,
             "is_active": product.is_active,
             "total_imported": float(total_imported), # Tổng đã nhập

@@ -1375,7 +1375,7 @@ class TransactionService:
                 detail={"transaction_id": transaction_id, "user_id": user_id},
                 user_id=user_id,
                 status_code=200,
-                api_path=f"/api/v1/transaction/{transaction_id}"
+                api_path=f"/api/v1/transactions/{transaction_id}"
             )
 
             return {
@@ -1395,7 +1395,7 @@ class TransactionService:
                 detail={"transaction_id": transaction_id, "error": str(exc)},
                 user_id=user_id,
                 status_code=500,
-                api_path=f"/api/v1/transaction/{transaction_id}"
+                api_path=f"/api/v1/transactions/{transaction_id}"
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2064,7 +2064,7 @@ class TransactionService:
             detail={"transaction_id": transaction_id, "user_id": user_id, "fields": sorted(list(fields))},
             user_id=user_id,
             status_code=200,
-            api_path=f"/api/v1/transaction/{transaction_id}"
+            api_path=f"/api/v1/transactions/{transaction_id}"
         )
 
         return TransactionService.get_transaction_by_id(
