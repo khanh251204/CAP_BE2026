@@ -5,6 +5,7 @@ from app.repositories.inventory_repo import InventoryRepository
 from app.services.debt_service import DebtService
 from app.models.intent_model import Intent
 from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError
+from app.services.stock_status import resolve_min_quantity, stock_message, stock_status_of
 from app.services.new_product_service import (
     NEW_PRODUCT_KEY,
     get_or_create_from_spec,
@@ -664,13 +665,20 @@ class InventoryService:
                 or ""
             )
 
+            qty = float(stock)
+            min_quantity = resolve_min_quantity(getattr(product_obj, "min_quantity", None))
+            stock_status = stock_status_of(qty, min_quantity)
+
             return {
                 "status": "success",
                 "success": True,
-                "message": f"Sản phẩm '{actual_product_name}' còn {stock}.",
+                "message": stock_message(actual_product_name, qty, default_unit, min_quantity, stock_status),
                 "product_id": product_id,
                 "product_name": actual_product_name,
-                "quantity": float(stock),
+                "quantity": qty,
+                # Ngưỡng cảnh báo & trạng thái tồn: app hiển thị Hết hàng / Sắp hết / Còn hàng
+                "min_quantity": min_quantity,
+                "stock_status": stock_status,
                 "unit_price": unit_price,
                 "default_unit": default_unit,
                 "product_type": normalize_product_type(getattr(product_obj, "product_type", None)),
