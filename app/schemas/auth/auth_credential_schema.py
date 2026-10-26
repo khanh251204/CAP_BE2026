@@ -50,7 +50,7 @@ class SendOTPRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
-    purpose: Literal["verify_email", "forgot_password"]
+    purpose: Literal["verify_email", "forgot_password", "unlock_account"]
 
 
 # VERIFY OTP
@@ -59,7 +59,7 @@ class VerifyOTPRequest(BaseModel):
 
     email: EmailStr
     code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
-    purpose: Literal["verify_email", "forgot_password"]
+    purpose: Literal["verify_email", "forgot_password", "unlock_account"]
 
 
 class VerifyForgotOTPRequest(BaseModel):

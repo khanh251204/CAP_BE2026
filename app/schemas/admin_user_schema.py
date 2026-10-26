@@ -51,6 +51,11 @@ class AdminUserDetailResponse(BaseModel):
     is_verified: bool = Field(False, description="Trạng thái xác thực email")
     failed_attempts: Optional[int] = Field(0, description="Số lần đăng nhập thất bại")
     lock_until: Optional[datetime] = Field(None, description="Thời điểm hết hạn khóa tài khoản")
+    # Lần khóa gần nhất (chỉ có khi tài khoản đang bị khóa)
+    lock_reason_code: Optional[str] = Field(None, description="Mã lý do khóa: TOO_MANY_FAILED_LOGINS, ADMIN_LOCK")
+    lock_reason: Optional[str] = Field(None, description="Lý do khóa")
+    locked_at: Optional[datetime] = Field(None, description="Thời điểm bị khóa")
+    locked_by_name: Optional[str] = Field(None, description="Admin đã khóa (trống = hệ thống tự khóa)")
     created_at: datetime = Field(..., description="Thời gian tạo tài khoản")
 
 
@@ -65,3 +70,21 @@ class AdminUserStatusUpdateResponse(BaseModel):
     user_id: int = Field(..., description="ID người dùng được cập nhật")
     status: str = Field(..., description="Trạng thái sau khi cập nhật")
     lock_until: Optional[datetime] = Field(None, description="Thời điểm hết hạn khóa tài khoản (nếu có)")
+
+
+class AdminUserLockHistoryItem(BaseModel):
+    id: int
+    action: str = Field(..., description="LOCK | UNLOCK")
+    reason_code: str = Field(..., description="TOO_MANY_FAILED_LOGINS | ADMIN_LOCK | EMAIL_OTP_UNLOCK | ADMIN_UNLOCK")
+    reason_label: str = Field(..., description="Mô tả lý do bằng tiếng Việt")
+    reason: Optional[str] = Field(None, description="Lý do chi tiết (admin nhập hoặc hệ thống ghi)")
+    actor_id: Optional[int] = Field(None, description="Admin thực hiện (trống = hệ thống / người dùng)")
+    actor_name: Optional[str] = Field(None, description="Tên người thực hiện")
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+
+
+class AdminUserLockHistoryResponse(BaseModel):
+    user_id: int
+    items: List[AdminUserLockHistoryItem]

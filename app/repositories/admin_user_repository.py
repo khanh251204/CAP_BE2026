@@ -126,6 +126,8 @@ class AdminUserRepository:
         Khóa tài khoản người dùng bằng cách gán lock_until trong tương lai.
         """
         user.lock_until = lock_until
+        # failed_attempts = 0: đánh dấu admin khóa (không mở được bằng email)
+        user.failed_attempts = 0
         db.flush()
         return user
 

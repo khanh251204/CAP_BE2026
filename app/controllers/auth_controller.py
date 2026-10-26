@@ -90,11 +90,13 @@ def send_otp_controller(
 def verify_otp_controller(
     request: VerifyOTPRequest,
     response: Response,
-    db: Session
+    db: Session,
+    client: dict | None = None
 ):
     result = verify_auth_otp(
         db=db,
-        data=request
+        data=request,
+        client=client
     )
 
     if result.get(
@@ -141,11 +143,13 @@ forgot_password_controller = reset_password_controller
 def login_controller(
     request: LoginRequest,
     response: Response,
-    db: Session
+    db: Session,
+    client: dict | None = None
 ):
     result = login_user(
         db=db,
-        data=request
+        data=request,
+        client=client
     )
 
     set_session_cookie(

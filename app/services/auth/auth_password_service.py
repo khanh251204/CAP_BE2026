@@ -32,7 +32,15 @@ from app.services.otp_service import (
     OTP_EXPIRE_MINUTES,
     OTP_RESEND_COOLDOWN_SECONDS,
     VERIFY_EMAIL,
-    FORGOT_PASSWORD
+    FORGOT_PASSWORD,
+    UNLOCK_ACCOUNT
+)
+from app.services.auth.account_lock_service import (
+    is_locked_by_failed_logins,
+    unlock_account,
+    record_lock_event,
+    UNLOCK,
+    REASON_EMAIL_OTP_UNLOCK,
 )
 from app.services.auth.auth_registration_service import (
     normalize_email,
@@ -62,6 +70,16 @@ def send_auth_otp(db: Session, data: SendOTPRequest):
         if not user or not user.password_hash or not user.is_verified:
             return response
 
+    if data.purpose == UNLOCK_ACCOUNT:
+        unlock_response = {
+            "success": True,
+            "message": "Nếu tài khoản đang bị khóa, mã mở khóa sẽ được gửi đến email.",
+            "otpExpiresIn": OTP_EXPIRE_MINUTES * 60,
+            "resendCountdown": OTP_RESEND_COOLDOWN_SECONDS
+        }
+        if not user or not is_locked_by_failed_logins(user):
+            return unlock_response
+
     try:
         otp_info = send_otp(db, user=user, purpose=data.purpose)
         db.commit()
@@ -72,6 +90,9 @@ def send_auth_otp(db: Session, data: SendOTPRequest):
                 "message": "Nếu email tồn tại trong hệ thống, mã OTP sẽ được gửi đến email.",
                 **otp_info
             }
+
+        if data.purpose == UNLOCK_ACCOUNT:
+            return {**unlock_response, **otp_info}
 
         return {
             "success": True,
@@ -97,12 +118,12 @@ def send_auth_otp(db: Session, data: SendOTPRequest):
         )
 
 
-def verify_auth_otp(db: Session, data: VerifyOTPRequest):
+def verify_auth_otp(db: Session, data: VerifyOTPRequest, client: dict | None = None):
     email = normalize_email(data.email)
     user = get_user_by_email(db, email)
 
     if not user:
-        if data.purpose == FORGOT_PASSWORD:
+        if data.purpose in (FORGOT_PASSWORD, UNLOCK_ACCOUNT):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mã OTP không hợp lệ hoặc đã hết hạn")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tài khoản")
 
@@ -112,8 +133,27 @@ def verify_auth_otp(db: Session, data: VerifyOTPRequest):
     if data.purpose == FORGOT_PASSWORD and (not user.password_hash or not user.is_verified):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mã OTP không hợp lệ hoặc đã hết hạn")
 
+    # Admin khóa thì không mở bằng email được
+    if data.purpose == UNLOCK_ACCOUNT and not is_locked_by_failed_logins(user):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mã OTP không hợp lệ hoặc đã hết hạn")
+
     try:
         verify_otp(db, user=user, code=data.code, purpose=data.purpose)
+
+        if data.purpose == UNLOCK_ACCOUNT:
+            # Mở khóa nhưng KHÔNG tự đăng nhập: người dùng vẫn phải nhập đúng mật khẩu
+            unlock_account(user)
+            record_lock_event(
+                db, user, UNLOCK, REASON_EMAIL_OTP_UNLOCK,
+                reason="Người dùng xác minh mã gửi về email để mở khóa",
+                client=client,
+            )
+            db.commit()
+            return {
+                "success": True,
+                "message": "Tài khoản đã được mở khóa. Vui lòng đăng nhập lại.",
+                "nextAction": "login"
+            }
 
         if data.purpose == VERIFY_EMAIL:
             verify_user(db, user)

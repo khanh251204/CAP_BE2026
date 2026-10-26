@@ -24,6 +24,14 @@ from app.services.refresh_token_service import (
 )
 from app.services.auth.auth_registration_service import normalize_email, user_to_dict
 from app.services.system_log_service import log_event
+from app.services.auth.account_lock_service import (
+    MAX_FAILED_LOGIN_ATTEMPTS,
+    is_locked,
+    locked_error,
+    register_failed_login,
+    reset_failed_logins,
+    send_unlock_otp,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +88,20 @@ def create_access_session(user) -> dict:
     }
 
 
-def login_user(db: Session, data: LoginRequest):
+def login_user(db: Session, data: LoginRequest, client: dict | None = None):
     email = normalize_email(data.email)
     user = get_user_by_email(db, email)
+
+    # Kiểm tra khóa TRƯỚC mật khẩu: tài khoản đang khóa thì không cho dò mật khẩu tiếp
+    if user and is_locked(user):
+        log_event(
+            level="WARNING",
+            step="AUTH",
+            message=f"Login blocked: account is locked for {email}",
+            detail={"reason": "ACCOUNT_LOCKED", "email": email},
+            user_id=user.user_id
+        )
+        raise locked_error(user)
 
     if not user or not user.password_hash or not verify_password(data.password, user.password_hash):
         log_event(
@@ -91,22 +110,28 @@ def login_user(db: Session, data: LoginRequest):
             message=f"Login failed: invalid email or password for {email}",
             detail={"reason": "INVALID_CREDENTIALS", "email": email}
         )
+        # Chỉ đếm với tài khoản có mật khẩu (tài khoản chỉ dùng Google không đăng nhập bằng mật khẩu)
+        if user and user.password_hash:
+            try:
+                just_locked = register_failed_login(db, user, client=client)
+                otp_sent = send_unlock_otp(db, user) if just_locked else False
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Không ghi được lần đăng nhập sai cho {email}: {e}", exc_info=True)
+                just_locked, otp_sent = False, False
+            if just_locked:
+                log_event(
+                    level="WARNING",
+                    step="AUTH",
+                    message=f"Account locked after {MAX_FAILED_LOGIN_ATTEMPTS} failed logins: {email}",
+                    detail={"reason": "TOO_MANY_FAILED_LOGINS", "email": email, "otpSent": otp_sent},
+                    user_id=user.user_id
+                )
+                raise locked_error(user, otp_sent=otp_sent)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email hoặc mật khẩu không chính xác"
-        )
-
-    if user.lock_until and user.lock_until > datetime.utcnow():
-        log_event(
-            level="WARNING",
-            step="AUTH",
-            message=f"Login blocked: account is locked for {email}",
-            detail={"reason": "ACCOUNT_LOCKED", "email": email},
-            user_id=user.user_id
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên."
         )
 
     if not user.is_verified:
@@ -121,6 +146,9 @@ def login_user(db: Session, data: LoginRequest):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tài khoản chưa được xác thực email"
         )
+
+    # Đăng nhập đúng -> đếm lại từ đầu
+    reset_failed_logins(user)
 
     try:
         session = create_session(db, user)
@@ -182,6 +210,10 @@ def google_login(db: Session, data: GoogleLoginRequest):
 
         if not user.business_type:
             user.business_type = DEFAULT_GOOGLE_BUSINESS_TYPE
+
+        # Tài khoản đang khóa (sai mật khẩu / admin khóa) không vào được bằng Google
+        if is_locked(user):
+            raise locked_error(user)
 
         session = create_session(db, user)
         db.commit()

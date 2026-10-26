@@ -51,3 +51,4 @@ __all__ = [
     "UserCorrection",
     "UserPendingConfirmation",
 ]
+from app.models.user_lock_history_model import UserLockHistory

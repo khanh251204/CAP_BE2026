@@ -54,6 +54,8 @@ from app.controllers.auth_controller import (
 
 # /auth/*      : đăng ký, đăng nhập, token, OTP, đặt lại mật khẩu (công khai)
 # /users/me/*  : tài nguyên của chính người dùng đang đăng nhập
+from app.services.auth.account_lock_service import client_info
+
 router = APIRouter(prefix="/auth", tags=["Auth"])
 me_router = APIRouter(prefix="/users/me", tags=["Current User"])
 
@@ -90,12 +92,14 @@ def send_otp(
 def verify_otp(
     request: VerifyOTPRequest,
     response: Response,
+    request_obj: Request,
     db: Session = Depends(get_db)
 ):
     return verify_otp_controller(
         request=request,
         response=response,
-        db=db
+        db=db,
+        client=client_info(request_obj)
     )
 
 
@@ -122,12 +126,14 @@ def forgot_password(
 def login(
     request: LoginRequest,
     response: Response,
+    request_obj: Request,
     db: Session = Depends(get_db)
 ):
     return login_controller(
         request=request,
         response=response,
-        db=db
+        db=db,
+        client=client_info(request_obj)
     )
 
 
