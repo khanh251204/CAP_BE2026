@@ -64,9 +64,35 @@ class InventoryStockRepository:
         user = self.db.query(User).filter(User.user_id == user_id).first()
         user_name = user.full_name if user else "Hệ thống"
 
+        # Đơn giá trên dòng hàng của giao dịch gắn với từng lần biến động (1 query cho cả trang)
+        tx_ids = {tx.transaction_id for tx in txs if tx.transaction_id}
+        detail_prices: Dict[int, Any] = {}
+        if tx_ids:
+            for d in (
+                self.db.query(TransactionDetail.transaction_id, TransactionDetail.unit_price)
+                .filter(
+                    TransactionDetail.transaction_id.in_(tx_ids),
+                    TransactionDetail.product_id == product_id,
+                )
+                .all()
+            ):
+                detail_prices.setdefault(d.transaction_id, d.unit_price)
+
         items = []
         for tx in txs:
             note_display = tx.note or ""
+            has_customer = bool(tx.transaction_id and tx.transactions and getattr(tx.transactions, "customer_id", None))
+            raw_price = detail_prices.get(tx.transaction_id)
+            unit_price = float(raw_price) if raw_price is not None else None
+            # IMPORT = giá nhập, SALE = giá bán, RETURN = khách trả hàng; None = nhập/xuất thủ công, kiểm kê
+            if unit_price is None:
+                price_type = None
+            elif tx.inventory_type == "IN":
+                price_type = "RETURN" if has_customer else "IMPORT"
+            elif tx.inventory_type == "OUT":
+                price_type = "SALE"
+            else:
+                price_type = None
             if tx.transaction_id and tx.transactions:
                 t = tx.transactions
                 if getattr(t, "customer", None) and t.customer:
@@ -82,6 +108,9 @@ class InventoryStockRepository:
                 "quantity_after": float(tx.quantity_after),
                 "note": note_display,
                 "transaction_id": tx.transaction_id,
+                "unit_price": unit_price,
+                "price_type": price_type,
+                "subtotal": round(unit_price * float(tx.quantity), 2) if unit_price is not None else None,
                 "created_at": tx.created_at.isoformat() if tx.created_at else None,
                 "created_by": user_name
             })
