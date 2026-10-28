@@ -258,6 +258,10 @@ def refresh_access_token(db: Session, token: str):
                 detail="Tài khoản chưa được xác thực"
             )
 
+        # Đang khóa thì không cấp access token mới (rollback bên dưới hủy luôn lần xoay token)
+        if is_locked(user):
+            raise locked_error(user)
+
         access = create_access_session(user)
         # Tự động dọn dẹp các token hết hạn / revoked thừa trong database
         purge_expired_refresh_tokens(db)
@@ -315,6 +319,9 @@ def get_current_user(db: Session, payload: dict):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Người dùng không tồn tại"
         )
+
+    if is_locked(user):
+        raise locked_error(user)
 
     return {
         "success": True,

@@ -248,9 +248,9 @@ def verify_otp(
         incoming_hash,
         otp.otp_hash
     ):
+        # Không đánh dấu is_used ở đây: lần thử tiếp theo rơi vào nhánh "vượt quá số lần thử"
+        # ở trên (vẫn bị chặn trước khi so mã) thay vì báo "không hợp lệ hoặc đã hết hạn".
         otp.attempts = getattr(otp, "attempts", 0) + 1
-        if otp.attempts >= 5:
-            otp.is_used = True
         db.flush()
         db.commit()
         raise HTTPException(

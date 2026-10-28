@@ -2,6 +2,10 @@ from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, model_validator
 
 
+BUSINESS_TYPES = ("RESELLER", "PRODUCER", "SERVICE")
+EMAIL_LOCAL_PART_MAX = 64
+
+
 # REGISTER
 class RegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -16,23 +20,35 @@ class RegisterRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_fields(self):
-        if not self.fullName or not self.fullName.strip():
-            raise ValueError("Họ và tên không được để trống hoặc chỉ chứa khoảng trắng")
+        # Field(min_length) đếm cả khoảng trắng -> kiểm tra lại độ dài sau khi cắt
         self.fullName = self.fullName.strip()
+        if not self.fullName:
+            raise ValueError("Họ và tên không được để trống hoặc chỉ chứa khoảng trắng")
+        if len(self.fullName) < 2:
+            raise ValueError("Họ và tên phải có ít nhất 2 ký tự")
+
+        self.province = self.province.strip()
+        if len(self.province) < 2:
+            raise ValueError("Tỉnh/thành phải có ít nhất 2 ký tự")
+
+        # email-validator không chặn phần trước @ dài hơn 64 ký tự (RFC 5321)
+        if len(self.email.split("@")[0]) > EMAIL_LOCAL_PART_MAX:
+            raise ValueError(f"Phần trước @ của email tối đa {EMAIL_LOCAL_PART_MAX} ký tự")
+
+        # Áp dụng cho cả tài khoản cá nhân: không lưu giá trị lạ / chữ thường vào business_type
+        if self.businessField is not None:
+            clean_type = self.businessField.strip().upper()
+            if clean_type and clean_type not in BUSINESS_TYPES:
+                raise ValueError(
+                    "Lĩnh vực kinh doanh chỉ chấp nhận một trong các giá trị: RESELLER, PRODUCER, SERVICE"
+                )
+            self.businessField = clean_type or None
 
         if self.accountType == "business":
             if not self.storeName or not self.storeName.strip():
                 raise ValueError("Tên cửa hàng/doanh nghiệp là bắt buộc")
-            if not self.businessField or not self.businessField.strip():
+            if not self.businessField:
                 raise ValueError("Lĩnh vực kinh doanh là bắt buộc")
-
-            allowed_types = {"RESELLER", "PRODUCER", "SERVICE"}
-            clean_type = self.businessField.strip().upper()
-            if clean_type not in allowed_types:
-                raise ValueError(
-                    "Lĩnh vực kinh doanh chỉ chấp nhận một trong các giá trị: RESELLER, PRODUCER, SERVICE"
-                )
-            self.businessField = clean_type
 
         return self
 

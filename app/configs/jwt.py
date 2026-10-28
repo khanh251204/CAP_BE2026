@@ -130,7 +130,7 @@ def decode_reset_token(token: str) -> dict:
         token_type = payload.get("type")
         if token_type == "access":
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token được cung cấp là Access Token. Vui lòng sử dụng API đổi mật khẩu (/change-password) khi đã đăng nhập."
             )
         if token_type != "password_reset" or not payload.get("sub") or not payload.get("email") or not payload.get("passwordFingerprint"):
