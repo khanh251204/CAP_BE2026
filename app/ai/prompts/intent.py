@@ -8,7 +8,7 @@ INTENT_RULES = """
 | mua_hang / nhap_hang | product, quantity | Mua/nhập hàng từ nhà cung cấp (cùng một nghiệp vụ; trích xuất giá nhập & đơn vị nếu có) |
 | nhap_kho | product, quantity | Nhập hàng vào kho đơn thuần |
 | xuat_kho | product, quantity | Xuất kho đơn thuần |
-| kiem_kho | product | Kiểm tra/hỏi số lượng tồn kho |
+| kiem_kho | product | Hỏi tồn kho, hoặc kiểm kê: báo số lượng đếm thực tế (quantity = số đếm) |
 | ghi_no_khach_hang / khach_ghi_no | customer | Ghi nợ cho khách (bắt buộc customer; price không bắt buộc nếu có product) |
 | thu_no_khach_hang / thu_no_khach | customer, price | Khách trả nợ (bắt buộc customer, price) |
 | ghi_no_nha_cung_cap | supplier, price | Nợ tiền nhà cung cấp |
@@ -20,6 +20,7 @@ INTENT_RULES = """
 | xoa_san_pham | product | Xóa sản phẩm |
 | tim_san_pham / xem_san_pham | product | Tìm kiếm/tra cứu sản phẩm |
 | bao_cao | (none) | Báo cáo doanh thu, sổ sách |
+| chot_so | (none) | Chốt sổ cuối ngày / tháng / quý / năm |
 | khac | (none) | Không thuộc các nghiệp vụ trên |
 
 ## INTENT RULES
@@ -40,4 +41,8 @@ INTENT_RULES = """
      VD: "Thanh toán tiền điện 1 triệu", "Đóng tiền nước 200k", "Trả lương nhân viên 5 triệu" -> `chi_phi`.
      Chỉ khi trả cho NHÀ CUNG CẤP / trả nợ tiền hàng -> `tra_no_nha_cung_cap`.
    - `kiem_kho`: hỏi còn hàng, check kho ("kiểm kho tôm", "bánh mì còn không") -> `kiem_kho`, bắt buộc trích xuất `product`.
+     Kiểm kê, người dùng báo số đếm thực tế ("kiểm kho coca còn 15 lon", "đếm lại mì tôm được 30 gói")
+     -> `kiem_kho`, quantity = số đếm thực tế. Câu hỏi ("coca còn không", "còn bao nhiêu") -> quantity = null.
+   - `chot_so` vs `bao_cao`: có từ "chốt sổ", "khóa sổ", "chốt ca", "chốt sổ cuối ngày/tháng" -> `chot_so`.
+     Chỉ xem số liệu ("doanh thu hôm nay bao nhiêu", "báo cáo tháng này") -> `bao_cao`.
 """

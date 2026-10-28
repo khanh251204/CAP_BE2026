@@ -313,6 +313,15 @@ async def confirm_action(
     elif intent == "hang_hong":
         res = await call_mcp_tool("report_damage", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
+    elif intent == "kiem_kho":
+        res = await call_mcp_tool("adjust_stock", {"payload": payload, "user_id": current_user_id})
+        result = normalize_mcp_result(res)
+    elif intent == "chot_so":
+        res = await call_mcp_tool("close_period", {
+            "payload": {"period_params": payload.get("period_params"), "note": payload.get("note")},
+            "user_id": current_user_id
+        })
+        result = normalize_mcp_result(res)
     elif intent in ("ghi_no_khach_hang", "khach_ghi_no"):
         # Ưu tiên số tiền người dùng đã sửa (amount), không thì dùng số tiền bản nháp
         debt_amount = payload.get("amount") if payload.get("amount") is not None else payload.get("original_amount")

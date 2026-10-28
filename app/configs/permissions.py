@@ -145,8 +145,10 @@ INTENT_PERMISSIONS: Dict[str, str] = {
     "nhap_kho": "inventory:manage",
     "xuat_kho": "inventory:manage",
     "hang_hong": "inventory:manage",
-    "kiem_kho": "inventory:read",
+    # kiem_kho chỉ cần xác nhận khi kiểm kê (ghi ADJUSTMENT); hỏi tồn trả kết quả ngay, không qua bước này
+    "kiem_kho": "inventory:manage",
     "tim_san_pham": "product:read",
     "xem_san_pham": "product:read",
     "bao_cao": "report:read",
+    "chot_so": "closing:manage",
 }

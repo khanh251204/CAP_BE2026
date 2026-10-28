@@ -9,6 +9,8 @@ server = FastMCP(
 
 
 server.tool()(ReportTools.get_summary_report)
+server.tool()(ReportTools.preview_closing)
+server.tool()(ReportTools.close_period)
 
 
 if __name__ == "__main__":

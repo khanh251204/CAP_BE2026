@@ -1,7 +1,9 @@
 from typing import Any
 
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
-from app.services.sales_policy import ERROR_INSUFFICIENT_STOCK
+from app.services.sales_policy import (
+    ERROR_INSUFFICIENT_STOCK, ERROR_INVALID_UNIT, is_unit_valid, invalid_unit_message,
+)
 from .validator import validate
 from .payload import build_payload
 
@@ -57,8 +59,21 @@ class HangHongHandler:
                 "message": "Số lượng hàng hỏng phải lớn hơn 0."
             }
 
+        product_unit = product.get("default_unit")
+        if not is_unit_valid(entities.get("unit"), product_unit):
+            return {
+                "success": False,
+                "status": "invalid_unit",
+                "error_code": ERROR_INVALID_UNIT,
+                "intent": intent,
+                "product_name": product.get("product_name"),
+                "unit_requested": entities.get("unit"),
+                "default_unit": product_unit,
+                "message": invalid_unit_message(product.get("product_name"), entities.get("unit"), product_unit),
+            }
+
         in_stock = float(product.get("quantity") or 0)
-        unit = entities.get("unit") or product.get("default_unit") or ""
+        unit = product_unit or entities.get("unit") or ""
         if qty > in_stock:
             return {
                 "success": False,

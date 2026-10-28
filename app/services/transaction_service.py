@@ -73,6 +73,7 @@ INTENT_TYPE_MAPPING = {
     "thu_no_nha_cung_cap": "DEBT",
     "kiem_kho": "NONE",
     "bao_cao": "NONE",
+    "chot_so": "NONE",
     "chuyen_tien": "TRANFER",
 }
 

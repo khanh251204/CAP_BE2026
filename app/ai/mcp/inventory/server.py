@@ -14,6 +14,7 @@ server.tool()(InventoryTools.check_stock)
 server.tool()(InventoryTools.nhap_kho)
 server.tool()(InventoryTools.xuat_kho)
 server.tool()(InventoryTools.report_damage)
+server.tool()(InventoryTools.adjust_stock)
 
 
 if __name__ == "__main__":

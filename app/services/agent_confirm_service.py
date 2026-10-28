@@ -12,6 +12,9 @@ from app.models.transaction_model import Transaction
 
 logger = logging.getLogger(__name__)
 
+# Lệnh chỉ thao tác kho (không phát sinh tiền)
+STOCK_INTENTS = ("nhap_kho", "xuat_kho", "hang_hong", "kiem_kho")
+
 
 class AgentConfirmService:
     @staticmethod
@@ -249,6 +252,28 @@ class AgentConfirmService:
             # Giữ tên gốc để hiển thị / diff, không ghi đè bằng tên mới
             payload["product_name"] = pending_payload.get("product_name")
             payload["data"] = data
+
+        # Lệnh kho (nhập / xuất / hỏng / kiểm kê): service tìm sản phẩm theo product_id trước.
+        # Người dùng đổi sang tên khác mà app không gửi id mới -> bỏ id cũ để tìm theo tên mới,
+        # nếu không bản sửa bị bỏ qua và thao tác ghi vào sản phẩm cũ.
+        if intent in STOCK_INTENTS:
+            new_name = corr_dict.get("product_name") or corr_dict.get("product")
+            old_name = pending_payload.get("product_name")
+            if (
+                new_name
+                and not corr_dict.get("product_id")
+                and str(new_name).strip().lower() != str(old_name or "").strip().lower()
+            ):
+                payload.pop("product_id", None)
+                # Đơn vị cũ thuộc sản phẩm cũ: để service lấy đơn vị của sản phẩm mới
+                if "unit" not in corr_dict:
+                    payload["unit"] = None
+            min_qty_ok = (lambda q: q >= 0) if intent == "kiem_kho" else (lambda q: q > 0)
+            if not min_qty_ok(float(payload.get("quantity") or 0)):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Số lượng kiểm kê không được âm" if intent == "kiem_kho" else "Số lượng phải lớn hơn 0"
+                )
 
         # 3. Tính diff và correction_type
         diff_ai: Dict[str, Any] = {}

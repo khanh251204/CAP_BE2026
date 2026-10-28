@@ -45,9 +45,9 @@
 | 5 | `nhap_kho` | Quản trị kho nội bộ | `nhap_kho` | Nhập chuyển kho nội bộ không phát sinh dòng tiền. |
 | 6 | `xuat_kho` | Quản trị kho nội bộ | `xuat_kho` | Xuất kho điều chuyển / hao hụt nội bộ. |
 | 7 | `hang_hong` | Quản trị kho nội bộ | `report_damage` | Ghi nhận hàng tồn kho hư hỏng/hết hạn (`type = DAMAGE`). |
-| 8 | `kiem_kho` | Quản trị kho nội bộ | `kiem_kho` | Đối soát số lượng tồn thực tế vs sổ sách (`ADJUSTMENT`). |
+| 8 | `kiem_kho` | Quản trị kho nội bộ | `check_stock`, `adjust_stock` | Hỏi tồn trả kết quả ngay; báo số đếm thực tế → bản nháp, xác nhận ghi `ADJUSTMENT`. |
 | 9 | `bao_cao` | Báo cáo & Phân tích | `Report MCP` | Tổng hợp doanh thu, chi phí, lợi nhuận, công nợ định kỳ. |
-| 10 | `chot_so` | Báo cáo & Phân tích | `chot_so` | Chốt sổ giao dịch cuối ngày / cuối tháng. |
+| 10 | `chot_so` | Báo cáo & Phân tích | `preview_closing`, `close_period` | Chốt sổ ngày / tháng / quý / năm: xem trước → xác nhận → `ClosingService.create_closing`. |
 | 11 | **BOM Module** | Nghiệp vụ nâng cao | Production Service | Định mức nguyên vật liệu cho `PRODUCER`. |
 | 12 | **Multi-item Batch** | AI Core nâng cao | LLM 120B Inference | Trích xuất và xử lý nhiều sản phẩm trong 1 câu nói. |
 
@@ -58,9 +58,10 @@
 | Server | Đường dẫn | Công cụ cung cấp | Trạng thái |
 | :--- | :--- | :--- | :---: |
 | **Product MCP** | `app/ai/mcp/product/` | `get_all_products`, `get_product_by_id`, `search_products`, `create_product`, `update_product`, `delete_product` | ✅ Hoạt động ổn định |
-| **Inventory MCP** | `app/ai/mcp/inventory/` | `check_stock`, `import_inventory`, `export_inventory`, `nhap_kho`, `xuat_kho` | ✅ Hoạt động ổn định |
+| **Inventory MCP** | `app/ai/mcp/inventory/` | `check_stock`, `import_inventory`, `export_inventory`, `nhap_kho`, `xuat_kho`, `report_damage`, `adjust_stock` | ✅ Hoạt động ổn định |
 | **Debt MCP** | `app/ai/mcp/debt/` | `ghi_no_khach_hang`, `thu_no_khach_hang`, `ghi_no_nha_cung_cap`, `thu_no_nha_cung_cap` | ✅ Hoạt động ổn định |
 | **Expense MCP** | `app/ai/mcp/expense/` | `create_expense` | ✅ Hoạt động ổn định |
+| **Report MCP** | `app/ai/mcp/report/` | `get_summary_report`, `preview_closing`, `close_period` | ✅ Hoạt động ổn định |
 
 ---
 
