@@ -83,7 +83,7 @@ def build_spec(
 
 def describe(spec: Dict[str, Any]) -> str:
     """Mô tả ngắn để chèn vào câu xác nhận / thông báo."""
-    label = PRODUCT_TYPE_LABEL.get(spec.get("product_type"), "sản phẩm")
+    label = spec.get("label") or PRODUCT_TYPE_LABEL.get(spec.get("product_type"), "sản phẩm")
     price = spec.get("unit_price")
     price_text = f", giá {price:,.0f}đ/{spec.get('default_unit') or ''}" if price else ", chưa có giá bán"
     return f"'{spec['product_name']}' ({label}{price_text})"

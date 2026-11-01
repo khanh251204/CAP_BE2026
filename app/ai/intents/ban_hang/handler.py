@@ -42,6 +42,20 @@ def _lookup_customer(user_id: int, customer_name: str) -> tuple:
         db.close()
 
 
+def _lookup_business_type(user_id: int) -> str | None:
+    """Loại hình kinh doanh của user (RESELLER / PRODUCER / SERVICE); lỗi DB -> None."""
+    from app.services.sales_policy import get_user_business_type
+
+    try:
+        db = get_db_session()
+        try:
+            return get_user_business_type(db, user_id)
+        finally:
+            db.close()
+    except Exception:
+        return None
+
+
 class BanHangHandler:
     """
     Business workflow cho intent: ban_hang
@@ -67,6 +81,14 @@ class BanHangHandler:
         # LLM bỏ sót payment nhưng câu có "bán chịu", "ghi sổ"... -> PENDING.
         # Ghi vào entities để payload.payment_status (bước xác nhận) cùng kết quả với bản nháp.
         entities = {**entities, "payment": resolve_payment(entities.get("payment"), text)}
+
+        # Dịch vụ ("Cắt tóc 80k", "Sửa xe 200k") không nói số lượng -> mặc định 1 lần (AGENTS.md Test 4.1).
+        # Chỉ tra loại hình khi thiếu số lượng để không thêm truy vấn cho các câu bình thường.
+        if entities.get("quantity") in (None, ""):
+            user_bt = business_type or await asyncio.to_thread(_lookup_business_type, user_id)
+            if normalize_business_type(user_bt) == "SERVICE":
+                entities["quantity"] = 1
+                business_type = user_bt
 
         # 1. Validate
         val_result = validate(entities)

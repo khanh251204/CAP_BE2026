@@ -23,6 +23,8 @@ PRICE_LABEL = {
     FLOW_STOCK_IN: "giá bán",
 }
 
+SERVICE_DEFAULT_UNIT = "lần"
+
 
 def _positive(value: Any) -> bool:
     try:
@@ -85,6 +87,9 @@ def prepare_new_product(
 
     price = entities.get("price") if entities.get("price") is not None else entities.get("unit_price")
     unit = entities.get("unit")
+    is_service = str(business_type or "").strip().upper() == "SERVICE"
+    if is_service and not unit:
+        unit = SERVICE_DEFAULT_UNIT  # "Cắt tóc 80k": dịch vụ tính theo lần, không hỏi lại đơn vị
     missing = []
     # Nhập hàng / bán hàng cần giá để tính tiền; nhập kho đơn thuần thì giá bán có thể bổ sung sau
     if flow in (FLOW_PURCHASE, FLOW_SALE) and not _positive(price):
@@ -107,20 +112,27 @@ def prepare_new_product(
             "message": f"Sản phẩm '{product_name}' chưa có trong danh mục. Cho mình biết {' và '.join(asks)} để thêm sản phẩm mới.",
         }}
 
-    return {"spec": build_spec(
+    spec = build_spec(
         product_name,
         unit,
         # Nhập hàng: giá người dùng nói là GIÁ NHẬP, không dùng làm giá bán của sản phẩm
         sale_price=None if flow == FLOW_PURCHASE else price,
         product_type=default_product_type(flow, business_type),
         price_from_item=(flow == FLOW_SALE),
-    )}
+    )
+    if is_service:
+        # product_type vẫn lưu RESALE (enum DB), chỉ đổi cách gọi trong câu xác nhận
+        spec["label"] = "dịch vụ"
+    return {"spec": spec}
 
 
 def new_product_note(spec: Dict[str, Any]) -> str:
     """Câu ghi chú chèn vào câu hỏi xác nhận."""
     from app.services.new_product_service import describe
-    note = f" [Sản phẩm mới {describe(spec)} sẽ được thêm vào danh mục]"
+    if spec.get("label") == "dịch vụ":
+        note = f" [Dịch vụ mới {describe(spec).replace('(dịch vụ, ', '(')} sẽ được thêm vào danh mục]"
+    else:
+        note = f" [Sản phẩm mới {describe(spec)} sẽ được thêm vào danh mục]"
     if spec.get("product_type") == "RAW_MATERIAL":
         note = note[:-1] + " — nguyên liệu, không bán trực tiếp]"
     return note
