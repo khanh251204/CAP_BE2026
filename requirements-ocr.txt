@@ -1,0 +1,11 @@
+# Gói tùy chọn cho API OCR hóa đơn (/api/v1/ocr/receipts). Không cài thì các route khác vẫn chạy bình thường.
+# Vintern-1B-v3.5 chưa chạy được với transformers 5.x (lỗi all_tied_weights_keys): ghim 4.44.x.
+pillow>=10.0
+opencv-python-headless>=4.8
+numpy
+torch
+torchvision
+transformers==4.44.2
+einops
+timm
+sentencepiece

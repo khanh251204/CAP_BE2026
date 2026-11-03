@@ -106,7 +106,26 @@ class AgentConfirmService:
                 "unit": unit_val,
                 "price": price_in,
             }
-            if qty_val is not None:
+            if corr_dict.get("items"):
+                # Phiếu nhiều dòng (vd: từ OCR hóa đơn): kiểm từng dòng, không dùng trường đơn sản phẩm
+                for idx, it in enumerate(corr_dict["items"]):
+                    it_dict = it if isinstance(it, dict) else it.model_dump(exclude_unset=True)
+                    it_price = it_dict.get("unit_price") if it_dict.get("unit_price") is not None else it_dict.get("price")
+                    try:
+                        bad_qty = float(it_dict.get("quantity")) <= 0
+                    except (ValueError, TypeError):
+                        bad_qty = True
+                    try:
+                        bad_price = it_price is None or float(it_price) <= 0
+                    except (ValueError, TypeError):
+                        bad_price = True
+                    has_product = it_dict.get("product_id") or it_dict.get("product_name") or it_dict.get("product")
+                    if bad_qty or bad_price or not has_product:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Dòng {idx + 1} thiếu hoặc sai tên hàng / số lượng / giá nhập (phải > 0)"
+                        )
+            elif qty_val is not None:
                 try:
                     if float(qty_val) <= 0:
                         raise HTTPException(
@@ -118,7 +137,7 @@ class AgentConfirmService:
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail="Số lượng sản phẩm không hợp lệ"
                     )
-            val_res = validate_mua_hang(val_entities)
+            val_res = {"success": True} if corr_dict.get("items") else validate_mua_hang(val_entities)
             if not val_res.get("success"):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
