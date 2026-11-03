@@ -135,15 +135,60 @@ class VinternEngine:
                 "latency_ms": round((time.perf_counter() - start) * 1000, 1)}
 
 
-_engine = None
+_vintern = None
+_gemini = None
 _engine_lock = threading.Lock()
 
 
-def get_engine() -> VinternEngine:
-    global _engine
+def _get_vintern() -> VinternEngine:
+    global _vintern
+    from app.configs.settings import settings
     with _engine_lock:
-        if _engine is None:
-            from app.configs.settings import settings
-            _engine = VinternEngine(settings.OCR_MODEL_ID, max_tiles=settings.OCR_MAX_TILES,
-                                    deps_dir=settings.OCR_DEPS_DIR)
-        return _engine
+        if _vintern is None:
+            _vintern = VinternEngine(settings.OCR_MODEL_ID, max_tiles=settings.OCR_MAX_TILES,
+                                     deps_dir=settings.OCR_DEPS_DIR)
+        return _vintern
+
+
+def _get_gemini():
+    global _gemini
+    from app.configs.settings import settings
+    from app.ai.ocr.gemini_engine import GeminiOcrEngine
+    with _engine_lock:
+        if _gemini is None:
+            _gemini = GeminiOcrEngine(settings.OCR_GEMINI_MODEL)
+        return _gemini
+
+
+def _has_gpu() -> bool:
+    try:
+        import torch
+        return bool(torch.cuda.is_available())
+    except ImportError:
+        return False
+
+
+def resolve_engine_name() -> str:
+    """
+    OCR_ENGINE: vintern | gemini | auto (mặc định).
+    auto: có GPU -> Vintern (vài giây/ảnh); chỉ có CPU -> Gemini, vì Vintern trên CPU mất 4-5 phút/hóa đơn thật.
+    """
+    from app.configs.settings import settings
+    choice = (settings.OCR_ENGINE or "auto").lower()
+    if choice in ("vintern", "gemini"):
+        return choice
+    return "vintern" if _has_gpu() else "gemini"
+
+
+def extract_text(image) -> Dict:
+    """Ảnh -> {"text", "n_tiles", "latency_ms", "engine"}. Vintern lỗi thì chuyển sang Gemini (nếu có khóa)."""
+    from app.configs.settings import settings
+    name = resolve_engine_name()
+    if name == "vintern":
+        try:
+            return {**_get_vintern().extract_text(image), "engine": "vintern"}
+        except OcrUnavailableError as e:
+            if not (settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")):
+                raise
+            logger.warning("[OCR] Vintern không dùng được (%s), chuyển sang Gemini", e)
+    return {**_get_gemini().extract_text(image), "engine": "gemini"}

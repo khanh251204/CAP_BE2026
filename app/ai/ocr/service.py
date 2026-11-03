@@ -7,13 +7,13 @@ Bản nháp chưa tin cậy (dòng lệch, hàng chưa có trong danh mục) tr�
 app bắt buộc gửi lại items đã sửa, và backend kiểm lại từng dòng trước khi ghi.
 """
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.ai.ocr import preprocess
 from app.ai.ocr.diacritics import restore_diacritics
-from app.ai.ocr.engine import get_engine
+from app.ai.ocr import engine
 from app.ai.ocr.receipt_parser import parse_receipt
 from app.ai.ocr.text_utils import extract_total
 from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError, InventoryLookupRepository
@@ -57,14 +57,21 @@ def _draft_payload(parsed: Dict[str, Any], text: str) -> Dict[str, Any]:
     }
 
 
-def scan_receipt(user_id: int, image_bytes: bytes, db: Session, allow_low_quality: bool = False) -> Dict[str, Any]:
-    """Đồng bộ và nặng (chạy model): gọi qua asyncio.to_thread."""
+def check_image(image_bytes: bytes, allow_low_quality: bool = False) -> Tuple[Any, Dict[str, Any], Optional[Dict[str, Any]]]:
+    """
+    Bước nhanh (< 1 giây), chạy ngay trong request: đọc ảnh + cổng chất lượng.
+    Trả (ảnh đã xử lý, chất lượng, kết quả trả ngay nếu ảnh bị chặn).
+    """
     image, quality = preprocess.prepare(image_bytes, crop=False)
     if not quality["ok"] and not allow_low_quality:
-        return {"success": False, "status": "poor_quality", "quality": quality,
-                "message": " ".join(quality["messages"])}
+        return image, quality, {"success": False, "status": "poor_quality", "quality": quality,
+                                "message": " ".join(quality["messages"])}
+    return image, quality, None
 
-    ocr = get_engine().extract_text(image)
+
+def process_image(user_id: int, image: Any, quality: Dict[str, Any], db: Session) -> Dict[str, Any]:
+    """Bước nặng (OCR + LLM + đối chiếu danh mục), chạy ở luồng nền."""
+    ocr = engine.extract_text(image)
     from app.configs.settings import settings
     fixed = restore_diacritics(ocr["text"], enabled=settings.OCR_RESTORE_DIACRITICS)
     text = fixed["text"]
@@ -78,7 +85,7 @@ def scan_receipt(user_id: int, image_bytes: bytes, db: Session, allow_low_qualit
     result: Dict[str, Any] = {
         "intent": INTENT,
         "quality": quality,
-        "ocr": {"text": text, "text_original": ocr["text"], "n_tiles": ocr["n_tiles"],
+        "ocr": {"text": text, "text_original": ocr["text"], "n_tiles": ocr["n_tiles"], "engine": ocr.get("engine"),
                 "latency_ms": ocr["latency_ms"], "diacritics_restored": fixed["changed"]},
         "receipt": parsed,
     }
@@ -110,3 +117,9 @@ def scan_receipt(user_id: int, image_bytes: bytes, db: Session, allow_low_qualit
                 "message": "Mình đọc được hóa đơn nhưng cần bạn kiểm tra lại một số dòng trước khi ghi.", **result}
     return {"success": True, "status": "waiting_confirmation", "message": "Vui lòng xác nhận phiếu nhập hàng",
             **result}
+
+
+def scan_receipt(user_id: int, image_bytes: bytes, db: Session, allow_low_quality: bool = False) -> Dict[str, Any]:
+    """Chạy trọn hai bước một lần (dùng trong test / script)."""
+    image, quality, early = check_image(image_bytes, allow_low_quality)
+    return early or process_image(user_id, image, quality, db)
