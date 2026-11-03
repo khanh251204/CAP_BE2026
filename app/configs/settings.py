@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     OCR_MAX_TILES: int = Field(2, description="Số ô 448x448 tối đa mỗi ảnh; nhỏ = nhanh hơn trên CPU")
     OCR_MAX_IMAGE_MB: int = Field(8, description="Dung lượng ảnh tối đa (MB)")
     OCR_RESTORE_DIACRITICS: bool = Field(True, description="Thêm dấu cho dòng hóa đơn in không dấu (qua Groq)")
+    OCR_DEPS_DIR: str = Field(".ocr_deps", description="Thư mục cài riêng transformers 4.44.2 cho Vintern (tương đối với thư mục BE)")
 
     @property
     def is_production(self) -> bool:

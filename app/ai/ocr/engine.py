@@ -3,10 +3,13 @@ Engine OCR Vintern-1B-v3.5 (InternVL: InternViT-300M + Qwen2.5-0.5B), chạy tro
 
 - Nạp lười ở lần gọi đầu (tải ~2 GB từ Hugging Face), giữ một bản duy nhất; khóa lại để mỗi lúc chỉ một ảnh chạy.
 - CPU nạp fp32 (~4 GB RAM), GPU nạp bf16. Một ảnh mất vài chục giây trên CPU, nên route chạy trong thread riêng.
-- Vintern cần transformers 4.44.x (xem requirements-ocr.txt).
+- Mã của Vintern chỉ chạy với transformers 4.44.x, còn .venv dùng 5.x (lỗi all_tied_weights_keys): bản 4.44.2
+  cài riêng vào thư mục OCR_DEPS_DIR và được ưu tiên khi nạp model (xem requirements-ocr.txt).
 Engine chỉ làm ảnh -> văn bản; mọi quyết định nghiệp vụ nằm ở backend.
 """
 import logging
+import os
+import sys
 import threading
 import time
 from typing import Dict
@@ -29,9 +32,38 @@ class OcrUnavailableError(RuntimeError):
     """Chưa cài gói OCR hoặc không nạp được model."""
 
 
+_BE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+def _use_ocr_deps(deps_dir: str) -> None:
+    """
+    Đưa thư mục chứa transformers 4.44.x lên đầu sys.path trước khi import.
+    Chỉ có tác dụng khi transformers chưa được import trong tiến trình (server không import sẵn,
+    trừ chế độ ACTIVE_AI_MODEL=qwen_local).
+    """
+    loaded = sys.modules.get("transformers")
+    if loaded is not None:
+        version = getattr(loaded, "__version__", "?")
+        if not version.startswith("4."):
+            raise OcrUnavailableError(
+                f"transformers {version} đã được nạp trước trong tiến trình; Vintern cần 4.44.x "
+                "(tắt ACTIVE_AI_MODEL=qwen_local hoặc chạy OCR ở tiến trình riêng)")
+        return
+    candidates = [deps_dir, os.path.join("ocr_benchmark", ".deps")]
+    for d in candidates:
+        path = d if os.path.isabs(d) else os.path.join(_BE_ROOT, d)
+        if os.path.isdir(os.path.join(path, "transformers")):
+            if path not in sys.path:
+                sys.path.insert(0, path)
+            logger.info("[OCR] Dùng transformers từ %s", path)
+            return
+    logger.warning("[OCR] Không thấy thư mục OCR_DEPS_DIR, dùng transformers của môi trường hiện tại")
+
+
 class VinternEngine:
-    def __init__(self, model_id: str, max_tiles: int = 2, max_new_tokens: int = 768):
+    def __init__(self, model_id: str, max_tiles: int = 2, max_new_tokens: int = 768, deps_dir: str = ".ocr_deps"):
         self.model_id = model_id
+        self.deps_dir = deps_dir
         self.max_tiles = max_tiles
         # repetition_penalty 1.05: tắt hẳn thì model kẹt vòng lặp, quá mạnh thì hại số tiền lặp lại
         self.gen_cfg = {"max_new_tokens": max_new_tokens, "do_sample": False, "num_beams": 1,
@@ -40,6 +72,7 @@ class VinternEngine:
         self._ready = False
 
     def _load(self) -> None:
+        _use_ocr_deps(self.deps_dir)
         try:
             import torch
             import torchvision.transforms as T
@@ -111,5 +144,6 @@ def get_engine() -> VinternEngine:
     with _engine_lock:
         if _engine is None:
             from app.configs.settings import settings
-            _engine = VinternEngine(settings.OCR_MODEL_ID, max_tiles=settings.OCR_MAX_TILES)
+            _engine = VinternEngine(settings.OCR_MODEL_ID, max_tiles=settings.OCR_MAX_TILES,
+                                    deps_dir=settings.OCR_DEPS_DIR)
         return _engine
