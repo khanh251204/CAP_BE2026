@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = Field(None, description="Cloudinary API key")
     CLOUDINARY_API_SECRET: Optional[str] = Field(None, description="Cloudinary API secret")
 
+    # 10. OCR hóa đơn (Vintern-1B-v3.5). Cần cài requirements-ocr.txt; tắt thì route trả 503
+    OCR_ENABLED: bool = Field(True, description="Bật/tắt API OCR hóa đơn")
+    OCR_MODEL_ID: str = Field("5CD-AI/Vintern-1B-v3_5", description="Model Hugging Face dùng để OCR")
+    OCR_MAX_TILES: int = Field(2, description="Số ô 448x448 tối đa mỗi ảnh; nhỏ = nhanh hơn trên CPU")
+    OCR_MAX_IMAGE_MB: int = Field(8, description="Dung lượng ảnh tối đa (MB)")
+    OCR_RESTORE_DIACRITICS: bool = Field(True, description="Thêm dấu cho dòng hóa đơn in không dấu (qua Groq)")
+
     @property
     def is_production(self) -> bool:
         env_val = (self.ENVIRONMENT or self.APP_ENV or "").strip().lower()

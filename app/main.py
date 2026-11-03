@@ -26,6 +26,7 @@ from app.routes.customer_route import customer_router
 from app.routes.debt_route import debt_router
 from app.routes.groq_route import router as groq_router
 from app.routes.notification_route import router as notification_router
+from app.routes.ocr_route import router as ocr_router
 from app.routes.product_route import router as product_router
 from app.routes.report_route import router as report_router
 from app.routes.supplier_route import supplier_router
@@ -160,6 +161,7 @@ CORE_ROUTERS = [
     me_router,
     product_router,
     groq_router,
+    ocr_router,
     debt_router,
     customer_router,
     supplier_router,
