@@ -31,7 +31,7 @@ python -m venv .venv
 | `MYSQL_TRACKER_URL` | ✅ | `mysql+pymysql://user:pass@host:port/db` |
 | `JWT_SECRET_KEY` | ✅ | Chuỗi bí mật bất kỳ |
 | `GROQ_API_KEY` (`_2`, `_3`...) | ✅ | Cần cho STT và LLM, có thể khai nhiều key để xoay vòng |
-| `GEMINI_API_KEY` | | LLM dự phòng, OCR dự phòng |
+| `GEMINI_API_KEY` | | LLM dự phòng |
 | `APP_ENV` | | `development` khi chạy local |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | | Thời hạn token |
 | `REDIS_URL` | | Bỏ trống thì dùng DB làm session store |
@@ -124,7 +124,6 @@ Kiểm tra: http://localhost:8000/health và http://localhost:8000/docs.
 ### Lưu ý
 
 - Repo chưa có `.dockerignore`, nên `COPY . .` đưa cả `.env`, `.venv`, `firebase-service-account.json` và các thư mục benchmark vào image. Không đẩy image này lên registry công khai, và nên thêm `.dockerignore` để image gọn hơn.
-- Image không cài gói OCR (`requirements-ocr.txt`), nên route OCR không chạy trong Docker nếu chưa cài thêm.
 
 ### Dùng chung với ngrok
 
