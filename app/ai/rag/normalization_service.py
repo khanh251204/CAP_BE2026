@@ -4,6 +4,69 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
 
+# ---------------------------------------------------------------------------
+# Số lượng đọc bằng chữ: "hai chục", "ba ký rưỡi", "năm lăm", "ba mươi lăm"
+# ---------------------------------------------------------------------------
+_DIGIT_WORDS = {
+    "không": 0, "một": 1, "mốt": 1, "hai": 2, "ba": 3, "bốn": 4, "tư": 4, "năm": 5, "lăm": 5,
+    "sáu": 6, "bảy": 7, "bẩy": 7, "tám": 8, "chín": 9,
+}
+# Từ chỉ "chữ số" không đứng làm hàng chục / hàng trăm
+_NOT_TENS = ("lăm", "mốt", "tư")
+_NUM_WORD_SET = set(_DIGIT_WORDS) | {"mười", "mươi", "trăm", "linh", "lẻ"}
+_NUM_WORD_ALT = "|".join(sorted(_NUM_WORD_SET, key=len, reverse=True))
+# Một cụm các từ chỉ số liền nhau ("ba mươi lăm", "một trăm hai mươi")
+_NUM_PHRASE = rf"(?:{_NUM_WORD_ALT})(?:[ \t]+(?:{_NUM_WORD_ALT}))*"
+# Chỉ khi từ đứng ngay sau số là đơn vị hàng mới coi là số lượng ("hai lon", "ba kg"), tránh đổi "chị Ba", "hai lúa"
+_QTY_UNITS = (
+    "kg|g|l|ml|lon|chai|thùng|gói|hộp|cái|chiếc|bao|bó|ổ|ly|tô|chén|bát|đĩa|con|quả|trái|bịch|túi|lốc|vỉ|két|"
+    "cuốn|quyển|bình|hũ|can|phần|suất|lạng|yến|tạ|tấn|mét|m|cây|tờ|đôi|cặp|viên|miếng|lát|khúc|nải|buồng|chùm|"
+    "củ|cọng|bông|hòn|bộ|xấp|cuộn|tấm|thanh|lọ|ống|tuýp"
+)
+_MONEY_CUE = r"(?:giá|hết|tổng cộng|tổng|chi|trả|đóng|thanh toán|nợ|mỗi\s+\w+)"
+_MONEY_AFTER = r"(?:nghìn|ngàn|k|đồng|triệu|tr|tiền|cành|củ)(?![\wÀ-ỹ])"
+
+
+def parse_vi_number(words: List[str]) -> Optional[int]:
+    """Đọc cụm từ chỉ số tiếng Việt (0-999). Không chắc chắn thì trả None để giữ nguyên câu."""
+    w = [x.lower() for x in words]
+    if not w:
+        return None
+    total = 0
+    if len(w) >= 2 and w[1] == "trăm" and w[0] in _DIGIT_WORDS and w[0] not in _NOT_TENS:
+        total = _DIGIT_WORDS[w[0]] * 100
+        w = w[2:]
+        if not w:
+            return total
+        if len(w) == 1 and w[0] in _DIGIT_WORDS:
+            return None  # "hai trăm năm": nói tắt, có thể là 205 hoặc 250 -> không đoán
+    if w[0] in ("linh", "lẻ"):
+        return total + _DIGIT_WORDS[w[1]] if total and len(w) == 2 and w[1] in _DIGIT_WORDS else None
+    if w[0] == "mười":
+        if len(w) == 1:
+            return total + 10
+        if len(w) == 2 and w[1] in _DIGIT_WORDS and w[1] != "không":
+            return total + 10 + _DIGIT_WORDS[w[1]]
+        return None
+    if len(w) >= 2 and w[1] == "mươi" and w[0] in _DIGIT_WORDS and 2 <= _DIGIT_WORDS[w[0]] <= 9 and w[0] not in _NOT_TENS:
+        val = _DIGIT_WORDS[w[0]] * 10
+        if len(w) == 2:
+            return total + val
+        if len(w) == 3 and w[2] in _DIGIT_WORDS and w[2] != "không":
+            return total + val + _DIGIT_WORDS[w[2]]
+        return None
+    # Cách nói tắt: "năm lăm" = 55, "hai lăm" = 25
+    if len(w) == 2 and w[1] == "lăm" and w[0] in _DIGIT_WORDS and 1 <= _DIGIT_WORDS[w[0]] <= 9 and w[0] not in _NOT_TENS:
+        return total + _DIGIT_WORDS[w[0]] * 10 + 5
+    if len(w) == 1 and w[0] in _DIGIT_WORDS and total == 0:
+        return _DIGIT_WORDS[w[0]]
+    return None
+
+
+def _fmt_number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else f"{value:g}"
+
+
 class NormalizationService:
     """
     Dịch vụ chuẩn hóa từ vựng, đơn vị tính, từ lóng và phương ngữ (Normalization RAG).
@@ -21,9 +84,9 @@ class NormalizationService:
 
     @staticmethod
     def _term_pattern(term: str) -> "re.Pattern[str]":
-        # Tránh match 'mi' trong 'bánh mì' / 'bánh mi'
+        # Tránh match 'mi' trong 'bánh mì' / 'bánh mi' / 'áo sơ mi'
         if term.lower() == "mi":
-            raw = rf"(?<!bánh\s)(?<!banh\s)(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
+            raw = rf"(?<!bánh\s)(?<!banh\s)(?<!sơ\s)(?<!so\s)(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
         else:
             raw = rf"(?<![\wÀ-ỹ]){re.escape(term)}(?![\wÀ-ỹ])"
         return re.compile(raw, flags=re.IGNORECASE)
@@ -88,6 +151,107 @@ class NormalizationService:
 
         normalized_text = text
         changes = {}
+
+        # 0. Cách nói tiền đời thường. Chạy TRƯỚC các mẫu bên dưới để "3 nghìn rưỡi" không bị cắt thành "3 nghìn".
+        def repl_amount(factor, extra=0):
+            def _repl(match):
+                orig = match.group(0)
+                res = f"{int(match.group(1)) * factor + extra} đồng"
+                changes[orig] = res
+                return res
+            return _repl
+
+        def repl_prefixed(factor):
+            # Giữ lại từ báo hiệu giá ("giá", "hết", "tổng"...) để không nhầm với số lượng
+            def _repl(match):
+                orig = match.group(0)
+                raw = match.group(2).lower()
+                n = int(raw) if raw.isdigit() else parse_vi_number([raw])
+                if n is None:
+                    return orig
+                res = f"{n * factor} đồng"
+                changes[orig] = f"{match.group(1)} {res}"
+                return f"{match.group(1)} {res}"
+            return _repl
+
+        def repl_tram(match):
+            orig = match.group(0)
+            value = int(match.group(2)) * 100000
+            tail = match.group(3)
+            if tail:
+                value += 50000 if tail.lower() == "rưỡi" else int(tail) * 10000
+            res = f"{value} đồng"
+            changes[orig] = f"{match.group(1)} {res}"
+            return f"{match.group(1)} {res}"
+
+        price_cue = r"(giá|hết|tổng cộng|tổng|mỗi\s+\w+)"
+        # 3 nghìn rưỡi / 2k rưỡi -> 3500 / 2500
+        normalized_text = re.sub(
+            r"\b(\d+)\s*(?:k|nghìn|ngàn|cành)\s*rưỡi\b", repl_amount(1000, 500), normalized_text, flags=re.IGNORECASE
+        )
+        # 30 cành -> 30000 (cành = nghìn)
+        normalized_text = re.sub(r"\b(\d+)\s*cành\b", repl_amount(1000), normalized_text, flags=re.IGNORECASE)
+        # 1 củ rưỡi -> 1500000; "1 củ" chỉ tính là tiền khi đứng cuối câu hoặc trước "đồng" (tránh "5 củ cải")
+        normalized_text = re.sub(
+            r"\b(\d+)\s*củ\s*rưỡi\b", repl_amount(1000000, 500000), normalized_text, flags=re.IGNORECASE
+        )
+        normalized_text = re.sub(
+            r"\b(\d+)\s*củ(?=\s*(?:đồng\b|[.,!?]*\s*$))", repl_amount(1000000), normalized_text, flags=re.IGNORECASE
+        )
+        # 5 trăm nghìn -> 500000
+        normalized_text = re.sub(
+            r"\b(\d+)\s*trăm\s*(?:nghìn|ngàn)\b", repl_amount(100000), normalized_text, flags=re.IGNORECASE
+        )
+        # "Chi 3 lít tiền sửa máy lạnh": lít + "tiền" là tiền (1 lít = 100 nghìn), không phải thể tích
+        normalized_text = re.sub(r"\b(\d+)\s*lít(?=\s+tiền\b)", repl_amount(100000), normalized_text, flags=re.IGNORECASE)
+        # giá 1 xị / giá một xị -> 100000
+        normalized_text = re.sub(
+            rf"\b{price_cue}\s+(\d+|một|hai|ba|bốn|năm|sáu|bảy|tám|chín)\s*xị\b",
+            repl_prefixed(100000), normalized_text, flags=re.IGNORECASE
+        )
+        # giá 2 trăm 5 -> 250000; hết 1 trăm 8 -> 180000; giá 2 trăm rưỡi -> 250000
+        normalized_text = re.sub(
+            rf"\b{price_cue}\s+(\d+)\s*trăm(?:\s+(rưỡi|\d))?(?!\d)"
+            r"(?!\s*(?:nghìn|ngàn|k\b|triệu|tr\b|đồng|cái|chai|lon|thùng|gói|con|bao|hộp|kg|ký|kí|lít|người))",
+            repl_tram, normalized_text, flags=re.IGNORECASE
+        )
+
+        # 0b. Số tiền kiểu 'củ' / 'trăm' khi có từ chỉ tiền
+        money_verb = r"(chi|trả|đóng|thanh toán|ghi nợ|nợ|giá|hết|tổng cộng|tổng)"
+        veggie = r"(?!\s*(?:cải|hành|tỏi|gừng|nghệ|sen|năng|khoai|kiệu|đậu|dền|sắn|su|riềng|gấc))"
+
+        def repl_cu(match):
+            orig = match.group(0)
+            value = int(match.group(2)) * 1000000
+            tail = match.group(3)
+            if tail:
+                value += 500000 if tail.lower() == "rưỡi" else int(tail) * 100000
+            res = f"{value} đồng"
+            changes[orig] = f"{match.group(1)} {res}"
+            return f"{match.group(1)} {res}"
+
+        # "Chi 1 củ sửa tủ lạnh" -> 1000000; "nợ 2 củ rưỡi" -> 2500000; "1 củ 2" -> 1200000
+        normalized_text = re.sub(
+            rf"\b{money_verb}\s+(\d+)\s*củ(?:\s+(rưỡi|\d))?(?!\d)" + veggie,
+            repl_cu, normalized_text, flags=re.IGNORECASE
+        )
+
+        # "Đóng tiền internet 2 trăm" (kết thúc câu, không có danh từ phía sau) -> 200000
+        def repl_tram_end(match):
+            orig = match.group(0)
+            value = int(match.group(1)) * 100000
+            tail = match.group(2)
+            if tail:
+                value += 50000 if tail.lower() == "rưỡi" else int(tail) * 10000
+            res = f"{value} đồng"
+            changes[orig] = res
+            return res
+
+        if re.search(r"\b(?:chi|trả|đóng|thanh toán|tiền|nợ|giá|hết|tổng)\b", normalized_text, flags=re.IGNORECASE):
+            normalized_text = re.sub(
+                r"\b(\d+)\s*trăm(?:\s+(rưỡi|\d))?(?=\s*[.,!?]*\s*$)",
+                repl_tram_end, normalized_text, flags=re.IGNORECASE
+            )
 
         # 1. Pattern 1 triệu rưỡi / 1tr rưỡi / một triệu rưỡi
         def repl_ruoi(match):
@@ -175,6 +339,79 @@ class NormalizationService:
         normalized_text = re.sub(r"đồng\s+đồng", "đồng", normalized_text)
         return normalized_text, changes
 
+    def _normalize_quantities(self, text: str) -> Tuple[str, Dict[str, str]]:
+        """
+        Số lượng nói kiểu đời thường -> chữ số (chạy SAU bước tiền và từ điển, nên "ký" đã thành "kg"):
+          "hai chục trứng" -> "20 trứng"      "hai tá bút" -> "24 bút"
+          "ba kg rưỡi" -> "3.5 kg"            "năm lăm kg" -> "55 kg"       "ba mươi lăm cái ly" -> "35 cái ly"
+        Chỉ đổi khi chắc chắn là SỐ LƯỢNG HÀNG: số bằng chữ phải đứng ngay trước đơn vị / "chục" / "tá";
+        "chục" đứng sau từ báo giá ("giá hai chục") hoặc trước "nghìn/đồng" là tiền nên giữ nguyên.
+        """
+        if not text or not text.strip():
+            return text, {}
+        changes: Dict[str, str] = {}
+
+        def number_of(raw: str) -> Optional[int]:
+            raw = raw.strip()
+            if raw.isdigit():
+                return int(raw)
+            return parse_vi_number(raw.lower().split())
+
+        def record(orig: str, res: str) -> str:
+            changes[orig.strip()] = res.strip()
+            return res
+
+        # 1. "<số> chục" / "<số> tá"
+        def repl_group(factor: int):
+            def _repl(m: "re.Match[str]") -> str:
+                before = m.string[max(0, m.start() - 24):m.start()]
+                after = m.string[m.end():m.end() + 24]
+                if re.search(rf"{_MONEY_CUE}\s*$", before, flags=re.IGNORECASE) or re.match(
+                    rf"\s*{_MONEY_AFTER}", after, flags=re.IGNORECASE
+                ):
+                    return m.group(0)
+                n = number_of(m.group("num"))
+                if n is None:
+                    return m.group(0)
+                return record(m.group(0), f"{n * factor}")
+            return _repl
+
+        out = text
+        for word, factor in (("chục", 10), ("tá", 12)):
+            out = re.sub(
+                rf"(?<![\wÀ-ỹ])(?P<num>\d+|{_NUM_PHRASE})[ \t]+{word}(?![\wÀ-ỹ])",
+                repl_group(factor), out, flags=re.IGNORECASE
+            )
+
+        # 2. số bằng chữ đứng ngay trước đơn vị hàng -> chữ số
+        def repl_words(m: "re.Match[str]") -> str:
+            # "giá 20000 đồng một chai": "một" là đơn giá cho MỘT đơn vị, giữ nguyên cho LLM đọc
+            if m.group("num").lower() in ("một", "mốt") and re.search(
+                r"(?:đồng|nghìn|ngàn|triệu|giá|mỗi|k|chục)\s*$", m.string[max(0, m.start() - 16):m.start()], flags=re.IGNORECASE
+            ):
+                return m.group(0)
+            n = number_of(m.group("num"))
+            if n is None:
+                return m.group(0)
+            record(m.group("num"), f"{n}")
+            return f"{n}{m.group('tail')}"
+
+        out = re.sub(
+            rf"(?<![\wÀ-ỹ])(?P<num>{_NUM_PHRASE})(?P<tail>[ \t]+(?:{_QTY_UNITS})(?![\wÀ-ỹ]))",
+            repl_words, out, flags=re.IGNORECASE
+        )
+
+        # 3. "3 kg rưỡi" -> "3.5 kg"
+        def repl_half(m: "re.Match[str]") -> str:
+            whole = float(m.group("n").replace(",", "."))
+            return record(m.group(0), f"{_fmt_number(whole + 0.5)} {m.group('u')}")
+
+        out = re.sub(
+            r"(?<![\wÀ-ỹ])(?P<n>\d+(?:[.,]\d+)?)\s*(?P<u>kg|l|g|ml|yến|tạ|tấn|mét|m)\s+rưỡi(?![\wÀ-ỹ])",
+            repl_half, out, flags=re.IGNORECASE
+        )
+        return out, changes
+
     def normalize(self, text: str) -> Tuple[str, Dict[str, str]]:
         """
         Chuẩn hóa câu văn bản một cách thận trọng (conservative):
@@ -215,6 +452,10 @@ class NormalizationService:
                 if count > 0:
                     normalized_text = new_text
                     changes_applied[term] = target_norm
+
+        # 3. Số lượng nói kiểu đời thường (hai chục, ba kg rưỡi, năm lăm...)
+        normalized_text, qty_changes = self._normalize_quantities(normalized_text)
+        changes_applied.update(qty_changes)
 
         # Chuẩn hóa lại khoảng trắng thừa nếu có
         normalized_text = re.sub(r"\s+", " ", normalized_text).strip()

@@ -17,10 +17,11 @@ class ProductInventoryService:
         note: Optional[str],
         reason: str,
         user_id: int,
-        db: Session
+        db: Session,
+        count_unit: Optional[str] = None,
     ):
         """
-        API Kiểm kê tồn kho:
+        API Kiểm kê tồn kho (count_unit: đếm theo gói nguyên, xem product_unit_service.counted_stock):
         1. Lock row Product.
         2. quantity_before = current_stock.
         3. quantity_after = actual_quantity.
@@ -43,7 +44,18 @@ class ProductInventoryService:
 
         inv_repo = InventoryRepository(db)
         qty_before = inv_repo.get_latest_stock(user_id, product_id)
-        qty_after = Decimal(str(actual_quantity))
+        from app.services.product_unit_service import counted_stock, units_by_product
+
+        qty_after = counted_stock(
+            qty_before, actual_quantity, count_unit, product.default_unit,
+            units_by_product(db, user_id, [product_id]).get(product_id, []),
+        )
+        if qty_after is None:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Đơn vị '{count_unit}' không quy đổi được sang '{product.default_unit}' của '{product.product_name}'",
+            )
         delta = qty_after - qty_before
 
         inv_type = reason.upper() if reason else "ADJUSTMENT"

@@ -15,12 +15,15 @@ from app.services.closing_scheduler import ClosingScheduler
 from app.services.data_lake_service import DataLakeService
 from app.services.notification_cleanup_service import NotificationCleanupScheduler
 from app.services.token_cleanup_service import TokenCleanupScheduler
+from app.services.data_retention_service import DataRetentionScheduler
 from app.services.inactivity_reminder_service import InactivityReminderScheduler
 
 # Core routers
 from app.api.stt import router as stt_router
 from app.routes import inventory_route
 from app.routes.auth_route import router as auth_router, me_router
+from app.routes.bom_route import bom_router
+from app.routes.product_unit_route import product_unit_router
 from app.routes.closing_route import router as closing_router
 from app.routes.customer_route import customer_router
 from app.routes.debt_route import debt_router
@@ -43,6 +46,7 @@ from app.routes.admin_system_log_route import router as admin_system_log_router
 from app.routes.admin_notification_route import router as admin_notification_router
 from app.routes.admin_rbac_route import router as admin_rbac_router, ui_router as admin_rbac_ui_router
 from app.routes.admin_closing_route import router as admin_closing_router
+from app.routes.admin_audit_route import router as admin_audit_router
 
 
 @asynccontextmanager
@@ -90,6 +94,12 @@ async def lifespan(app: FastAPI):
         TokenCleanupScheduler.start()
     except Exception as e:
         logger.error(f"[TokenCleanupScheduler] Start error: {e}")
+
+    # 5b. Dọn Audit Log / system log theo thời gian giữ admin cài (Admin -> Giám sát & kiểm toán -> Cài đặt)
+    try:
+        DataRetentionScheduler.start()
+    except Exception as e:
+        logger.error(f"[DataRetentionScheduler] Start error: {e}")
 
     # 6. Khởi động Inactivity Reminder Scheduler (tự động nhắc nhở người dùng không vào app 7 ngày qua FCM)
     try:
@@ -160,6 +170,8 @@ CORE_ROUTERS = [
     auth_router,
     me_router,
     product_router,
+    bom_router,
+    product_unit_router,
     groq_router,
     ocr_router,
     debt_router,
@@ -187,6 +199,7 @@ ADMIN_ROUTERS = [
     admin_rbac_router,
     admin_rbac_ui_router,
     admin_closing_router,
+    admin_audit_router,
 ]
 
 

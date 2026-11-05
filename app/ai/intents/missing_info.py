@@ -122,6 +122,105 @@ def drop_unspoken_quantity(intent: Optional[str], entities: dict, text: str) -> 
 
 
 # ---------------------------------------------------------------------------
+# Dọn thực thể LLM trả thừa / sai chỗ theo từng intent
+# ---------------------------------------------------------------------------
+# Backend quyết định: LLM chỉ trích xuất, những trường vô nghĩa với intent bị bỏ để không lọt vào bản nháp.
+_KHO_INTENTS = {"nhap_kho", "xuat_kho", "hang_hong", "kiem_kho"}
+# "Coca còn 15 lon không", "còn bao nhiêu", "mấy thùng" là CÂU HỎI tồn kho, không phải báo số đếm thực tế
+_STOCK_QUESTION = re.compile(r"(?:\b(?:bao nhiêu|mấy)\b|\b(?:không|chưa|hay không)\s*[?.!]*\s*$)", re.IGNORECASE)
+
+
+_RENAME_CUE = re.compile(r"(?:đổi|sửa|đặt|gọi|chuyển)\s+(?:lại\s+)?tên|tên\s+(?:là|thành|mới)|thành\s+tên", re.IGNORECASE)
+_PRICE_OR_UNIT_CUE = re.compile(r"\b(?:giá|đơn giá|đơn vị|tồn tối thiểu|ngưỡng|tồn kho)\b", re.IGNORECASE)
+
+
+def _is_real_rename(entities: dict, text: str) -> bool:
+    """
+    sua_san_pham: `new_product_name` chỉ có nghĩa khi người dùng ĐỔI TÊN sản phẩm.
+    LLM hay điền thừa khi chỉ sửa giá / đơn vị ("Sửa giá phở tái thành 55 nghìn" -> new_product_name='phở tái',
+    "Đổi đơn vị mì hảo hảo thành gói" -> 'mì hảo hảo (gói)') và handler sẽ đổi tên sản phẩm theo giá trị đó.
+    """
+    new_name = str(entities.get("new_product_name") or "").strip()
+    old_name = str(entities.get("product") or "").strip()
+    if not new_name:
+        return False
+    low_new, low_old = new_name.casefold(), old_name.casefold()
+    if low_old and low_new == low_old:
+        return False
+    if low_old and low_new.startswith(low_old):
+        rest = low_new[len(low_old):].strip(" ()[]-")
+        if not rest or rest == str(entities.get("unit") or "").strip().casefold():
+            return False
+    if _RENAME_CUE.search(str(text or "")):
+        return True
+    return not _PRICE_OR_UNIT_CUE.search(str(text or ""))
+
+
+# Nghiệp vụ chỉ có tiền (không có hàng): model hay bỏ trống số tiền dù câu đã có "N đồng" sau chuẩn hóa
+_MONEY_ONLY_INTENTS = {
+    "khach_ghi_no", "ghi_no_khach_hang", "thu_no_khach", "thu_no_khach_hang",
+    "ghi_no_nha_cung_cap", "tra_no_nha_cung_cap", "chi_phi",
+}
+_MONEY_FIELDS = ("price", "total_price", "amount")
+_VND = re.compile(r"(?<![\d.,-])(\d+)\s*đồng\b", re.IGNORECASE)
+
+
+def fill_missing_amount(intent: Optional[str], entities: dict, text: str) -> dict:
+    """
+    Model không điền số tiền cho khoản nợ / chi phí -> lấy từ câu đã chuẩn hóa nếu câu có ĐÚNG MỘT số tiền.
+    Không đoán khi: có nhiều số tiền, có hàng hóa kèm số lượng (giá có thể là đơn giá), số tiền âm.
+    """
+    if intent not in _MONEY_ONLY_INTENTS or not isinstance(entities, dict):
+        return entities
+    if any(not _is_empty(entities.get(f)) for f in _MONEY_FIELDS):
+        return entities
+    if not _is_empty(entities.get("product")) or not _is_empty(entities.get("quantity")):
+        return entities
+    raw = str(text or "")
+    if re.search(r"(?:^|\s)(?:[-−–]|âm\s+)\d", raw, re.IGNORECASE):
+        return entities
+    amounts = {int(m) for m in _VND.findall(raw)}
+    if len(amounts) != 1:
+        return entities
+    value = amounts.pop()
+    return {**entities, "price": value} if value > 0 else entities
+
+
+def clean_entities_for_intent(intent: Optional[str], entities: dict, text: str = "") -> dict:
+    """
+    - them_san_pham: tên sản phẩm mới nằm ở `product`. LLM điền nhầm vào `new_product_name` -> chuyển sang `product`.
+      (new_product_name chỉ có nghĩa với sua_san_pham: product = tên cũ, new_product_name = tên mới.)
+    - kiem_kho: câu hỏi tồn kho ("còn 15 lon không") -> quantity = null; báo số đếm thực tế thì giữ.
+    - nhap_kho / xuat_kho / hang_hong / kiem_kho: không có khách / nhà cung cấp, bỏ trường LLM bịa.
+    - Intent khác: new_product_name chỉ giữ cho sua_san_pham.
+    """
+    if not isinstance(entities, dict):
+        return entities
+    cleaned = dict(entities)
+
+    if intent == "sua_san_pham":
+        if not _is_empty(cleaned.get("new_product_name")) and not _is_real_rename(cleaned, text):
+            cleaned["new_product_name"] = None
+    elif intent == "them_san_pham":
+        new_name = cleaned.get("new_product_name")
+        if not _is_empty(new_name) and _is_empty(cleaned.get("product")):
+            cleaned["product"] = new_name
+        cleaned["new_product_name"] = None
+    if intent != "sua_san_pham" and not _is_empty(cleaned.get("new_product_name")):
+        cleaned["new_product_name"] = None
+
+    if intent == "kiem_kho" and not _is_empty(cleaned.get("quantity")) and _STOCK_QUESTION.search(str(text or "")):
+        cleaned["quantity"] = None
+
+    if intent in _KHO_INTENTS:
+        for field in ("customer", "supplier"):
+            if not _is_empty(cleaned.get(field)):
+                cleaned[field] = None
+
+    return cleaned if cleaned != entities else entities
+
+
+# ---------------------------------------------------------------------------
 # Số âm LLM bỏ dấu
 # ---------------------------------------------------------------------------
 # "Thanh toán tiền điện -1000000" -> LLM trả price=1000000 (mất dấu âm) -> validator không chặn được.

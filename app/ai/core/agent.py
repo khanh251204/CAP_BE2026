@@ -3,7 +3,14 @@ import importlib
 from typing import Any, Optional
 
 from app.ai.core.router import IntentRouter
-from app.ai.intents.missing_info import drop_unspoken_quantity, missing_message, restore_negative_numbers
+from app.ai.intents.missing_info import (
+    clean_entities_for_intent,
+    drop_unspoken_quantity,
+    fill_missing_amount,
+    missing_message,
+    restore_negative_numbers,
+)
+from app.ai.core.multi_item import build_multi_item_draft, resolve_multi_intent
 from app.services.session_store_service import SessionStoreService
 from app.services.sales_policy import resolve_credit_sale_intent, resolve_total_price
 
@@ -120,6 +127,28 @@ class Agent:
             entities = signed
             analysis = {**analysis, "entities": entities}
 
+        # 4b. Nhiều sản phẩm trong một câu ("bán 2 coca và 3 mì"): backend tự kiểm tra từng dòng,
+        # không dựa vào status/missing_fields của LLM (top-level product / quantity để trống).
+        multi_intent = resolve_multi_intent(intent, entities)
+        if multi_intent:
+            intent = multi_intent
+            analysis = {**analysis, "intent": intent, "llm_intent": analysis.get("intent")}
+            handler_result = await build_multi_item_draft(self.router, intent, user_id, entities, input_to_model)
+            # Cùng dạng kết quả với handler một sản phẩm (bước 9) để app xử lý giống nhau
+            if handler_result.get("status") == "waiting_confirmation":
+                SessionStoreService.save_confirmation(
+                    session_key=user_id,
+                    data={"intent": intent, "payload": handler_result["payload"]},
+                    user_id=user_id,
+                )
+            return {
+                "success": True,
+                "user_id": user_id,
+                "intent": intent,
+                "analysis": analysis,
+                "mcp_result": handler_result,
+            }
+
         # 5. LLM Error (thiếu field) — intent lạ được xử lý ở bước 6
         missing_info = (
             self._missing_info(intent, entities, analysis)
@@ -159,6 +188,8 @@ class Agent:
         # Phải chạy trước resolve_total_price, nếu không đơn giá bị tính từ số lượng đoán.
         guessed_qty = entities.get("quantity")
         entities = drop_unspoken_quantity(intent, entities, input_to_model)
+        entities = clean_entities_for_intent(intent, entities, input_to_model)
+        entities = fill_missing_amount(intent, entities, input_to_model)
         entities = resolve_total_price(intent, entities)
         if intent != llm_intent or entities.get("quantity") != guessed_qty:
             analysis = {**analysis, "intent": intent, "entities": entities, "llm_intent": llm_intent}

@@ -2,7 +2,7 @@ from typing import Any
 
 from app.ai.intents.new_product_draft import new_product_note, prepare_new_product
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
-from app.services.sales_policy import ERROR_INVALID_UNIT, is_unit_valid, invalid_unit_message
+from app.services.sales_policy import ERROR_INVALID_UNIT, is_unit_valid, invalid_unit_message, to_product_unit
 from app.services.new_product_service import FLOW_STOCK_IN, NEW_PRODUCT_KEY
 from .validator import validate
 from .payload import build_payload
@@ -82,7 +82,9 @@ class NhapKhoHandler:
 
         # Đơn vị nhập phải khớp đơn vị tính của sản phẩm (chỉ với sản phẩm đã có trong DB)
         product_unit = product.get("default_unit")
-        if not new_product_spec and not is_unit_valid(entities.get("unit"), product_unit):
+        # Quy đổi đơn vị cùng loại (kg <-> g, lít <-> ml...); khác loại mới báo lỗi
+        converted = entities if new_product_spec else to_product_unit(entities, product_unit, product.get("units"))
+        if converted is None:
             return {
                 "success": False,
                 "status": "invalid_unit",
@@ -93,6 +95,7 @@ class NhapKhoHandler:
                 "default_unit": product_unit,
                 "message": invalid_unit_message(product["product_name"], entities.get("unit"), product_unit),
             }
+        entities = converted
         if not new_product_spec and product_unit:
             # Dùng đúng cách viết đơn vị trong DB
             entities = {**entities, "unit": product_unit}

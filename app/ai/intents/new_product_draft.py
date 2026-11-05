@@ -85,6 +85,9 @@ def prepare_new_product(
 
     price = entities.get("price") if entities.get("price") is not None else entities.get("unit_price")
     unit = entities.get("unit")
+    # Dịch vụ tính theo lần ("Cắt tóc 80k"): không bắt người dùng nói đơn vị
+    if not unit and str(business_type or "").strip().upper() == "SERVICE":
+        unit = "lần"
     missing = []
     # Nhập hàng / bán hàng cần giá để tính tiền; nhập kho đơn thuần thì giá bán có thể bổ sung sau
     if flow in (FLOW_PURCHASE, FLOW_SALE) and not _positive(price):
@@ -114,13 +117,15 @@ def prepare_new_product(
         sale_price=None if flow == FLOW_PURCHASE else price,
         product_type=default_product_type(flow, business_type),
         price_from_item=(flow == FLOW_SALE),
+        is_service=str(business_type or "").strip().upper() == "SERVICE",
     )}
 
 
 def new_product_note(spec: Dict[str, Any]) -> str:
     """Câu ghi chú chèn vào câu hỏi xác nhận."""
     from app.services.new_product_service import describe
-    note = f" [Sản phẩm mới {describe(spec)} sẽ được thêm vào danh mục]"
+    kind = "Dịch vụ mới" if spec.get("is_service") else "Sản phẩm mới"
+    note = f" [{kind} {describe(spec)} sẽ được thêm vào danh mục]"
     if spec.get("product_type") == "RAW_MATERIAL":
         note = note[:-1] + " — nguyên liệu, không bán trực tiếp]"
     return note

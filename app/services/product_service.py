@@ -172,6 +172,12 @@ class ProductService:
             except (ValueError, TypeError):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="min_quantity phải lớn hơn hoặc bằng 0")
 
+        # Đơn vị quy đổi / định mức đang tính theo đơn vị & loại hiện tại -> chặn đổi làm sai số liệu
+        from app.services.bom_service import product_change_conflict
+        conflict = product_change_conflict(db, user_id, product, data)
+        if conflict:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict)
+
         if "default_unit" in data and data["default_unit"] is not None:
             new_unit = str(data["default_unit"]).strip()
             if new_unit and new_unit != product.default_unit:
@@ -208,9 +214,11 @@ class ProductService:
         return {"success": True, "message": "Đã xóa sản phẩm", "mode": "hard_delete"}
 
     @staticmethod
-    def inventory_check(product_id: int, actual_quantity: float, note: Optional[str], reason: str, user_id: int, db: Session):
+    def inventory_check(product_id: int, actual_quantity: float, note: Optional[str], reason: str, user_id: int, db: Session,
+                        count_unit: Optional[str] = None):
         return ProductInventoryService.inventory_check(
-            product_id=product_id, actual_quantity=actual_quantity, note=note, reason=reason, user_id=user_id, db=db
+            product_id=product_id, actual_quantity=actual_quantity, note=note, reason=reason, user_id=user_id, db=db,
+            count_unit=count_unit,
         )
 
     @staticmethod

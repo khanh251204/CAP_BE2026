@@ -22,6 +22,10 @@ from app.models.closing_report_model import ClosingReport
 from app.models.system_log_model import SystemLog
 from app.models.user_correction_model import UserCorrection
 from app.models.user_pending_confirmation_model import UserPendingConfirmation
+from app.models.bom_model import BillOfMaterial
+from app.models.product_unit_model import ProductUnit
+from app.models.audit_log_model import AuditLog
+from app.models.app_setting_model import AppSetting
 
 __all__ = [
     "User",
@@ -50,5 +54,14 @@ __all__ = [
     "SystemLog",
     "UserCorrection",
     "UserPendingConfirmation",
+    "BillOfMaterial",
+    "ProductUnit",
+    "AuditLog",
+    "AppSetting",
 ]
 from app.models.user_lock_history_model import UserLockHistory
+
+# Ghi vết (Audit Log) mọi thay đổi giao dịch: gắn sự kiện ORM sau khi mọi model đã nạp
+from app.services.audit_service import register_audit_listeners  # noqa: E402
+
+register_audit_listeners()

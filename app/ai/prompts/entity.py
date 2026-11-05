@@ -28,7 +28,17 @@ ENTITY_RULES = """
      * "trả một phần", "trả bớt" -> "PARTIAL".
      * "chưa trả", "còn nợ", "ghi nợ", "bán nợ", "bán chịu", "mua chịu", "lấy chịu", "ghi sổ", "thiếu lại", "trả sau" -> "PENDING".
 
-3. Chi phí (chi_phi):
+3. Nhiều sản phẩm trong MỘT câu (chỉ ban_hang, mua_hang):
+   - Câu nêu từ 2 mặt hàng KHÁC NHAU trở lên ("bán 2 lon coca và 3 gói mì") -> điền `items`, mỗi phần tử là
+     {"product","quantity","unit","price","total_price"} của đúng mặt hàng đó. Đặt `product`, `quantity`, `unit`,
+     `price`, `total_price` ở cấp ngoài = null.
+   - `customer`, `supplier`, `payment`, `date` dùng chung cả đơn: để ở cấp ngoài, không lặp trong từng phần tử.
+   - Mỗi mặt hàng giữ đúng số lượng / đơn vị / giá của riêng nó, không gộp, không đoán giá còn thiếu (null).
+   - Chỉ 1 mặt hàng -> `items` = null và dùng các trường cấp ngoài như bình thường.
+   - VD: "Bán 2 lon coca giá 10k và 3 gói mì giá 5k cho chị Lan" -> intent=ban_hang, customer="chị Lan",
+     items=[{"product":"coca","quantity":2,"unit":"lon","price":10000},{"product":"mì","quantity":3,"unit":"gói","price":5000}].
+
+4. Chi phí (chi_phi):
    - `price`: Số tiền chi, dạng số nguyên VND (Bắt buộc). VD: "Chi 500k tiền điện" -> price = 500000.
    - `category`: Tên khoản chi ngắn gọn như người dùng nói (String hoặc null), bỏ các từ "thanh toán", "đóng", "chi".
      VD: "Thanh toán tiền điện 1 triệu" -> category="tiền điện"; "Đóng tiền internet 300k" -> category="tiền internet";

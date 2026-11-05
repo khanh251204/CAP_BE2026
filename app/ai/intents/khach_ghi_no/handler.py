@@ -3,6 +3,7 @@ from typing import Any
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
 from app.configs.database import get_db_session
 from app.models.customer_model import Customer
+from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError, InventoryLookupRepository
 from app.services.new_customer_service import NEW_CUSTOMER_KEY, new_customer_question
 from .validator import validate
 from .payload import build_payload
@@ -196,23 +197,17 @@ class KhachGhiNoHandler:
             db = get_db_session()
             try:
                 clean_customer_name = str(customer_name).strip()
-                db_customer = (
-                    db.query(Customer)
-                    .filter(
-                        Customer.user_id == user_id,
-                        Customer.customer_name == clean_customer_name
-                    )
-                    .first()
-                )
-                if not db_customer:
-                    db_customer = (
-                        db.query(Customer)
-                        .filter(
-                            Customer.user_id == user_id,
-                            Customer.customer_name.ilike(f"%{clean_customer_name}%")
-                        )
-                        .first()
-                    )
+                try:
+                    db_customer = InventoryLookupRepository(db).get_customer_by_name(user_id, clean_customer_name)
+                except AmbiguousMatchError as amb:
+                    return {
+                        "success": False,
+                        "status": "need_information",
+                        "intent": intent,
+                        "missing_fields": ["customer"],
+                        "candidates": amb.candidates,
+                        "message": str(amb)
+                    }
 
                 if db_customer:
                     customer_id = db_customer.customer_id

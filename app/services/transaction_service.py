@@ -1103,6 +1103,33 @@ class TransactionService:
         item_intent_name = transaction.intent.intent_name if transaction.intent else None
         resolved_type = resolve_intent_type(transaction.intent, item_intent_name)
 
+        # Nguyên liệu đã trừ theo định mức lúc bán: lấy từ các dòng xuất kho gắn với giao dịch
+        # (bất biến, nên sửa định mức về sau không làm đổi lịch sử).
+        sold_product_ids = {d.product_id for d in raw_details}
+        material_rows = (
+            db.query(InventoryTransaction, Product.product_name)
+            .join(Product, Product.product_id == InventoryTransaction.product_id)
+            .filter(
+                InventoryTransaction.user_id == user_id,
+                InventoryTransaction.transaction_id == transaction.transaction_id,
+                InventoryTransaction.inventory_type == "OUT",
+            )
+            .order_by(InventoryTransaction.inventory_transaction_id)
+            .all()
+        )
+        materials_used = [
+            {
+                "material_product_id": inv.product_id,
+                "material_name": name,
+                "quantity": float(inv.quantity),
+                "unit": inv.unit,
+                "quantity_before": float(inv.quantity_before) if inv.quantity_before is not None else None,
+                "quantity_after": float(inv.quantity_after) if inv.quantity_after is not None else None,
+            }
+            for inv, name in material_rows
+            if inv.product_id not in sold_product_ids
+        ]
+
         return {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,
@@ -1163,7 +1190,8 @@ class TransactionService:
                 if transaction.updated_at
                 else None
             ),
-            "details": details
+            "details": details,
+            "materials_used": materials_used,
         }
 
     @staticmethod
@@ -1284,7 +1312,10 @@ class TransactionService:
                     .first()
                 )
                 if account:
-                    amount_to_revert = Decimal(str(tx.total_amount))
+                    # Chỉ hoàn phần đã trả lúc tạo; phần nợ còn lại chưa đi qua tài khoản
+                    amount_to_revert = TransactionService._cash_paid_at_creation(
+                        db, user_id, tx.transaction_id, Decimal(str(tx.total_amount)), tx.payment_status
+                    )
                     is_income = False
                     if tx.category and tx.category.category_type == "INCOME":
                         is_income = True
@@ -1479,6 +1510,29 @@ class TransactionService:
         return 0
 
     @staticmethod
+    def _origin_debt_total(db: Session, user_id: int, transaction_id: int) -> Decimal:
+        """Tổng nợ gốc sinh ra từ chính giao dịch này (phần chưa trả lúc tạo)."""
+        debts = db.query(Debt).filter(Debt.transaction_id == transaction_id, Debt.user_id == user_id).all()
+        return sum((Decimal(str(d.original_amount or 0)) for d in debts), Decimal("0"))
+
+    @staticmethod
+    def _cash_paid_at_creation(
+        db: Session, user_id: int, transaction_id: int, total: Decimal, payment_status: Optional[str]
+    ) -> Decimal:
+        """
+        Số tiền đã đi qua tài khoản khi tạo giao dịch.
+        PARTIAL (bán / nhập trả một phần): tổng trừ phần nợ gốc gắn với giao dịch.
+        """
+        if payment_status == "PAID":
+            return total
+        if payment_status != "PARTIAL":
+            return Decimal("0")
+        owed = TransactionService._origin_debt_total(db, user_id, transaction_id)
+        if owed <= 0:
+            return total  # PARTIAL nhưng không sinh nợ (tạo tay): giữ cách tính cũ
+        return max(total - owed, Decimal("0"))
+
+    @staticmethod
     def _account_effect(
         account_id: Optional[int],
         payment_status: Optional[str],
@@ -1600,6 +1654,9 @@ class TransactionService:
             old_account_id = tx.account_id
             old_payment_status = tx.payment_status
             old_total = Decimal(str(tx.total_amount or 0))
+            old_paid = TransactionService._cash_paid_at_creation(
+                db, user_id, tx.transaction_id, old_total, old_payment_status
+            )
             old_category = tx.category
             old_direction = TransactionService._resolve_cash_direction(old_category, intent_name)
 
@@ -1741,6 +1798,16 @@ class TransactionService:
                 .with_for_update()
                 .all()
             )
+            # Phần đã trả ngay lúc tạo (bán / nhập trả một phần) giữ nguyên; nợ gốc = tổng mới - phần đó.
+            # Giao dịch ghi nợ thuần thì phần này = 0, nợ gốc = tổng mới như trước.
+            cash_part = Decimal("0")
+            if len(origin_debts) == 1:
+                cash_part = max(old_total - Decimal(str(origin_debts[0].original_amount or 0)), Decimal("0"))
+            debt_target = new_total - cash_part
+            if origin_debts and debt_target <= 0:
+                raise ValueError(
+                    f"Tổng tiền mới ({new_total}) phải lớn hơn số tiền đã trả lúc tạo giao dịch ({cash_part})"
+                )
             for debt in origin_debts:
                 payments = db.query(DebtPayment).filter(DebtPayment.debt_id == debt.debt_id).all()
                 paid = sum((Decimal(str(p.amount or 0)) for p in payments), Decimal("0"))
@@ -1754,13 +1821,13 @@ class TransactionService:
                         raise ValueError("Khoản nợ đã có thanh toán, không thể đổi nhà cung cấp")
                     debt.supplier_id = new_supplier_id
 
-                if new_total != Decimal(str(debt.original_amount or 0)):
-                    if new_total < paid:
+                if debt_target != Decimal(str(debt.original_amount or 0)):
+                    if debt_target < paid:
                         raise ValueError(
-                            f"Tổng tiền mới ({new_total}) nhỏ hơn số tiền đã thanh toán ({paid}), vượt giới hạn cho phép"
+                            f"Tổng tiền mới ({new_total}) nhỏ hơn số tiền đã thanh toán ({paid + cash_part}), vượt giới hạn cho phép"
                         )
-                    debt.original_amount = new_total
-                    debt.remaining_debt = new_total - paid
+                    debt.original_amount = debt_target
+                    debt.remaining_debt = debt_target - paid
                     if debt.remaining_debt == 0:
                         debt.status = "PAID"
                     elif paid > 0:
@@ -1769,8 +1836,8 @@ class TransactionService:
                         debt.status = "UNPAID"
                     for p in payments:
                         p.payment_percentage = (
-                            (Decimal(str(p.amount or 0)) / new_total * 100).quantize(Decimal("0.01"))
-                            if new_total > 0 else Decimal("0.00")
+                            (Decimal(str(p.amount or 0)) / debt_target * 100).quantize(Decimal("0.01"))
+                            if debt_target > 0 else Decimal("0.00")
                         )
                 debt.updated_at = now
 
@@ -1825,6 +1892,8 @@ class TransactionService:
             # ------------------------------------------------------
             is_sale = intent_name in TransactionService._UPDATE_SALE_INVENTORY_INTENTS
             is_purchase = intent_name in TransactionService._UPDATE_PURCHASE_INVENTORY_INTENTS
+            # Sản phẩm có tồn kho bị đổi -> kiểm tra cảnh báo tồn sau khi commit
+            stock_changed_ids: set = set()
 
             if details_changed and (is_sale or is_purchase):
                 user = db.query(User).filter(User.user_id == user_id).first()
@@ -1860,7 +1929,8 @@ class TransactionService:
                     ):
                         product_map[p.product_id] = p
 
-                for pid in sorted(set(desired.keys()) | set(old_by_product.keys())):
+                stock_changed_ids = set(desired.keys()) | set(old_by_product.keys())
+                for pid in sorted(stock_changed_ids):
                     recs = old_by_product.get(pid, [])
                     old_change = sum(
                         (Decimal(str(r.quantity_after or 0)) - Decimal(str(r.quantity_before or 0)) for r in recs),
@@ -1978,8 +2048,13 @@ class TransactionService:
             # 12. Hoàn tác & áp dụng lại Account.balance
             # ------------------------------------------------------
             new_direction = TransactionService._resolve_cash_direction(new_category, intent_name)
-            old_effect = TransactionService._account_effect(old_account_id, old_payment_status, old_total, old_direction)
-            new_effect = TransactionService._account_effect(new_account_id, new_payment_status, new_total, new_direction)
+            # Chỉ phần đã trả lúc tạo đi qua tài khoản (nợ gốc ở bước 8 đã cập nhật theo tổng mới)
+            db.flush()
+            new_paid = TransactionService._cash_paid_at_creation(
+                db, user_id, tx.transaction_id, new_total, new_payment_status
+            )
+            old_effect = TransactionService._account_effect(old_account_id, old_payment_status, old_paid, old_direction)
+            new_effect = TransactionService._account_effect(new_account_id, new_payment_status, new_paid, new_direction)
 
             def _lock_account(acc_id: int) -> Optional[Account]:
                 return (
@@ -2033,7 +2108,7 @@ class TransactionService:
             db.commit()
 
             # Kích hoạt cảnh báo tồn kho nếu có sản phẩm xuất kho bị giảm số lượng tồn
-            for pid in new_by_product.keys():
+            for pid in stock_changed_ids:
                 try:
                     from app.services.stock_alert_service import StockAlertService
                     StockAlertService.check_and_notify_stock(

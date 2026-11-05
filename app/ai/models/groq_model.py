@@ -14,7 +14,7 @@ class GroqModel(ModelProvider):
         system_prompt: Optional[str] = None,
         temperature: float = 0.0
     ):
-        name = model_name or "openai/gpt-oss-120b"
+        name = model_name or os.getenv("QWEN_27B_MODEL_ID", "qwen/qwen3.8-27b")
         super().__init__(model_name=name, system_prompt=system_prompt)
 
         from app.ai.llm.groq_client_pool import GroqFailoverClient, get_groq_pool
@@ -43,30 +43,32 @@ class GroqModel(ModelProvider):
         output_tokens = None
 
         try:
-            response = self.groq.call(
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+
+            completion = self.groq.call(
                 lambda client: client.chat.completions.create(
                     model=self.model_name,
+                    messages=messages,
                     temperature=self.temperature,
-                    response_format={"type": "json_object"},
-                    messages=[
-                        {"role": "system", "content": self.system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ]
+                    max_tokens=1024,
+                    response_format={"type": "json_object"}
                 )
             )
 
-            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            raw_output = completion.choices[0].message.content or ""
+            prediction = self.extract_json(raw_output)
 
-            if response.usage:
-                input_tokens = response.usage.prompt_tokens
-                output_tokens = response.usage.completion_tokens
-
-            raw_content = response.choices[0].message.content or ""
-            prediction = self.extract_json(raw_content)
+            if hasattr(completion, "usage") and completion.usage:
+                input_tokens = completion.usage.prompt_tokens
+                output_tokens = completion.usage.completion_tokens
 
         except Exception as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000.0
             error_msg = str(e)
+
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
 
         return {
             "prediction": prediction,

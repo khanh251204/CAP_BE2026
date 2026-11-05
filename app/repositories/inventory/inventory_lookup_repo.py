@@ -46,6 +46,32 @@ class InventoryLookupRepository:
             )
         return supplier
 
+    def get_supplier_by_name_strict(self, user_id: int, name: str) -> Optional[Supplier]:
+        """
+        Giống get_customer_by_name: khớp chính xác trước, rồi khớp gần đúng.
+        Gần đúng ra nhiều kết quả -> AmbiguousMatchError (get_supplier_by_name cũ lấy bản ghi đầu tiên).
+        """
+        if not name:
+            return None
+        clean_name = name.strip()
+        from app.services.duplicate_guard import find_duplicate_supplier
+        exact, _ = find_duplicate_supplier(self.db, user_id, name=clean_name)
+        if exact:
+            return exact
+
+        matches = (
+            self.db.query(Supplier)
+            .filter(
+                Supplier.user_id == user_id,
+                Supplier.supplier_name.ilike(f"%{clean_name}%"),
+            )
+            .limit(MAX_FUZZY_CANDIDATES)
+            .all()
+        )
+        if len(matches) > 1:
+            raise AmbiguousMatchError("nhà cung cấp", clean_name, [s.supplier_name for s in matches])
+        return matches[0] if matches else None
+
     def create_supplier(
         self,
         user_id: int,

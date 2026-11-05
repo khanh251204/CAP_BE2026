@@ -66,24 +66,29 @@ def build_spec(
     sale_price: Any,
     product_type: str,
     price_from_item: bool = False,
+    is_service: bool = False,
 ) -> Dict[str, Any]:
     """
     Thông tin sản phẩm mới đính kèm vào payload bản nháp.
     sale_price: GIÁ BÁN của sản phẩm (None nếu chưa biết, ví dụ khi nhập hàng chỉ biết giá nhập).
     price_from_item: lấy đơn giá trên dòng hàng làm giá bán (đúng với luồng bán hàng).
     """
-    return {
+    spec = {
         "product_name": clean_name(name),
         "default_unit": clean_name(unit) or None,
         "unit_price": _positive_price(sale_price),
         "product_type": product_type,
         "price_from_item": price_from_item,
     }
+    if is_service:
+        # Chỉ để hiển thị "Dịch vụ mới ..."; loại lưu trong DB vẫn theo product_type
+        spec["is_service"] = True
+    return spec
 
 
 def describe(spec: Dict[str, Any]) -> str:
     """Mô tả ngắn để chèn vào câu xác nhận / thông báo."""
-    label = PRODUCT_TYPE_LABEL.get(spec.get("product_type"), "sản phẩm")
+    label = "dịch vụ" if spec.get("is_service") else PRODUCT_TYPE_LABEL.get(spec.get("product_type"), "sản phẩm")
     price = spec.get("unit_price")
     price_text = f", giá {price:,.0f}đ/{spec.get('default_unit') or ''}" if price else ", chưa có giá bán"
     return f"'{spec['product_name']}' ({label}{price_text})"

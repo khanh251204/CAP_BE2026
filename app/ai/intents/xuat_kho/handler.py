@@ -2,7 +2,7 @@ from typing import Any
 
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
 from app.services.sales_policy import (
-    ERROR_INSUFFICIENT_STOCK, ERROR_INVALID_UNIT, is_unit_valid, invalid_unit_message,
+    ERROR_INSUFFICIENT_STOCK, ERROR_INVALID_UNIT, is_unit_valid, invalid_unit_message, to_product_unit,
 )
 from .validator import validate
 from .payload import build_payload
@@ -57,7 +57,9 @@ class XuatKhoHandler:
         # Dùng đúng tên / đơn vị sản phẩm trong DB
         product_name = stock_result.get("product_name") or product_name
         product_unit = stock_result.get("default_unit")
-        if not is_unit_valid(entities.get("unit"), product_unit):
+        # Quy đổi đơn vị cùng loại (kg <-> g, lít <-> ml...); khác loại mới báo lỗi
+        converted = to_product_unit(entities, product_unit, stock_result.get("units"))
+        if converted is None:
             return {
                 "success": False,
                 "status": "invalid_unit",
@@ -68,6 +70,7 @@ class XuatKhoHandler:
                 "default_unit": product_unit,
                 "message": invalid_unit_message(product_name, entities.get("unit"), product_unit),
             }
+        entities = converted
         if product_unit:
             entities = {**entities, "unit": product_unit}
 

@@ -74,6 +74,11 @@ class InventoryCheckRequest(BaseModel):
     actual_quantity: float = Field(..., ge=0, description="Số lượng đếm thực tế")
     note: Optional[str] = Field("Kiểm kho định kỳ", description="Ghi chú kiểm kho")
     reason: Optional[InventoryReasonEnum] = Field(InventoryReasonEnum.ADJUSTMENT, description="Lý do điều chỉnh (ADJUSTMENT hoặc DAMAGE)")
+    count_unit: Optional[str] = Field(
+        None,
+        description="Đơn vị của actual_quantity. Bỏ trống = đơn vị tính kho. Đơn vị đóng gói đã khai báo (gói) "
+                    "-> đếm gói nguyên, chỉ ghi phần gói lệch, giữ phần gói đang dùng dở",
+    )
 
 
 class ManualInventoryTransactionRequest(BaseModel):

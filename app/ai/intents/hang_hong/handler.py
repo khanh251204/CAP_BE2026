@@ -2,7 +2,7 @@ from typing import Any
 
 from app.ai.mcp.client import call_mcp_tool, normalize_mcp_result
 from app.services.sales_policy import (
-    ERROR_INSUFFICIENT_STOCK, ERROR_INVALID_UNIT, is_unit_valid, invalid_unit_message,
+    ERROR_INSUFFICIENT_STOCK, ERROR_INVALID_UNIT, is_unit_valid, invalid_unit_message, to_product_unit,
 )
 from .validator import validate
 from .payload import build_payload
@@ -60,7 +60,9 @@ class HangHongHandler:
             }
 
         product_unit = product.get("default_unit")
-        if not is_unit_valid(entities.get("unit"), product_unit):
+        # Quy đổi đơn vị cùng loại (kg <-> g, lít <-> ml...); khác loại mới báo lỗi
+        converted = to_product_unit(entities, product_unit, product.get("units"))
+        if converted is None:
             return {
                 "success": False,
                 "status": "invalid_unit",
@@ -71,6 +73,8 @@ class HangHongHandler:
                 "default_unit": product_unit,
                 "message": invalid_unit_message(product.get("product_name"), entities.get("unit"), product_unit),
             }
+        entities = converted
+        qty = float(entities.get("quantity") or qty)
 
         in_stock = float(product.get("quantity") or 0)
         unit = product_unit or entities.get("unit") or ""

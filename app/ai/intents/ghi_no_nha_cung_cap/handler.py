@@ -3,6 +3,7 @@ from datetime import datetime
 
 from app.configs.database import get_db_session
 from app.models.supplier_model import Supplier
+from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError, InventoryLookupRepository
 from app.services.new_supplier_service import NEW_SUPPLIER_KEY, new_supplier_question
 from app.ai.intents.missing_info import first_value, is_not_positive
 from .validator import validate
@@ -109,14 +110,17 @@ class GhiNoNhaCungCapHandler:
         if not supplier_id:
             db = get_db_session()
             try:
-                db_supplier = (
-                    db.query(Supplier)
-                    .filter(
-                        Supplier.user_id == user_id,
-                        Supplier.supplier_name.ilike(f"%{supplier_name}%")
-                    )
-                    .first()
-                )
+                try:
+                    db_supplier = InventoryLookupRepository(db).get_supplier_by_name_strict(user_id, str(supplier_name))
+                except AmbiguousMatchError as amb:
+                    return {
+                        "success": False,
+                        "status": "need_information",
+                        "intent": intent,
+                        "missing_fields": ["supplier"],
+                        "candidates": amb.candidates,
+                        "message": str(amb)
+                    }
                 if db_supplier:
                     supplier_id = db_supplier.supplier_id
                     if db_supplier.supplier_name:

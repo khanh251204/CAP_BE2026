@@ -33,8 +33,13 @@ class AgentConfirmService:
         payload = copy.deepcopy(pending_payload)
         corr_dict = corrected.model_dump(exclude_unset=True)
 
+        # Bản nháp nhiều sản phẩm (câu "bán 2 coca và 3 mì") giữ nguyên các dòng nếu người dùng không sửa dòng nào
+        keep_items = bool(payload.get("items")) and not corr_dict.get("items")
+
         # 1. Chạy validator theo intent
-        if intent == "ban_hang":
+        if keep_items:
+            pass
+        elif intent == "ban_hang":
             from app.ai.intents.ban_hang.validator import validate as validate_ban_hang
             # Lấy đúng giá trị người dùng vừa sửa nếu có truyền
             prod_val = corr_dict["product_name"] if "product_name" in corr_dict else (corr_dict.get("product") if "product" in corr_dict else payload.get("product_name"))
@@ -164,6 +169,18 @@ class AgentConfirmService:
                     "unit_price": price,
                     "subtotal": subtotal
                 })
+            payload["items"] = recalculated_items
+            payload["total_amount"] = calc_total
+        elif keep_items:
+            # Giữ các dòng của bản nháp, backend tính lại từng dòng và tổng (không tin số cũ)
+            recalculated_items = []
+            calc_total = 0.0
+            for it in payload["items"]:
+                qty = float(it.get("quantity") or 0)
+                price = float(it.get("unit_price") or 0)
+                subtotal = qty * price
+                calc_total += subtotal
+                recalculated_items.append({**it, "subtotal": subtotal})
             payload["items"] = recalculated_items
             payload["total_amount"] = calc_total
         else:
@@ -322,6 +339,18 @@ class AgentConfirmService:
                     diff_ai[label] = orig_val
                     diff_corr[label] = new_val
 
+        # Đơn nhiều dòng: ghi lại các dòng bị sửa để Data Lake học được lỗi tách sản phẩm / số lượng / giá
+        if pending_payload.get("items") and payload.get("items"):
+            def _sig(rows):
+                return [
+                    (str(r.get("product_name") or "").strip().lower(), round(float(r.get("quantity") or 0), 4),
+                     str(r.get("unit") or "").strip().lower(), round(float(r.get("unit_price") or 0), 2))
+                    for r in rows
+                ]
+            if _sig(pending_payload["items"]) != _sig(payload["items"]):
+                diff_ai["items"] = pending_payload["items"]
+                diff_corr["items"] = payload["items"]
+
         diff = {
             "ai": diff_ai,
             "correction": diff_corr
@@ -329,7 +358,9 @@ class AgentConfirmService:
 
         # Xác định correction_type
         changed_keys = list(diff_ai.keys())
-        if len(changed_keys) == 1:
+        if "items" in changed_keys:
+            correction_type = "ITEMS_CORRECTION"
+        elif len(changed_keys) == 1:
             if "price" in changed_keys:
                 correction_type = "PRICE_CORRECTION"
             elif "quantity" in changed_keys:
