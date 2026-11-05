@@ -79,12 +79,67 @@ set TEST_MYSQL_URL=mysql+pymysql://user:pass@127.0.0.1:3306/voicecash_test
 
 ## 7. Chạy bằng Docker
 
+### Chuẩn bị
+
+- Cài Docker Desktop (Windows) và bật nó lên. Kiểm tra: `docker --version`, `docker compose version`.
+- Có file `.env` cùng thư mục với `docker-compose.yml` (xem mục 3). Compose nạp nó qua `env_file`.
+- `MYSQL_TRACKER_URL` phải trỏ tới DB mà **container** truy cập được. Nếu DB chạy trên máy bạn, `127.0.0.1` trong container là chính container đó, hãy dùng `host.docker.internal` thay cho `127.0.0.1`.
+- Muốn push notification thì để `firebase-service-account.json` ở thư mục gốc (file này được copy vào image).
+
+### Chạy
+
 ```bash
-docker compose up -d --build
-docker compose logs -f api
+docker compose up -d --build     # build image và chạy nền
+docker compose ps                # xem trạng thái, cột STATUS phải là "healthy"
+docker compose logs -f api       # xem log (Ctrl+C để thoát, container vẫn chạy)
 ```
 
-Container tự chạy migration (`docker-entrypoint.sh`) rồi mở cổng 8000. Cần có `.env` cùng thư mục với `docker-compose.yml`.
+Khi khởi động, container tự chạy `python scripts/run_migrations.py` (qua `docker-entrypoint.sh`) rồi mở Uvicorn 4 worker ở cổng 8000. Nếu migration lỗi thì container dừng, xem nguyên nhân bằng `docker compose logs api`.
+
+Kiểm tra: http://localhost:8000/health và http://localhost:8000/docs.
+
+### Lệnh hay dùng
+
+| Việc | Lệnh |
+| :--- | :--- |
+| Dừng, giữ container | `docker compose stop` |
+| Dừng và xoá container | `docker compose down` |
+| Khởi động lại | `docker compose restart api` |
+| Build lại sau khi sửa code hoặc `requirements.txt` | `docker compose up -d --build` |
+| Build lại từ đầu, không dùng cache | `docker compose build --no-cache` |
+| Vào shell trong container | `docker compose exec api sh` |
+| Chạy migration thủ công | `docker compose exec api python scripts/run_migrations.py` |
+| Seed lại role / permission | `docker compose exec api python scripts/seed_rbac.py` |
+| Chạy test trong container | cài `pytest` trước (`docker compose exec api pip install pytest`), rồi `docker compose exec api python -m pytest tests -q` |
+
+`docker compose down` không xoá dữ liệu: log (`app_logs`) và Data Lake (`app_data_lake`) nằm trong volume. Muốn xoá cả volume thì thêm `-v` (mất dữ liệu, cân nhắc trước).
+
+### Đổi cấu hình
+
+- Đổi `.env` thì chạy `docker compose up -d` để container nạp lại (không cần build).
+- Đổi số worker: sửa `--workers` ở dòng `CMD` trong `Dockerfile` rồi build lại.
+- Đổi cổng ngoài: sửa `"8000:8000"` trong `docker-compose.yml`, ví dụ `"9000:8000"` thì truy cập qua cổng 9000.
+- Redis: đặt `REDIS_URL` trong `.env`. Image chỉ chứa API, Redis cần chạy riêng.
+
+### Lưu ý
+
+- Repo chưa có `.dockerignore`, nên `COPY . .` đưa cả `.env`, `.venv`, `firebase-service-account.json` và các thư mục benchmark vào image. Không đẩy image này lên registry công khai, và nên thêm `.dockerignore` để image gọn hơn.
+- Image không cài gói OCR (`requirements-ocr.txt`), nên route OCR không chạy trong Docker nếu chưa cài thêm.
+
+### Dùng chung với ngrok
+
+Docker và ngrok chạy cùng được. Cách đơn giản nhất là chạy ngrok trên máy host, trỏ vào cổng mà container đã mở:
+
+```bash
+docker compose up -d --build
+ngrok http 8000
+```
+
+ngrok in ra một link `https://xxxx.ngrok-free.app`, dùng link đó làm địa chỉ API cho app mobile (FE). Kiểm tra bằng `https://xxxx.ngrok-free.app/health`.
+
+- Link miễn phí đổi sau mỗi lần chạy lại ngrok, nhớ cập nhật lại trong FE.
+- Gọi từ trình duyệt (Admin web) thì thêm link ngrok vào `CORS_ORIGINS` trong `.env`, rồi `docker compose up -d`. App mobile gốc không bị CORS chặn.
+- Cổng 8000 là cổng ngoài ở `docker-compose.yml`; nếu bạn đổi thành `9000:8000` thì chạy `ngrok http 9000`.
 
 ## 8. Lỗi thường gặp
 
