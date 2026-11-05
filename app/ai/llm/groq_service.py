@@ -27,47 +27,29 @@ class GroqService:
         # ========================================================
         # PLUGGABLE AI MODEL INITIALIZATION
         # ========================================================
-        # Đọc cấu hình từ .env, mặc định là qwen_27b nếu không set
-        self.active_ai_model = os.getenv("ACTIVE_AI_MODEL", "qwen_27b").strip()
-        custom_llm_model = os.getenv("AI_LLM_MODEL", "").strip()
-
+        # Đọc cấu hình từ .env, mặc định là groq_120b nếu không set
+        self.active_ai_model = os.getenv("ACTIVE_AI_MODEL", "groq_120b")
+        
         from app.ai.models import get_model_provider
-
-        if custom_llm_model:
-            self.provider = get_model_provider(provider_name="groq", model_name=custom_llm_model)
-            self.analysis_model = custom_llm_model
-
-        elif self.active_ai_model in ("qwen_27b", "groq_qwen_27b", "qwen/qwen3.8-27b", "Qwen/Qwen3.5-27B"):
-            qwen_27b_id = os.getenv("QWEN_27B_MODEL_ID", "qwen/qwen3.8-27b").strip()
-            self.provider = get_model_provider(provider_name="groq", model_name=qwen_27b_id)
-            self.analysis_model = qwen_27b_id
-
-        elif self.active_ai_model in ("qwen_27b_local", "Qwen/Qwen3.5-27B-local"):
-            self.provider = get_model_provider(provider_name="llama_local", model_name="Qwen/Qwen3.5-27B")
-            self.analysis_model = "Qwen/Qwen3.5-27B"
-
-        elif self.active_ai_model == "groq_20b":
+        
+        if self.active_ai_model == "groq_20b":
             self.provider = get_model_provider(provider_name="groq", model_name="openai/gpt-oss-20b")
             self.analysis_model = "openai/gpt-oss-20b"
-
+            
         elif self.active_ai_model == "groq_120b":
             self.provider = get_model_provider(provider_name="groq", model_name="openai/gpt-oss-120b")
             self.analysis_model = "openai/gpt-oss-120b"
-
+            
         elif self.active_ai_model == "qwen_local":
             # Qwen2.5 không có bản 2.5B; dùng 1.5B (khớp mặc định của LlamaLocalModel)
             self.provider = get_model_provider(provider_name="llama_local", model_name="Qwen/Qwen2.5-1.5B-Instruct")
             self.analysis_model = "Qwen/Qwen2.5-1.5B-Instruct"
 
-        elif "/" in self.active_ai_model:
-            # Cho phép truyền trực tiếp model_id bất kỳ qua ACTIVE_AI_MODEL trong .env
-            self.provider = get_model_provider(provider_name="groq", model_name=self.active_ai_model)
-            self.analysis_model = self.active_ai_model
-
+            
         else:
-            # Fallback về Qwen 27B trên Groq
-            self.provider = get_model_provider(provider_name="groq", model_name="qwen/qwen3.8-27b")
-            self.analysis_model = "qwen/qwen3.8-27b"
+            # Fallback về Groq 20B
+            self.provider = get_model_provider(provider_name="groq", model_name="openai/gpt-oss-20b")
+            self.analysis_model = "openai/gpt-oss-20b"
 
     # ============================================================
     # SPEECH TO TEXT
@@ -124,10 +106,10 @@ class GroqService:
                 text=text,
                 knowledge=knowledge
             )
-
+            
             if benchmark_result.get("error"):
                 raise ValueError(f"AI Provider Error: {benchmark_result['error']}")
-
+                
             parsed = benchmark_result.get("prediction", {})
 
             # Gắn thêm metadata để tương thích với codebase cũ
@@ -137,7 +119,7 @@ class GroqService:
             parsed.setdefault("prompt_version", PROMPT_VERSION)
             parsed.setdefault("pipeline_version", AI_PIPELINE_VERSION)
             parsed.setdefault("_ai_metadata", get_ai_metadata(self.analysis_model))
-
+            
             return parsed
 
         except Exception as error:

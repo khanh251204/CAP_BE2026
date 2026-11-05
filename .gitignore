@@ -64,7 +64,6 @@ test_api/
 # Data Lake (Keep directory skeleton, ignore runtime generated data)
 # ========================================
 data_lake/**/*.json
-data_lake/**/*.csv
 
 # Vector DB cũ (không còn dùng, chuẩn hóa bằng regex/từ điển)
 app/ai/rag/chroma_db/

@@ -11,8 +11,8 @@ STT_MODEL = "whisper-large-v3-turbo"
 STT_MODEL_VERSION = "2024-v3-turbo"
 
 LLM_PROVIDER = "Groq"
-LLM_MODEL = "qwen/qwen3.8-27b"
-LLM_MODEL_VERSION = "qwen3.8-27b"
+LLM_MODEL = "openai/gpt-oss-120b"
+LLM_MODEL_VERSION = "gpt-oss-120b"
 PROMPT_VERSION = "1.3.0"  # 1.3.0: thêm entities.items cho câu nhiều sản phẩm
 
 
@@ -35,5 +35,6 @@ def get_ai_metadata(llm_model: Optional[str] = None) -> Dict[str, Any]:
             "provider": LLM_PROVIDER,
             "model": model,
             "version": model_version,
-        },
+            "prompt_version": PROMPT_VERSION,
+        }
     }

@@ -16,14 +16,12 @@ class ModelProvider(abc.ABC):
     def extract_json(self, raw_text: str) -> Dict[str, Any]:
         """
         Trích xuất an toàn JSON object từ output thô của LLM,
-        hỗ trợ trường hợp LLM bọc trong ```json ... ``` hoặc có thẻ <think>...</think>.
+        hỗ trợ trường hợp LLM bọc trong ```json ... ``` hoặc có ký tự thừa.
         """
         if not raw_text:
             return {"intent": "khac", "entities": {}}
 
         text = raw_text.strip()
-        # Loại bỏ khối <think>...</think> nếu model thuộc dòng Qwen3
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
         # 1. Thử parse trực tiếp
         try:
@@ -90,8 +88,20 @@ class ModelProvider(abc.ABC):
         return [self.predict(t, business_type=business_type) for t in texts]
 
     def get_hardware_info(self) -> Dict[str, Any]:
-        """Trả về thông tin phần cứng nơi model đang chạy."""
-        return {
-            "provider": self.__class__.__name__,
-            "model_name": self.model_name
+        """Trả về thông tin phần cứng (GPU/CPU/RAM)."""
+        info = {
+            "device": "cpu",
+            "gpu_name": None,
+            "vram_used_mb": None,
+            "vram_total_mb": None
         }
+        try:
+            import torch
+            if torch.cuda.is_available():
+                info["device"] = "cuda"
+                info["gpu_name"] = torch.cuda.get_device_name(0)
+                info["vram_used_mb"] = round(torch.cuda.memory_allocated(0) / 1024**2, 2)
+                info["vram_total_mb"] = round(torch.cuda.get_device_properties(0).total_memory / 1024**2, 2)
+        except Exception:
+            pass
+        return info

@@ -1,0 +1,4 @@
+﻿approved,voice_id,business_type,intent,flag,changed_fields,text,type,product,new_product_name,price,quantity,unit,customer,supplier,date,payment,missing_fields
+,210015,,nhập_hàng,unit_price_x10,"unit_price,quantity",Nhập 300 lốc sữa chua mỗi 1 lốc 50 ngàn.,purchase,sữa chua,,5000,200,lốc,,,,,
+,390022,,nhập_hàng,,payment_status,"Nhập 100 lốc sữa chua từ Nguyễn Văn An, hết 500k chưa trả tiền.",purchase,sữa chua,,5000,100,lốc,,Nguyễn Văn An,,PAID,
+,420047,,bán_hàng,,payment_status,Bán cho bà Hoa 5 lốc sữa chua trả trước 20.000,sale,sữa chua,,28000,5,lốc,Bà Hoa,,,PENDING,

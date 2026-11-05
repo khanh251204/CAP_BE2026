@@ -1,4 +1,3 @@
-import secrets
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -26,7 +25,6 @@ from app.schemas.auth_schema import (
     ResetPasswordRequest,
     ChangePasswordRequest,
 )
-from app.services.email_service import send_new_password_email
 from app.services.otp_service import (
     send_otp,
     verify_otp,
@@ -49,26 +47,6 @@ from app.services.auth.auth_registration_service import (
     user_to_dict
 )
 from app.services.auth.auth_login_service import create_session
-
-
-def _generate_new_password(length: int = 10) -> str:
-    """Sinh mật khẩu ngẫu nhiên thỏa mãn validate_password_strength (>=8 ký tự, chữ hoa, chữ thường, chữ số)."""
-    upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-    lower = "abcdefghijkmnopqrstuvwxyz"
-    digits = "23456789"
-    all_chars = upper + lower + digits
-    rng = secrets.SystemRandom()
-    chars = [
-        rng.choice(upper),
-        rng.choice(upper),
-        rng.choice(lower),
-        rng.choice(lower),
-        rng.choice(digits),
-        rng.choice(digits),
-    ]
-    chars.extend(rng.choice(all_chars) for _ in range(max(8, length) - len(chars)))
-    rng.shuffle(chars)
-    return "".join(chars)
 
 
 def send_auth_otp(db: Session, data: SendOTPRequest):
@@ -162,21 +140,17 @@ def verify_auth_otp(db: Session, data: VerifyOTPRequest, client: dict | None = N
         verify_otp(db, user=user, code=data.code, purpose=data.purpose)
 
         if data.purpose == UNLOCK_ACCOUNT:
-            # Mở khóa + tự sinh mật khẩu mới ngẫu nhiên và gửi qua email cho người dùng
-            new_password = _generate_new_password(10)
+            # Mở khóa nhưng KHÔNG tự đăng nhập: người dùng vẫn phải nhập đúng mật khẩu
             unlock_account(user)
-            update_user_password(db=db, user=user, password_hash=get_password_hash(new_password))
-            revoke_all_user_refresh_tokens(db=db, user_id=user.user_id, revoked_at=datetime.utcnow())
             record_lock_event(
                 db, user, UNLOCK, REASON_EMAIL_OTP_UNLOCK,
-                reason="Người dùng xác minh mã gửi về email để mở khóa và được cấp mật khẩu mới",
+                reason="Người dùng xác minh mã gửi về email để mở khóa",
                 client=client,
             )
-            send_new_password_email(to_email=user.email, new_password=new_password)
             db.commit()
             return {
                 "success": True,
-                "message": "Tài khoản đã được mở khóa. Mật khẩu mới đã được gửi đến email của bạn, vui lòng kiểm tra email để đăng nhập lại.",
+                "message": "Tài khoản đã được mở khóa. Vui lòng đăng nhập lại.",
                 "nextAction": "login"
             }
 
@@ -268,12 +242,6 @@ def reset_password(db: Session, data: ResetPasswordRequest):
         )
 
     try:
-        if is_locked_by_failed_logins(user):
-            unlock_account(user)
-            record_lock_event(
-                db, user, UNLOCK, REASON_EMAIL_OTP_UNLOCK,
-                reason="Người dùng đặt lại mật khẩu qua OTP email",
-            )
         update_user_password(db=db, user=user, password_hash=get_password_hash(data.newPassword))
         revoke_all_user_refresh_tokens(db=db, user_id=user.user_id, revoked_at=datetime.utcnow())
         db.commit()
