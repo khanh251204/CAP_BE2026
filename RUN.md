@@ -22,8 +22,6 @@ python -m venv .venv
 ./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 ```
 
-OCR hóa đơn là tùy chọn, các route khác vẫn chạy nếu không cài. Xem hướng dẫn trong `requirements-ocr.txt`.
-
 ## 3. Tạo file `.env`
 
 Đặt ở thư mục gốc, không commit lên Git.
@@ -95,4 +93,3 @@ Container tự chạy migration (`docker-entrypoint.sh`) rồi mở cổng 8000.
 | `No module named 'redis'` trong log | Chỉ là thông báo; app dùng DB làm session store. Muốn dùng Redis thì cài `redis` và đặt `REDIS_URL`. |
 | STT báo lỗi ffmpeg | Cài FFmpeg và thêm vào `PATH`. |
 | Lỗi kết nối DB | Kiểm tra `MYSQL_TRACKER_URL`; TiDB cần SSL. |
-| Thiếu bảng `Audit_Log` / `App_Setting` | Chạy lại `scripts/run_migrations.py`. |
