@@ -100,16 +100,20 @@ def register_user(db: Session, data: RegisterRequest):
         db.commit()
         db.refresh(user)
 
-        NotificationController.create_notification({
-            "userId": str(user.user_id),
-            "title": "Đăng ký thành công 🎉",
-            "description": "Chào mừng bạn đến với VoiceCashBook!",
-            "icon": "check",
-            "iconColor": "#FFFFFF",
-            "borderColor": "#20D66B",
-            "notificationType": "register",
-            "isRead": False
-        })
+        # User đã commit: lỗi gửi thông báo chào mừng không được biến thành lỗi đăng ký
+        try:
+            NotificationController.create_notification({
+                "userId": str(user.user_id),
+                "title": "Đăng ký thành công 🎉",
+                "description": "Chào mừng bạn đến với VoiceCashBook!",
+                "icon": "check",
+                "iconColor": "#FFFFFF",
+                "borderColor": "#20D66B",
+                "notificationType": "register",
+                "isRead": False
+            })
+        except Exception as e:
+            logger.warning(f"Không tạo được thông báo chào mừng cho user {user.user_id}: {e}")
 
         return {
             "success": True,

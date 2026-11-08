@@ -1,0 +1,17 @@
+# Gói tùy chọn cho API OCR hóa đơn (/api/v1/ocr/receipts). Không cài thì các route khác vẫn chạy bình thường.
+#
+# Bước 1 - cài vào .venv:
+#   ./.venv/Scripts/python.exe -m pip install -r requirements-ocr.txt
+# Bước 2 - Vintern-1B-v3.5 chưa chạy được với transformers 5.x (lỗi all_tied_weights_keys) mà .venv đang dùng 5.x,
+# nên cài transformers 4.44.2 vào thư mục riêng (OCR_DEPS_DIR, mặc định .ocr_deps), engine tự ưu tiên khi nạp model:
+#   ./.venv/Scripts/python.exe -m pip install "transformers==4.44.2" --target .ocr_deps
+#   rồi xóa các thư mục numpy* trong .ocr_deps (dùng numpy của .venv)
+pillow>=10.0
+opencv-python-headless>=4.8
+numpy
+torch
+torchvision
+einops
+timm
+sentencepiece
+accelerate

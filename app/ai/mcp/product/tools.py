@@ -1,5 +1,7 @@
 from typing import Optional, Any
 
+from fastapi import HTTPException
+
 from app.services.product_service import ProductService
 from app.configs.database import SessionLocal
 
@@ -216,6 +218,10 @@ class ProductTools:
                 "message": "Cập nhật sản phẩm thành công",
                 "product": ProductTools._product_to_dict(product)
             }
+
+        except HTTPException as e:
+            # Lỗi kiểm tra (trùng tên, đổi đơn vị khi đang có định mức...) -> trả lời được cho người dùng
+            return {"success": False, "message": str(e.detail)}
 
         finally:
             db.close()

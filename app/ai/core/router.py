@@ -17,6 +17,7 @@ from app.ai.intents.hang_hong.handler import HangHongHandler
 from app.ai.intents.bao_cao.handler import BaoCaoHandler
 from app.ai.intents.nhap_kho.handler import NhapKhoHandler
 from app.ai.intents.xuat_kho.handler import XuatKhoHandler
+from app.ai.intents.chot_so.handler import ChotSoHandler
 
 _mua_hang = MuaHangHandler()
 _ban_hang = BanHangHandler()
@@ -34,6 +35,7 @@ _tim_sp = TimSanPhamHandler()
 _chi_phi = ChiPhiHandler()
 _hang_hong = HangHongHandler()
 _bao_cao = BaoCaoHandler()
+_chot_so = ChotSoHandler()
 
 HANDLERS = {
     "mua_hang": _mua_hang,
@@ -60,6 +62,7 @@ HANDLERS = {
     "chi_tien": _chi_phi,
     "hang_hong": _hang_hong,
     "bao_cao": _bao_cao,
+    "chot_so": _chot_so,
 }
 
 

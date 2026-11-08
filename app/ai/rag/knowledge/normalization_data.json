@@ -56,13 +56,6 @@
     "confidence": 1.0
   },
   {
-    "term": "lạng",
-    "normalized": "100g",
-    "type": "unit",
-    "region": "all",
-    "confidence": 1.0
-  },
-  {
     "term": "lít",
     "normalized": "l",
     "type": "unit",
@@ -144,6 +137,90 @@
     "normalized": "lạc",
     "type": "dialect",
     "region": "central",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa ký",
+    "normalized": "0.5 kg",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa kí",
+    "normalized": "0.5 kg",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa cân",
+    "normalized": "0.5 kg",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa kg",
+    "normalized": "0.5 kg",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa lít",
+    "normalized": "0.5 l",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa lit",
+    "normalized": "0.5 l",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "ký-lô",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "kí-lô",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "ki lô",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "ki-lô-gam",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "ki lô gam",
+    "normalized": "kg",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "mi li lít",
+    "normalized": "ml",
+    "type": "unit",
+    "region": "all",
     "confidence": 1.0
   }
 ]

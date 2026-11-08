@@ -5,6 +5,7 @@ from app.repositories.inventory_repo import InventoryRepository
 from app.services.debt_service import DebtService
 from app.models.intent_model import Intent
 from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError
+from app.services.stock_status import resolve_min_quantity, stock_message, stock_status_of
 from app.services.new_product_service import (
     NEW_PRODUCT_KEY,
     get_or_create_from_spec,
@@ -28,6 +29,15 @@ from app.services.sales_policy import (
     normalize_product_type,
     is_unpaid_payment,
 )
+from app.services.product_unit_service import units_by_product
+from app.services.bom_service import (
+    ERROR_INSUFFICIENT_MATERIAL,
+    BomService,
+    aggregate_material_needs,
+    find_shortages,
+    needs_to_json,
+    shortage_message,
+)
 
 
 class InventoryService:
@@ -36,6 +46,26 @@ class InventoryService:
         self.repo = InventoryRepository(db)
         # Sản phẩm được tạo mới trong giao dịch hiện tại (để thông báo sau khi commit)
         self.created_products: List[Dict[str, Any]] = []
+
+    def _resolve_payment_account(self, user_id: int, payload: Dict[str, Any], amount_paid: Decimal):
+        """
+        Tài khoản nhận / chi phần tiền trả ngay. Trả (account_id, lỗi).
+        - Có account_id trong payload: phải thuộc đúng user.
+        - Không có: lấy tài khoản mặc định của user (ưu tiên tiền mặt), giống chi phí và thu / trả nợ.
+          User chưa có tài khoản nào thì bỏ qua (không tự tạo, vì hàm tạo tài khoản commit giữa giao dịch).
+        """
+        from app.services.account_service import AccountService
+
+        account_id = payload.get("account_id")
+        if account_id:
+            account = AccountService.get_account_by_id(db=self.db, user_id=user_id, account_id=int(account_id))
+            if not account:
+                return None, f"Tài khoản {account_id} không tồn tại."
+            return account.account_id, None
+        if amount_paid <= 0:
+            return None, None
+        account = AccountService.get_default_account(db=self.db, user_id=user_id)
+        return (account.account_id if account else None), None
 
     def _create_new_product(self, user_id: int, payload: Dict[str, Any], name: str, unit: Any = None, price: Any = None):
         """
@@ -250,7 +280,10 @@ class InventoryService:
                     "message": "Đơn hàng chưa thanh toán đủ cần có thông tin Nhà cung cấp để ghi nợ."
                 }
 
-            account_id = payload.get("account_id")
+            account_id, account_error = self._resolve_payment_account(user_id, payload, amount_paid)
+            if account_error:
+                self.db.rollback()
+                return {"status": "error", "success": False, "message": account_error}
 
             # Lấy intent_id nếu tồn tại trong DB
             intent_obj = self.db.query(Intent).filter(Intent.intent_name.in_(["mua_hang", "nhap_hang"])).first()
@@ -283,7 +316,7 @@ class InventoryService:
 
                 # Khóa dòng sản phẩm để tồn kho đọc ra không bị lệch khi có giao dịch đồng thời
                 self.repo.lock_product(user_id, item["product_id"])
-                qty_before = self.repo.get_latest_stock(user_id, item["product_id"])
+                qty_before = self.repo.get_latest_stock(user_id, item["product_id"], for_update=True)
                 qty_after = qty_before + item["quantity"]
 
                 self.repo.create_inventory_transaction(
@@ -300,10 +333,7 @@ class InventoryService:
 
             # 4. Trừ tiền tài khoản thanh toán
             if account_id and amount_paid > 0:
-                if hasattr(self.repo, "increase_account_balance"):
-                    self.repo.increase_account_balance(user_id=user_id, account_id=account_id, amount=-amount_paid)
-                elif hasattr(self.repo, "update_account_balance"):
-                    self.repo.update_account_balance(account_id=account_id, amount=amount_paid)
+                self.repo.increase_account_balance(user_id=user_id, account_id=account_id, amount=-amount_paid)
 
             # 5. Xử lý ghi nợ nhà cung cấp (PAYABLE) qua DebtService
             created_debt = None
@@ -362,9 +392,19 @@ class InventoryService:
             total_amount = Decimal("0.0")
             processed_items = []
 
-            # Khóa theo thứ tự product_id tăng dần để tránh deadlock khi 2 đơn cùng chứa nhiều sản phẩm
-            for item in sorted(items, key=lambda it: it["product_id"]):
-                self.repo.lock_product(user_id, item["product_id"])
+            # Thành phẩm làm theo đơn (PRODUCER + FINISHED_GOOD) có định mức -> phần làm thêm trừ nguyên liệu
+            bom_lines = BomService(self.db).get_lines_by_finished(user_id, [
+                it["product_id"] for it in items
+                if get_sale_stock_policy(business_type, it.get("product_type")) == MADE_TO_ORDER
+            ])
+            material_ids = {line["material_product_id"] for lines in bom_lines.values() for line in lines}
+
+            # Khóa theo thứ tự product_id tăng dần (cả nguyên liệu) để tránh deadlock khi 2 đơn cùng chứa nhiều sản phẩm
+            for pid in sorted({it["product_id"] for it in items} | material_ids):
+                self.repo.lock_product(user_id, pid)
+
+            # Nhiều dòng cùng một sản phẩm: các dòng sau phải thấy tồn đã bị dòng trước trừ, nếu không bán vượt tồn
+            consumed: Dict[int, Decimal] = {}
 
             for item in items:
                 qty = Decimal(str(item["quantity"]))
@@ -394,7 +434,7 @@ class InventoryService:
                     # Lưu đúng cách viết đơn vị trong DB
                     item["unit"] = item["default_unit"]
 
-                current_stock = self.repo.get_latest_stock(user_id, product_id)
+                current_stock = self.repo.get_latest_stock(user_id, product_id, for_update=True) - consumed.get(product_id, Decimal("0"))
                 if policy == STRICT and current_stock < qty:
                     self.db.rollback()
                     return {
@@ -415,6 +455,8 @@ class InventoryService:
                 else:
                     stock_out_qty = Decimal("0")
 
+                consumed[product_id] = consumed.get(product_id, Decimal("0")) + stock_out_qty
+
                 subtotal = qty * price
                 total_amount += subtotal
 
@@ -433,7 +475,23 @@ class InventoryService:
                     "subtotal": subtotal,
                     "stock_before": current_stock,
                     "stock_out_qty": stock_out_qty,
+                    "produce_qty": qty - stock_out_qty if policy == MADE_TO_ORDER else Decimal("0"),
                 })
+
+            # Nguyên liệu cho phần thành phẩm phải làm thêm: thiếu thì chặn cả đơn (không để kho âm)
+            material_needs = aggregate_material_needs(
+                (it["produce_qty"], bom_lines.get(it["product_id"], [])) for it in processed_items
+            )
+            shortages = find_shortages(material_needs, lambda mid: self.repo.get_latest_stock(user_id, mid, for_update=True))
+            if shortages:
+                self.db.rollback()
+                return {
+                    "status": "insufficient_material",
+                    "error_code": ERROR_INSUFFICIENT_MATERIAL,
+                    "success": False,
+                    "message": shortage_message(shortages),
+                    "shortages": needs_to_json(shortages),
+                }
 
             # Xử lý payment_status & amount_paid
             is_unpaid = is_unpaid_payment(payload.get("payment_status"))
@@ -479,7 +537,10 @@ class InventoryService:
                     "message": "Đơn hàng bán chưa thanh toán đủ cần có thông tin Khách hàng để ghi nợ."
                 }
 
-            account_id = payload.get("account_id")
+            account_id, account_error = self._resolve_payment_account(user_id, payload, amount_paid)
+            if account_error:
+                self.db.rollback()
+                return {"status": "error", "success": False, "message": account_error}
 
             # Lấy intent_id nếu tồn tại trong DB
             intent_obj = self.db.query(Intent).filter(Intent.intent_name == "ban_hang").first()
@@ -527,6 +588,20 @@ class InventoryService:
                     note=f"Bán hàng theo giao dịch #{tx.transaction_id}",
                 )
 
+            # 3b. Xuất nguyên liệu theo định mức (cùng giao dịch, cùng session)
+            for need in material_needs:
+                self.repo.create_inventory_transaction(
+                    user_id=user_id,
+                    product_id=need["material_product_id"],
+                    transaction_id=tx.transaction_id,
+                    type="OUT",
+                    quantity=need["quantity"],
+                    unit=need.get("unit") or "",
+                    quantity_before=need["stock_before"],
+                    quantity_after=need["stock_before"] - need["quantity"],
+                    note=f"Xuất NVL theo định mức cho giao dịch #{tx.transaction_id}",
+                )
+
             # 4. Cộng tiền vào Tài khoản thu tiền
             if account_id and amount_paid > 0:
                 self.repo.increase_account_balance(
@@ -550,17 +625,19 @@ class InventoryService:
             self.db.commit()
             self.db.refresh(tx)
 
-            # Kích hoạt cảnh báo tồn kho nếu hàng đã bán hết hoặc dưới min_quantity
-            for item in processed_items:
-                if item["stock_out_qty"] <= 0:
-                    continue
+            # Kích hoạt cảnh báo tồn kho nếu hàng (hoặc nguyên liệu) đã hết hoặc dưới min_quantity
+            stock_changes = [
+                (item["product_id"], item["stock_before"] - item["stock_out_qty"])
+                for item in processed_items if item["stock_out_qty"] > 0
+            ] + [(n["material_product_id"], n["stock_before"] - n["quantity"]) for n in material_needs]
+            for alert_product_id, new_stock in stock_changes:
                 try:
                     from app.services.stock_alert_service import StockAlertService
                     StockAlertService.check_and_notify_stock(
                         db=self.db,
                         user_id=user_id,
-                        product_id=item["product_id"],
-                        current_stock=item["stock_before"] - item["stock_out_qty"]
+                        product_id=alert_product_id,
+                        current_stock=new_stock
                     )
                 except Exception:
                     pass
@@ -577,6 +654,7 @@ class InventoryService:
                 "customer_id": customer_id,
                 "debt_id": getattr(created_debt, "debt_id", None) if created_debt else None,
                 "customer_debt": float(unpaid_amount) if unpaid_amount > 0 else 0.0,
+                "materials_used": needs_to_json(material_needs),
             }
 
         except Exception as e:
@@ -664,17 +742,28 @@ class InventoryService:
                 or ""
             )
 
+            qty = float(stock)
+            min_quantity = resolve_min_quantity(getattr(product_obj, "min_quantity", None))
+            stock_status = stock_status_of(qty, min_quantity)
+
             return {
                 "status": "success",
                 "success": True,
-                "message": f"Sản phẩm '{actual_product_name}' còn {stock}.",
+                "message": stock_message(actual_product_name, qty, default_unit, min_quantity, stock_status),
                 "product_id": product_id,
                 "product_name": actual_product_name,
-                "quantity": float(stock),
+                "quantity": qty,
+                # Ngưỡng cảnh báo & trạng thái tồn: app hiển thị Hết hàng / Sắp hết / Còn hàng
+                "min_quantity": min_quantity,
+                "stock_status": stock_status,
                 "unit_price": unit_price,
                 "default_unit": default_unit,
                 "product_type": normalize_product_type(getattr(product_obj, "product_type", None)),
                 "business_type": get_user_business_type(self.db, user_id),
+                # Định mức nguyên liệu (chỉ thành phẩm có khai báo), kèm tồn từng nguyên liệu
+                "bom": self._bom_with_stock(user_id, product_id),
+                # Đơn vị quy đổi riêng (1 gói = 1000 g...) để handler đổi số lượng người dùng nói
+                "units": units_by_product(self.db, user_id, [product_id]).get(product_id, []),
             }
 
         except Exception as e:
@@ -683,6 +772,13 @@ class InventoryService:
                 "success": False,
                 "message": f"Lỗi kiểm tra tồn kho: {str(e)}"
             }
+
+    def _bom_with_stock(self, user_id: int, product_id: int) -> List[Dict[str, Any]]:
+        lines = BomService(self.db).get_lines_by_finished(user_id, [product_id]).get(product_id, [])
+        return [
+            {**line, "quantity_in_stock": float(self.repo.get_latest_stock(user_id, line["material_product_id"]))}
+            for line in lines
+        ]
 
     def _nhap_kho_impl(
         self,
@@ -775,7 +871,7 @@ class InventoryService:
             actual_product_name = product_name or (getattr(product_obj, "product_name", "") if product_obj else f"ID {product_id}")
 
             # 2. Cập nhật tồn kho qua InventoryTransaction
-            qty_before = self.repo.get_latest_stock(user_id, product_id)
+            qty_before = self.repo.get_latest_stock(user_id, product_id, for_update=True)
             qty_after = qty_before + qty
 
             inv_tx = self.repo.create_inventory_transaction(
@@ -888,14 +984,25 @@ class InventoryService:
                     "success": False,
                     "message": f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh."
                 }
-            unit = payload.get("unit") or (getattr(product_obj, "default_unit", "") if product_obj else "")
-            actual_product_name = product_name or (getattr(product_obj, "product_name", "") if product_obj else f"ID {product_id}")
+            product_unit = getattr(product_obj, "default_unit", "") or ""
+            if not is_unit_valid(payload.get("unit"), product_unit):
+                self.db.rollback()
+                return {
+                    "status": "invalid_unit",
+                    "error_code": ERROR_INVALID_UNIT,
+                    "success": False,
+                    "message": invalid_unit_message(product_obj.product_name, payload.get("unit"), product_unit),
+                }
+            unit = product_unit or payload.get("unit") or ""
+            actual_product_name = getattr(product_obj, "product_name", None) or product_name or f"ID {product_id}"
 
             # 2. Kiểm tra số lượng tồn kho
-            qty_before = self.repo.get_latest_stock(user_id, product_id)
+            qty_before = self.repo.get_latest_stock(user_id, product_id, for_update=True)
             if qty_before < qty:
+                self.db.rollback()
                 return {
-                    "status": "error",
+                    "status": "out_of_stock",
+                    "error_code": ERROR_INSUFFICIENT_STOCK,
                     "success": False,
                     "message": f"Sản phẩm '{actual_product_name}' không đủ tồn kho (Tồn: {qty_before}, Yêu cầu: {qty})"
                 }
@@ -998,8 +1105,24 @@ class InventoryService:
                     "message": f"Không tìm thấy sản phẩm hoặc sản phẩm không thuộc quyền sở hữu (ID: {product_id})."
                 }
 
-            unit = payload.get("unit") or product_obj.default_unit or ""
-            qty_before = self.repo.get_latest_stock(user_id, product_id)
+            if getattr(product_obj, "is_active", True) is False:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh."
+                }
+            product_unit = product_obj.default_unit or ""
+            if not is_unit_valid(payload.get("unit"), product_unit):
+                self.db.rollback()
+                return {
+                    "status": "invalid_unit",
+                    "error_code": ERROR_INVALID_UNIT,
+                    "success": False,
+                    "message": invalid_unit_message(product_obj.product_name, payload.get("unit"), product_unit),
+                }
+            unit = product_unit or payload.get("unit") or ""
+            qty_before = self.repo.get_latest_stock(user_id, product_id, for_update=True)
             if qty_before < qty:
                 self.db.rollback()
                 return {
@@ -1056,6 +1179,158 @@ class InventoryService:
                 "status": "error",
                 "success": False,
                 "message": f"Lỗi ghi nhận hàng hư hỏng: {str(e)}"
+            }
+
+    def adjust_stock(
+        self,
+        user_id: int,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Kiểm kê: đặt tồn kho bằng số đếm thực tế (payload["quantity"]).
+        Tạo Inventory_Transaction loại ADJUSTMENT với quantity = |chênh lệch|,
+        quantity_before / quantity_after cho biết tăng hay giảm. Không tạo Transaction tài chính.
+        """
+        try:
+            product_id = payload.get("product_id")
+            product_name = payload.get("product_name") or payload.get("product")
+
+            try:
+                actual = Decimal(str(payload.get("quantity")))
+            except Exception:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Số lượng kiểm kê không hợp lệ: {payload.get('quantity')}"
+                }
+            if actual < 0:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": "Số lượng kiểm kê không được âm."
+                }
+
+            if not product_id and product_name:
+                try:
+                    product_id = self.repo.get_product_id_by_name(user_id=user_id, name=str(product_name))
+                except AmbiguousMatchError as amb:
+                    return {
+                        "status": "ambiguous_product",
+                        "success": False,
+                        "candidates": amb.candidates,
+                        "message": str(amb)
+                    }
+            if not product_id:
+                return {
+                    "status": "error",
+                    "success": False,
+                    "missing_fields": ["product"],
+                    "message": f"Không tìm thấy sản phẩm '{product_name}' trong hệ thống."
+                }
+
+            product_obj = self.repo.lock_product(user_id=user_id, product_id=product_id)
+            if not product_obj:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Không tìm thấy sản phẩm hoặc sản phẩm không thuộc quyền sở hữu (ID: {product_id})."
+                }
+            if getattr(product_obj, "is_active", True) is False:
+                self.db.rollback()
+                return {
+                    "status": "error",
+                    "success": False,
+                    "message": f"Sản phẩm '{product_obj.product_name}' đã ngừng kinh doanh."
+                }
+            product_unit = product_obj.default_unit or ""
+            if not is_unit_valid(payload.get("unit"), product_unit):
+                self.db.rollback()
+                return {
+                    "status": "invalid_unit",
+                    "error_code": ERROR_INVALID_UNIT,
+                    "success": False,
+                    "message": invalid_unit_message(product_obj.product_name, payload.get("unit"), product_unit),
+                }
+            unit = product_unit or payload.get("unit") or ""
+
+            # Đọc tồn sau khi khóa dòng: số sổ sách có thể đã đổi từ lúc tạo bản nháp
+            qty_before = self.repo.get_latest_stock(user_id, product_id, for_update=True)
+            if payload.get("count_unit") and payload.get("counted") is not None:
+                # Đếm theo gói nguyên: tính lại trên tồn mới nhất để không xóa mất hàng bán giữa chừng
+                from app.services.product_unit_service import counted_stock
+
+                recounted = counted_stock(
+                    qty_before, payload["counted"], payload["count_unit"], product_unit,
+                    units_by_product(self.db, user_id, [product_id]).get(product_id, []),
+                )
+                if recounted is None:
+                    self.db.rollback()
+                    return {
+                        "status": "invalid_unit",
+                        "error_code": ERROR_INVALID_UNIT,
+                        "success": False,
+                        "message": invalid_unit_message(product_obj.product_name, payload["count_unit"], product_unit),
+                    }
+                actual = recounted
+            delta = actual - qty_before
+
+            inv_tx = self.repo.create_inventory_transaction(
+                user_id=user_id,
+                product_id=product_id,
+                transaction_id=None,
+                type="ADJUSTMENT",
+                quantity=abs(delta),
+                unit=unit,
+                quantity_before=qty_before,
+                quantity_after=actual,
+                note=payload.get("note") or payload.get("input_text") or "Kiểm kho",
+            )
+
+            self.db.commit()
+            self.db.refresh(inv_tx)
+
+            try:
+                from app.services.stock_alert_service import StockAlertService
+                StockAlertService.check_and_notify_stock(
+                    db=self.db,
+                    user_id=user_id,
+                    product_id=product_id,
+                    current_stock=actual
+                )
+            except Exception:
+                pass
+
+            if delta == 0:
+                detail = "khớp sổ sách"
+            elif delta > 0:
+                detail = f"dư {float(delta):g} {unit} so với sổ sách"
+            else:
+                detail = f"thiếu {float(-delta):g} {unit} so với sổ sách"
+
+            return {
+                "status": "success",
+                "success": True,
+                "message": (
+                    f"Đã kiểm kê {product_obj.product_name}: thực tế {float(actual):g} {unit}, {detail}."
+                ),
+                "inventory_transaction_id": inv_tx.inventory_transaction_id,
+                "product_id": product_id,
+                "product_name": product_obj.product_name,
+                "unit": unit,
+                "quantity": float(actual),
+                "quantity_before": float(qty_before),
+                "quantity_after": float(actual),
+                "delta": float(delta),
+                "inventory_type": "ADJUSTMENT"
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            return {
+                "status": "error",
+                "success": False,
+                "message": f"Lỗi kiểm kê tồn kho: {str(e)}"
             }
 
     # =========================================================

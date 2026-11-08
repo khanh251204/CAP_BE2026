@@ -21,7 +21,7 @@ class ModelProvider(abc.ABC):
         if not raw_text:
             return {"intent": "khac", "entities": {}}
 
-        text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+        text = raw_text.strip()
 
         # 1. Thử parse trực tiếp
         try:

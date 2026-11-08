@@ -245,3 +245,38 @@ class InventoryTools:
             )
         finally:
             db.close()
+
+    # =========================================================
+    # KIỂM KÊ (INVENTORY ADJUSTMENT)
+    # =========================================================
+
+    @staticmethod
+    def adjust_stock(
+        user_id: int,
+        payload: Dict[str, Any]
+    ) -> str:
+        """
+        MCP tool:
+        Kiểm kê tồn kho: đặt tồn bằng số đếm thực tế (Inventory_Transaction ADJUSTMENT).
+        """
+        db = SessionLocal()
+        try:
+            service = InventoryService(db)
+            result = service.adjust_stock(
+                user_id=user_id,
+                payload=payload
+            )
+            return json.dumps(result, ensure_ascii=False)
+        except Exception:
+            logger.exception("[Inventory MCP] Lỗi xử lý tool")
+            db.rollback()
+            return json.dumps(
+                {
+                    "status": "error",
+                    "success": False,
+                    "message": "Có lỗi xảy ra khi kiểm kê tồn kho."
+                },
+                ensure_ascii=False
+            )
+        finally:
+            db.close()

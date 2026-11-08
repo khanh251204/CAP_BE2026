@@ -5,6 +5,7 @@ from app.configs.database import get_db_session
 from app.models.customer_model import Customer
 from app.services.account_service import AccountService
 from app.repositories.debt_repository import DebtRepository
+from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError, InventoryLookupRepository
 from app.ai.intents.missing_info import first_value
 from .validator import validate
 from .payload import build_payload
@@ -88,14 +89,17 @@ class ThuNoKhachHandler:
         try:
             # 1. Tìm customer_id nếu chưa có
             if not customer_id:
-                db_customer = (
-                    db.query(Customer)
-                    .filter(
-                        Customer.user_id == user_id,
-                        Customer.customer_name.ilike(f"%{customer_name}%")
-                    )
-                    .first()
-                )
+                try:
+                    db_customer = InventoryLookupRepository(db).get_customer_by_name(user_id, str(customer_name))
+                except AmbiguousMatchError as amb:
+                    return {
+                        "success": False,
+                        "status": "need_information",
+                        "intent": intent,
+                        "missing_fields": ["customer"],
+                        "candidates": amb.candidates,
+                        "message": str(amb)
+                    }
                 if not db_customer:
                     return {
                         "success": False,

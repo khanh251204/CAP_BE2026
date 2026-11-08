@@ -90,6 +90,7 @@ PERMISSIONS: List[Dict[str, str]] = [
     {"code": "admin_closing:manage", "module": "ADMIN_CLOSING", "description": "Mở lại / chốt lại kỳ, gửi lại email, sửa cấu hình chốt sổ của người dùng"},
 
     {"code": "system:log_read", "module": "SYSTEM", "description": "Xem nhật ký hệ thống và audit log"},
+    {"code": "system:setting_manage", "module": "SYSTEM", "description": "Xem và đổi cài đặt ghi vết: bật / tắt Audit Log theo chức năng, mức chi tiết, thời gian giữ log, dọn dữ liệu"},
     {"code": "rbac:read", "module": "SYSTEM", "description": "Xem vai trò và ma trận phân quyền"},
     {"code": "rbac:manage", "module": "SYSTEM", "description": "Tạo / sửa / xóa vai trò, phân quyền và gán vai trò cho người dùng"},
 ]
@@ -145,8 +146,10 @@ INTENT_PERMISSIONS: Dict[str, str] = {
     "nhap_kho": "inventory:manage",
     "xuat_kho": "inventory:manage",
     "hang_hong": "inventory:manage",
-    "kiem_kho": "inventory:read",
+    # kiem_kho chỉ cần xác nhận khi kiểm kê (ghi ADJUSTMENT); hỏi tồn trả kết quả ngay, không qua bước này
+    "kiem_kho": "inventory:manage",
     "tim_san_pham": "product:read",
     "xem_san_pham": "product:read",
     "bao_cao": "report:read",
+    "chot_so": "closing:manage",
 }

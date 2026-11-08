@@ -18,7 +18,8 @@ Return JSON only:
     "supplier": "string|null",
     "date": "string|null",
     "payment": "string|null",
-    "category": "string|null"
+    "category": "string|null",
+    "items": "null | [{\"product\":string,\"quantity\":number|null,\"unit\":string|null,\"price\":number|null,\"total_price\":number|null}] (chỉ khi câu có từ 2 mặt hàng trở lên)"
   },
   "missing_fields": [],
   "message": "string|null"

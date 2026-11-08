@@ -1,9 +1,7 @@
-import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.otp_model import OTPCode
 from app.configs.jwt import (
     create_reset_token,
     decode_reset_token,
@@ -27,7 +25,6 @@ from app.schemas.auth_schema import (
     ResetPasswordRequest,
     ChangePasswordRequest,
 )
-from app.services.email_service import send_new_password_email
 from app.services.otp_service import (
     send_otp,
     verify_otp,
@@ -50,26 +47,6 @@ from app.services.auth.auth_registration_service import (
     user_to_dict
 )
 from app.services.auth.auth_login_service import create_session
-
-
-def _generate_new_password(length: int = 10) -> str:
-    """Sinh mật khẩu ngẫu nhiên thỏa mãn validate_password_strength (>=8 ký tự, chữ hoa, chữ thường, chữ số)."""
-    upper = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-    lower = "abcdefghijkmnopqrstuvwxyz"
-    digits = "23456789"
-    all_chars = upper + lower + digits
-    rng = secrets.SystemRandom()
-    chars = [
-        rng.choice(upper),
-        rng.choice(upper),
-        rng.choice(lower),
-        rng.choice(lower),
-        rng.choice(digits),
-        rng.choice(digits),
-    ]
-    chars.extend(rng.choice(all_chars) for _ in range(max(8, length) - len(chars)))
-    rng.shuffle(chars)
-    return "".join(chars)
 
 
 def send_auth_otp(db: Session, data: SendOTPRequest):
@@ -163,21 +140,17 @@ def verify_auth_otp(db: Session, data: VerifyOTPRequest, client: dict | None = N
         verify_otp(db, user=user, code=data.code, purpose=data.purpose)
 
         if data.purpose == UNLOCK_ACCOUNT:
-            # Mở khóa + tự sinh mật khẩu mới ngẫu nhiên và gửi qua email cho người dùng
-            new_password = _generate_new_password(10)
+            # Mở khóa nhưng KHÔNG tự đăng nhập: người dùng vẫn phải nhập đúng mật khẩu
             unlock_account(user)
-            update_user_password(db=db, user=user, password_hash=get_password_hash(new_password))
-            revoke_all_user_refresh_tokens(db=db, user_id=user.user_id, revoked_at=datetime.utcnow())
             record_lock_event(
                 db, user, UNLOCK, REASON_EMAIL_OTP_UNLOCK,
-                reason="Người dùng xác minh mã gửi về email để mở khóa và được cấp mật khẩu mới",
+                reason="Người dùng xác minh mã gửi về email để mở khóa",
                 client=client,
             )
-            send_new_password_email(to_email=user.email, new_password=new_password)
             db.commit()
             return {
                 "success": True,
-                "message": "Tài khoản đã được mở khóa. Mật khẩu mới đã được gửi đến email của bạn, vui lòng kiểm tra email để đăng nhập lại.",
+                "message": "Tài khoản đã được mở khóa. Vui lòng đăng nhập lại.",
                 "nextAction": "login"
             }
 
@@ -221,70 +194,54 @@ def verify_auth_otp(db: Session, data: VerifyOTPRequest, client: dict | None = N
         )
 
 
+def _user_from_reset_token(db: Session, token: str):
+    """Token sai / hết hạn / đã dùng -> 401. Không lùi sang nhánh email."""
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Reset token không hợp lệ hoặc đã được sử dụng"
+    )
+    payload = decode_reset_token(token)
+    try:
+        user = get_user_by_id(db, int(payload["sub"]))
+    except (TypeError, ValueError):
+        raise invalid
+    if not user or normalize_email(payload.get("email", "")) != normalize_email(user.email):
+        raise invalid
+    # Đặt lại xong thì password_hash đổi -> fingerprint lệch -> token cũ hết dùng được
+    if payload.get("passwordFingerprint") != create_password_fingerprint(user.password_hash):
+        raise invalid
+    return user
+
+
+def _user_from_email_otp(db: Session, email: str, code: str):
+    """Đặt lại bằng email + mã OTP chưa dùng (mã bị đánh dấu đã dùng ngay tại đây)."""
+    user = get_user_by_email(db, normalize_email(email))
+    if not user or not user.password_hash or not user.is_verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mã OTP không hợp lệ hoặc đã hết hạn")
+    verify_otp(db, user=user, code=code, purpose=FORGOT_PASSWORD)
+    return user
+
+
 def reset_password(db: Session, data: ResetPasswordRequest):
+    """
+    Chỉ chấp nhận 1 trong 2 bằng chứng:
+    - resetToken hợp lệ (lấy từ bước xác thực OTP), hoặc
+    - email + mã OTP còn hiệu lực.
+    Chỉ có email (dù vừa xác thực OTP) thì không đủ.
+    """
     validate_password_strength(data.newPassword)
-    user = None
 
-    if data.resetToken and data.resetToken.strip().lower() not in ("cookie", "undefined", "null", ""):
-        try:
-            payload = decode_reset_token(data.resetToken)
-            user_id = int(payload["sub"])
-            found_user = get_user_by_id(db, user_id)
-            if found_user:
-                token_email = normalize_email(payload.get("email", ""))
-                if token_email == normalize_email(found_user.email):
-                    fingerprint = create_password_fingerprint(found_user.password_hash)
-                    if payload.get("passwordFingerprint") == fingerprint:
-                        user = found_user
-                    else:
-                        raise HTTPException(
-                            status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Reset token không hợp lệ hoặc đã được sử dụng"
-                        )
-        except HTTPException:
-            if not data.email:
-                raise
-            user = None
-
-    if not user and data.email:
-        clean_email = normalize_email(data.email)
-        user = get_user_by_email(db, clean_email)
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tài khoản với email này")
-
-        if data.otp:
-            verify_otp(db, user=user, code=data.otp, purpose=FORGOT_PASSWORD)
-        else:
-            recent_otp = (
-                db.query(OTPCode)
-                .filter(
-                    OTPCode.email == clean_email,
-                    OTPCode.purpose == FORGOT_PASSWORD,
-                    OTPCode.is_used == True,
-                    OTPCode.created_at >= datetime.utcnow() - timedelta(minutes=15)
-                )
-                .order_by(OTPCode.otp_id.desc())
-                .first()
-            )
-            if not recent_otp:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Vui lòng xác thực mã OTP trước khi đặt lại mật khẩu"
-                )
-
-    if not user:
+    if data.resetToken:
+        user = _user_from_reset_token(db, data.resetToken)
+    elif data.email and data.otp:
+        user = _user_from_email_otp(db, data.email, data.otp)
+    else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Thông tin xác thực không hợp lệ. Vui lòng thử lại từ bước gửi OTP."
+            detail="Vui lòng xác thực mã OTP trước khi đặt lại mật khẩu"
         )
 
     try:
-        if is_locked_by_failed_logins(user):
-            unlock_account(user)
-            record_lock_event(
-                db, user, UNLOCK, REASON_EMAIL_OTP_UNLOCK,
-                reason="Người dùng đặt lại mật khẩu qua OTP email",
-            )
         update_user_password(db=db, user=user, password_hash=get_password_hash(data.newPassword))
         revoke_all_user_refresh_tokens(db=db, user_id=user.user_id, revoked_at=datetime.utcnow())
         db.commit()

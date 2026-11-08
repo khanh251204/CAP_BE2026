@@ -20,11 +20,20 @@ from app.services.sales_policy import (
     ERROR_INVALID_UNIT,
     get_sale_stock_policy,
     is_unit_valid,
+    to_product_unit,
     invalid_unit_message,
     normalize_business_type,
     is_unpaid_payment,
     resolve_payment,
     order_total,
+)
+from app.services.bom_service import (
+    ERROR_INSUFFICIENT_MATERIAL,
+    aggregate_material_needs,
+    find_shortages,
+    materials_text,
+    needs_to_json,
+    shortage_message,
 )
 from .validator import validate
 from .payload import build_payload
@@ -42,18 +51,14 @@ def _lookup_customer(user_id: int, customer_name: str) -> tuple:
         db.close()
 
 
-def _lookup_business_type(user_id: int) -> str | None:
-    """Loại hình kinh doanh của user (RESELLER / PRODUCER / SERVICE); lỗi DB -> None."""
+def _user_business_type(user_id: int) -> str:
     from app.services.sales_policy import get_user_business_type
 
+    db = get_db_session()
     try:
-        db = get_db_session()
-        try:
-            return get_user_business_type(db, user_id)
-        finally:
-            db.close()
-    except Exception:
-        return None
+        return get_user_business_type(db, user_id)
+    finally:
+        db.close()
 
 
 class BanHangHandler:
@@ -82,13 +87,12 @@ class BanHangHandler:
         # Ghi vào entities để payload.payment_status (bước xác nhận) cùng kết quả với bản nháp.
         entities = {**entities, "payment": resolve_payment(entities.get("payment"), text)}
 
-        # Dịch vụ ("Cắt tóc 80k", "Sửa xe 200k") không nói số lượng -> mặc định 1 lần (AGENTS.md Test 4.1).
-        # Chỉ tra loại hình khi thiếu số lượng để không thêm truy vấn cho các câu bình thường.
-        if entities.get("quantity") in (None, ""):
-            user_bt = business_type or await asyncio.to_thread(_lookup_business_type, user_id)
-            if normalize_business_type(user_bt) == "SERVICE":
-                entities["quantity"] = 1
-                business_type = user_bt
+        # Dịch vụ ("Cắt tóc 80k", "Sửa xe 200k") không có số lượng: mặc định 1 lần.
+        # Các loại hình khác vẫn phải nói số lượng vì nó quyết định tồn kho và số tiền.
+        if entities.get("product") and entities.get("quantity") in (None, ""):
+            bt = business_type or await asyncio.to_thread(_user_business_type, user_id)
+            if normalize_business_type(bt) == "SERVICE":
+                entities = {**entities, "quantity": 1}
 
         # 1. Validate
         val_result = validate(entities)
@@ -193,7 +197,9 @@ class BanHangHandler:
                     f"Ví dụ: \"bán {qty_requested:g} {product_unit or 'cái'} {product_name}\"."
                 ),
             }
-        if not new_product_spec and not is_unit_valid(requested_unit, product_unit):
+        # "bán 2 lạng thịt" với sản phẩm tính theo kg -> quy đổi; khác loại đơn vị mới báo lỗi
+        converted = entities if new_product_spec else to_product_unit(entities, product_unit, stock_result.get("units"))
+        if converted is None:
             return {
                 "success": False,
                 "status": "invalid_unit",
@@ -204,6 +210,8 @@ class BanHangHandler:
                 "default_unit": product_unit,
                 "message": invalid_unit_message(product_name, requested_unit, product_unit),
             }
+        entities = converted
+        qty_requested = float(entities.get("quantity") or qty_requested)
         if not new_product_spec and product_unit:
             # Dùng đúng cách viết đơn vị trong DB (vd. "Lon" thay vì "lon")
             entities = {**entities, "unit": product_unit}
@@ -224,6 +232,25 @@ class BanHangHandler:
                     f"bạn muốn bán {qty_requested:g} {unit_label}."
                 )
             }
+
+        # Thành phẩm làm theo đơn có định mức: phần thiếu kho phải đủ nguyên liệu (cùng quy tắc với sell_goods)
+        material_needs = []
+        produce_qty = qty_requested - max(qty_in_stock, 0)
+        if policy == MADE_TO_ORDER and produce_qty > 0 and stock_result.get("bom"):
+            lines = stock_result["bom"]
+            stock_by_id = {line["material_product_id"]: line.get("quantity_in_stock", 0) for line in lines}
+            material_needs = aggregate_material_needs([(produce_qty, lines)])
+            shortages = find_shortages(material_needs, stock_by_id.get)
+            if shortages:
+                return {
+                    "success": False,
+                    "status": "insufficient_material",
+                    "error_code": ERROR_INSUFFICIENT_MATERIAL,
+                    "intent": intent,
+                    "product_name": product_name,
+                    "shortages": needs_to_json(shortages),
+                    "message": shortage_message(shortages, f"{produce_qty:g} {unit_label} {product_name}".replace("  ", " ")),
+                }
 
         # 3. Tìm Khách hàng (không tự tạo mới)
         customer_name = entities.get("customer") or entities.get("customer_name")
@@ -346,8 +373,14 @@ class BanHangHandler:
                 debt_info = f" (Chưa thanh toán - ghi nợ{cust_label})"
 
         stock_suffix = ""
-        if policy == MADE_TO_ORDER and qty_in_stock < qty_requested:
-            stock_suffix = " (chế biến/sản xuất theo yêu cầu)"
+        if material_needs:
+            stock_suffix = f" (chế biến theo định mức, dùng {materials_text(material_needs)})"
+        elif policy == MADE_TO_ORDER and qty_in_stock < qty_requested:
+            # Chưa khai báo định mức: nhắc để chủ quán biết kho nguyên liệu sẽ không bị trừ
+            stock_suffix = (
+                " (chế biến/sản xuất theo yêu cầu; món này chưa khai báo định mức nguyên liệu "
+                "nên kho nguyên liệu sẽ không bị trừ)"
+            )
         elif policy != NO_INVENTORY:
             stock_suffix = f" (còn {qty_in_stock:g} trong kho)"
 
@@ -362,6 +395,11 @@ class BanHangHandler:
             "new_product": new_product_spec,
             "payload": payload,
             "new_customer": is_new_customer,
+            "materials": needs_to_json(material_needs),
+            # Thành phẩm làm theo đơn nhưng chưa có định mức -> app có thể gợi ý khai báo
+            "bom_missing": bool(
+                policy == MADE_TO_ORDER and produce_qty > 0 and not new_product_spec and not stock_result.get("bom")
+            ),
             "message": (
                 f"{new_customer_question(customer_name) if is_new_customer else ''}"
                 f"{'Nếu đồng ý, hệ thống sẽ tạo khách hàng và ' if is_new_customer else 'Bạn có chắc muốn '}"

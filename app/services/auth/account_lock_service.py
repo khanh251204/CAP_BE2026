@@ -52,8 +52,8 @@ def record_lock_event(
     reason: str | None = None,
     actor_id: int | None = None,
     client: dict | None = None,
-) -> UserLockHistory | None:
-    """Ghi một dòng lịch sử khóa / mở khóa (dùng savepoint để không làm rollback thao tác khóa chính)."""
+) -> UserLockHistory:
+    """Ghi một dòng lịch sử khóa / mở khóa (commit cùng transaction của thao tác khóa)."""
     entry = UserLockHistory(
         user_id=user.user_id,
         action=action,
@@ -64,22 +64,9 @@ def record_lock_event(
         user_agent=(client or {}).get("user_agent"),
         created_at=datetime.utcnow(),
     )
-    try:
-        with db.begin_nested():
-            db.add(entry)
-            db.flush()
-        return entry
-    except Exception as exc:
-        logger.warning(f"Ghi User_Lock_History thất bại lần 1 ({exc}), thử tạo bảng và ghi lại...")
-        try:
-            UserLockHistory.__table__.create(bind=db.get_bind(), checkfirst=True)
-            with db.begin_nested():
-                db.add(entry)
-                db.flush()
-            return entry
-        except Exception as retry_exc:
-            logger.error(f"Không thể ghi lịch sử khóa cho user {user.user_id}: {retry_exc}", exc_info=True)
-            return None
+    db.add(entry)
+    db.flush()
+    return entry
 
 
 def is_locked(user: User) -> bool:
@@ -96,7 +83,7 @@ def locked_error(user: User, otp_sent: bool = False) -> HTTPException:
         message = (
             f"Tài khoản đã bị tạm khóa do nhập sai mật khẩu {MAX_FAILED_LOGIN_ATTEMPTS} lần. "
             + ("Mã xác minh đã được gửi đến email của bạn. " if otp_sent else "")
-            + "Vui lòng nhập mã xác minh từ email để mở khóa và nhận mật khẩu mới."
+            + "Vui lòng nhập mã xác minh từ email để mở khóa."
         )
         return HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -12,6 +12,9 @@ from app.models.transaction_model import Transaction
 
 logger = logging.getLogger(__name__)
 
+# Lệnh chỉ thao tác kho (không phát sinh tiền)
+STOCK_INTENTS = ("nhap_kho", "xuat_kho", "hang_hong", "kiem_kho")
+
 
 class AgentConfirmService:
     @staticmethod
@@ -30,8 +33,13 @@ class AgentConfirmService:
         payload = copy.deepcopy(pending_payload)
         corr_dict = corrected.model_dump(exclude_unset=True)
 
+        # Bản nháp nhiều sản phẩm (câu "bán 2 coca và 3 mì") giữ nguyên các dòng nếu người dùng không sửa dòng nào
+        keep_items = bool(payload.get("items")) and not corr_dict.get("items")
+
         # 1. Chạy validator theo intent
-        if intent == "ban_hang":
+        if keep_items:
+            pass
+        elif intent == "ban_hang":
             from app.ai.intents.ban_hang.validator import validate as validate_ban_hang
             # Lấy đúng giá trị người dùng vừa sửa nếu có truyền
             prod_val = corr_dict["product_name"] if "product_name" in corr_dict else (corr_dict.get("product") if "product" in corr_dict else payload.get("product_name"))
@@ -103,7 +111,26 @@ class AgentConfirmService:
                 "unit": unit_val,
                 "price": price_in,
             }
-            if qty_val is not None:
+            if corr_dict.get("items"):
+                # Phiếu nhiều dòng (vd: từ OCR hóa đơn): kiểm từng dòng, không dùng trường đơn sản phẩm
+                for idx, it in enumerate(corr_dict["items"]):
+                    it_dict = it if isinstance(it, dict) else it.model_dump(exclude_unset=True)
+                    it_price = it_dict.get("unit_price") if it_dict.get("unit_price") is not None else it_dict.get("price")
+                    try:
+                        bad_qty = float(it_dict.get("quantity")) <= 0
+                    except (ValueError, TypeError):
+                        bad_qty = True
+                    try:
+                        bad_price = it_price is None or float(it_price) <= 0
+                    except (ValueError, TypeError):
+                        bad_price = True
+                    has_product = it_dict.get("product_id") or it_dict.get("product_name") or it_dict.get("product")
+                    if bad_qty or bad_price or not has_product:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Dòng {idx + 1} thiếu hoặc sai tên hàng / số lượng / giá nhập (phải > 0)"
+                        )
+            elif qty_val is not None:
                 try:
                     if float(qty_val) <= 0:
                         raise HTTPException(
@@ -115,7 +142,7 @@ class AgentConfirmService:
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail="Số lượng sản phẩm không hợp lệ"
                     )
-            val_res = validate_mua_hang(val_entities)
+            val_res = {"success": True} if corr_dict.get("items") else validate_mua_hang(val_entities)
             if not val_res.get("success"):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -142,6 +169,18 @@ class AgentConfirmService:
                     "unit_price": price,
                     "subtotal": subtotal
                 })
+            payload["items"] = recalculated_items
+            payload["total_amount"] = calc_total
+        elif keep_items:
+            # Giữ các dòng của bản nháp, backend tính lại từng dòng và tổng (không tin số cũ)
+            recalculated_items = []
+            calc_total = 0.0
+            for it in payload["items"]:
+                qty = float(it.get("quantity") or 0)
+                price = float(it.get("unit_price") or 0)
+                subtotal = qty * price
+                calc_total += subtotal
+                recalculated_items.append({**it, "subtotal": subtotal})
             payload["items"] = recalculated_items
             payload["total_amount"] = calc_total
         else:
@@ -250,6 +289,28 @@ class AgentConfirmService:
             payload["product_name"] = pending_payload.get("product_name")
             payload["data"] = data
 
+        # Lệnh kho (nhập / xuất / hỏng / kiểm kê): service tìm sản phẩm theo product_id trước.
+        # Người dùng đổi sang tên khác mà app không gửi id mới -> bỏ id cũ để tìm theo tên mới,
+        # nếu không bản sửa bị bỏ qua và thao tác ghi vào sản phẩm cũ.
+        if intent in STOCK_INTENTS:
+            new_name = corr_dict.get("product_name") or corr_dict.get("product")
+            old_name = pending_payload.get("product_name")
+            if (
+                new_name
+                and not corr_dict.get("product_id")
+                and str(new_name).strip().lower() != str(old_name or "").strip().lower()
+            ):
+                payload.pop("product_id", None)
+                # Đơn vị cũ thuộc sản phẩm cũ: để service lấy đơn vị của sản phẩm mới
+                if "unit" not in corr_dict:
+                    payload["unit"] = None
+            min_qty_ok = (lambda q: q >= 0) if intent == "kiem_kho" else (lambda q: q > 0)
+            if not min_qty_ok(float(payload.get("quantity") or 0)):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Số lượng kiểm kê không được âm" if intent == "kiem_kho" else "Số lượng phải lớn hơn 0"
+                )
+
         # 3. Tính diff và correction_type
         diff_ai: Dict[str, Any] = {}
         diff_corr: Dict[str, Any] = {}
@@ -278,6 +339,18 @@ class AgentConfirmService:
                     diff_ai[label] = orig_val
                     diff_corr[label] = new_val
 
+        # Đơn nhiều dòng: ghi lại các dòng bị sửa để Data Lake học được lỗi tách sản phẩm / số lượng / giá
+        if pending_payload.get("items") and payload.get("items"):
+            def _sig(rows):
+                return [
+                    (str(r.get("product_name") or "").strip().lower(), round(float(r.get("quantity") or 0), 4),
+                     str(r.get("unit") or "").strip().lower(), round(float(r.get("unit_price") or 0), 2))
+                    for r in rows
+                ]
+            if _sig(pending_payload["items"]) != _sig(payload["items"]):
+                diff_ai["items"] = pending_payload["items"]
+                diff_corr["items"] = payload["items"]
+
         diff = {
             "ai": diff_ai,
             "correction": diff_corr
@@ -285,7 +358,9 @@ class AgentConfirmService:
 
         # Xác định correction_type
         changed_keys = list(diff_ai.keys())
-        if len(changed_keys) == 1:
+        if "items" in changed_keys:
+            correction_type = "ITEMS_CORRECTION"
+        elif len(changed_keys) == 1:
             if "price" in changed_keys:
                 correction_type = "PRICE_CORRECTION"
             elif "quantity" in changed_keys:

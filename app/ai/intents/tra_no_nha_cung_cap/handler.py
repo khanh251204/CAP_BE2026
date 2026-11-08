@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from app.configs.database import get_db_session
 from app.models.supplier_model import Supplier
+from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError, InventoryLookupRepository
 from app.services.account_service import AccountService
 from app.repositories.debt_repository import DebtRepository
 from app.ai.intents.missing_info import first_value, is_not_positive
@@ -89,14 +90,17 @@ class TraNoNhaCungCapHandler:
         try:
             # 1. Tìm supplier_id nếu chưa có
             if not supplier_id:
-                db_supplier = (
-                    db.query(Supplier)
-                    .filter(
-                        Supplier.user_id == user_id,
-                        Supplier.supplier_name.ilike(f"%{supplier_name}%")
-                    )
-                    .first()
-                )
+                try:
+                    db_supplier = InventoryLookupRepository(db).get_supplier_by_name_strict(user_id, str(supplier_name))
+                except AmbiguousMatchError as amb:
+                    return {
+                        "success": False,
+                        "status": "need_information",
+                        "intent": intent,
+                        "missing_fields": ["supplier"],
+                        "candidates": amb.candidates,
+                        "message": str(amb)
+                    }
                 if not db_supplier:
                     return {
                         "success": False,

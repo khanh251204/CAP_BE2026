@@ -104,6 +104,8 @@ def get_products_with_stock(db: Session, user_id: int):
 
     # 3. Format dữ liệu trả về
     import_prices = get_last_import_prices(db, user_id)
+    from app.services.product_unit_service import units_by_product
+    units_map = units_by_product(db, user_id, [row[0].product_id for row in results])
     data = []
     for product, total_imported, total_sold, stock_quantity in results:
         data.append({
@@ -119,7 +121,9 @@ def get_products_with_stock(db: Session, user_id: int):
             "is_active": product.is_active,
             "total_imported": float(total_imported), # Tổng đã nhập
             "total_sold": float(total_sold),         # Tổng sp bán ra (OUT)
-            "stock_quantity": float(stock_quantity)  # Tồn kho thực tế (quantity_after gần nhất)
+            "stock_quantity": float(stock_quantity),  # Tồn kho thực tế (quantity_after gần nhất)
+            # Đơn vị quy đổi riêng: [{"unit_name": "gói", "factor": 1000}] = 1 gói bằng 1000 default_unit
+            "units": units_map.get(product.product_id, []),
         })
 
     return data
@@ -260,4 +264,4 @@ def hard_delete_product(db: Session, product: Product):
     return True
 
 
-delete_product = soft_delete_product
+delete_product = soft_delete_product

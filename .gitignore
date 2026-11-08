@@ -49,6 +49,7 @@ tests/
 # Benchmark
 ai_benchmark*/
 ai_benchmark*
+ocr_benchmark*
 /evaluation/
 
 # ========================================
