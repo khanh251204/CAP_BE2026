@@ -5,7 +5,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Enum,
-    String
+    String,
+    Boolean,
+    true
 )
 from sqlalchemy.orm import relationship, synonym
 from datetime import datetime
@@ -77,6 +79,14 @@ class Debt(Base):
         Enum("UNPAID", "PARTIAL", "PAID", name="debt_status_enum"),
         nullable=False,
         default="UNPAID"
+    )
+
+    # Xoá mềm: False = đã xoá khỏi danh sách, mọi truy vấn ORM tự bỏ qua (xem app/configs/database.py)
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true()
     )
 
     created_at = Column(

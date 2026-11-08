@@ -25,8 +25,10 @@ class SalesPurchaseReportMixin(ReportBase):
         user_id: int,
         start_dt: datetime,
         end_dt: datetime,
-        business_type: Optional[str] = None
+        business_type: Optional[str] = None,
+        tx_cogs_out: Optional[Dict[int, Decimal]] = None
     ) -> List[Dict[str, Any]]:
+        """tx_cogs_out: nếu truyền dict, hàm điền giá vốn của từng giao dịch bán (transaction_id -> cogs)."""
         bt = (business_type or cls._get_user_business_type(db, user_id)).upper()
 
         # Từng dòng bán trong kỳ (giữ transaction_id để gắn giá vốn FIFO của đúng lần xuất kho)
@@ -72,13 +74,16 @@ class SalesPurchaseReportMixin(ReportBase):
             total_qty = tx_qty[key]
             share = qty / total_qty if total_qty > 0 else Decimal("0")
             fifo_qty, fifo_cost = fifo.get(key, (Decimal("0"), Decimal("0")))
-            g["cogs"] += fifo_cost * share
+            line_cogs = fifo_cost * share
             # Phần bán không qua sổ kho (vd: thành phẩm bán khi tồn = 0) -> giá nhập gần nhất
             uncovered = max(total_qty - fifo_qty, Decimal("0")) * share
             if uncovered > 0:
                 if r.product_id not in fallback_price:
                     fallback_price[r.product_id] = latest_purchase_price(db, user_id, r.product_id, end_dt)
-                g["cogs"] += uncovered * fallback_price[r.product_id]
+                line_cogs += uncovered * fallback_price[r.product_id]
+            g["cogs"] += line_cogs
+            if tx_cogs_out is not None:
+                tx_cogs_out[r.transaction_id] = tx_cogs_out.get(r.transaction_id, Decimal("0")) + line_cogs
 
         results = []
         for (prod_id, prod_name, unit), g in groups.items():

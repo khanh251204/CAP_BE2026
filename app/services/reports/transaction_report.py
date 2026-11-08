@@ -63,6 +63,11 @@ class TransactionReportMixin(ReportBase):
         offset = max(0, (page - 1) * page_size)
         rows = query.order_by(desc(Transaction.transaction_date)).offset(offset).limit(page_size).all()
 
+        # Giá vốn theo từng giao dịch bán (FE trừ vào cột biểu đồ để khớp thẻ Lợi nhuận)
+        tx_cogs: Dict[int, Decimal] = {}
+        if any(r.intent_name == "ban_hang" for r in rows):
+            cls.get_product_sales_breakdown(db, user_id, start_dt, end_dt, tx_cogs_out=tx_cogs)
+
         items = []
         for r in rows:
             items.append({
@@ -70,6 +75,8 @@ class TransactionReportMixin(ReportBase):
                 "transaction_date": r.transaction_date.isoformat() if r.transaction_date else "",
                 "intent": r.intent_name,
                 "total_amount": Decimal(str(r.total_amount or 0)),
+                "cogs": tx_cogs.get(r.transaction_id, Decimal("0")).quantize(Decimal("0.01"))
+                        if r.intent_name == "ban_hang" else Decimal("0.00"),
                 "payment_status": str(r.payment_status),
                 "input_method": str(r.input_method) if r.input_method else None,
                 "category_name": r.category_name,

@@ -10,6 +10,8 @@ from app.services.debt.supplier_fifo_service import SupplierFifoMixin
 from app.services.debt.debt_query_service import DebtQueryMixin
 from app.services.debt.debt_payment_exact_service import DebtPaymentExactMixin
 from app.services.debt.debt_transaction_service import DebtTransactionMixin
+from app.services.debt.debt_delete_service import DebtDeleteMixin
+from app.services.debt.debt_update_service import DebtUpdateMixin
 
 
 class DebtService(
@@ -21,6 +23,8 @@ class DebtService(
     DebtQueryMixin,
     DebtPaymentExactMixin,
     DebtTransactionMixin,
+    DebtDeleteMixin,
+    DebtUpdateMixin,
 ):
     """
     Debt Service Facade — Quản lý công nợ khách hàng & nhà cung cấp theo ERD.

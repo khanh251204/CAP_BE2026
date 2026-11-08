@@ -1,6 +1,7 @@
 import logging
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy import event
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, with_loader_criteria
 
 from app.configs.settings import settings
 
@@ -37,6 +38,23 @@ class SafeSession(Session):
             super().__exit__(exc_type, exc_val, exc_tb)
         finally:
             self.close()
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _hide_soft_deleted_debts(state):
+    """
+    Mọi SELECT ORM tự loại khoản nợ đã xoá mềm (Debt.is_active = False), kể cả lazy load quan hệ.
+    Cần xem cả nợ đã xoá thì truyền .execution_options(include_deleted=True).
+    """
+    if (
+        state.is_select
+        and not state.is_column_load
+        and not state.execution_options.get("include_deleted", False)
+    ):
+        from app.models.debt_model import Debt
+        state.statement = state.statement.options(
+            with_loader_criteria(Debt, Debt.is_active.is_(True), include_aliases=True)
+        )
 
 
 # Session để Repository sử dụng

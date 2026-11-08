@@ -57,6 +57,25 @@ class DebtQueryController:
         return DebtService.get_debt_detail(debt_id=debt_id, user_id=user_id, db=db)
 
     @staticmethod
+    def update_debt(debt_id: int, user_id: int, db: Session, **fields) -> Dict[str, Any]:
+        res = DebtService.update_debt(debt_id=debt_id, user_id=user_id, db=db, **fields)
+        try:
+            trigger_report_update(user_id=user_id, affected=["debt", "receivable", "payable"])
+        except Exception:
+            pass
+        return res
+
+    @staticmethod
+    def delete_debt(debt_id: int, user_id: int, db: Session) -> Dict[str, Any]:
+        res = DebtService.delete_debt(debt_id=debt_id, user_id=user_id, db=db)
+        try:
+            affected = ["debt", "receivable"] if res.get("direction") == "RECEIVABLE" else ["debt", "payable"]
+            trigger_report_update(user_id=user_id, affected=affected)
+        except Exception:
+            pass
+        return res
+
+    @staticmethod
     def get_payment_history(debt_id: int, user_id: int, db: Session) -> List[Dict[str, Any]]:
         return DebtService.get_payment_history(debt_id=debt_id, user_id=user_id, db=db)
 

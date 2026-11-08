@@ -154,6 +154,7 @@ class TransactionReportItem(BaseModel):
     transaction_date: str
     intent: Optional[str] = None
     total_amount: Decimal = Decimal("0.00")
+    cogs: Decimal = Decimal("0.00")  # Giá vốn (chỉ giao dịch ban_hang), dùng vẽ biểu đồ lãi lỗ
     payment_status: str
     input_method: Optional[str] = None
     category_name: Optional[str] = None

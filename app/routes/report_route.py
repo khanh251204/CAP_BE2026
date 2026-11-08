@@ -117,7 +117,7 @@ def get_transactions_report(
     category_id: Optional[int] = Query(None, description="ID danh mục"),
     payment_status: Optional[str] = Query(None, description="PAID, PARTIAL, PENDING"),
     page: int = Query(1, ge=1, le=1000000),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.configs.database import get_db
 from app.configs.jwt import get_current_user_id, require_permission
 from app.controllers.debt_controller import DebtController
+from app.schemas.debt.debt_update_schema import UpdateDebtRequest
 from app.schemas.debt_schema import (
     DebtSummaryResponse,
     PaginatedDebtListResponse,
@@ -65,6 +66,36 @@ def get_debt_payments(
     user_id: int = Depends(get_current_user_id),
 ):
     return DebtController.get_payment_history(debt_id=debt_id, user_id=user_id, db=db)
+
+
+@debt_router.patch(
+    "/{debt_id}",
+    response_model=DebtDetailResponse,
+    summary="Sửa khoản nợ nhập tay: đổi đối tác hoặc số tiền gốc (khi chưa thanh toán)",
+    dependencies=[Depends(require_permission("debt:manage"))],
+)
+def update_debt(
+    debt_id: int = Path(..., ge=1, description="ID công nợ cần sửa"),
+    request: UpdateDebtRequest = ...,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return DebtController.update_debt(
+        debt_id=debt_id, user_id=user_id, db=db, **request.model_dump(exclude_unset=True)
+    )
+
+
+@debt_router.delete(
+    "/{debt_id}",
+    summary="Xoá mềm một khoản nợ (giữ lịch sử thanh toán)",
+    dependencies=[Depends(require_permission("debt:manage"))],
+)
+def delete_debt(
+    debt_id: int = Path(..., ge=1, description="ID công nợ cần xoá"),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return DebtController.delete_debt(debt_id=debt_id, user_id=user_id, db=db)
 
 
 @debt_router.get(
