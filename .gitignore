@@ -66,3 +66,15 @@ data_lake/**/*.json
 
 # Vector DB cũ (không còn dùng, chuẩn hóa bằng regex/từ điển)
 app/ai/rag/chroma_db/
+
+# Graphify (knowledge graph sinh tự động, build lại bằng: python -m graphify update .)
+graphify-out/
+.graphifyignore
+.claude/CLAUDE.md
+.claude/skills/graphify/
+.gemini/
+GEMINI.md
+/CLAUDE.md
+
+# Benchmark OCR
+ocr_benchmark/
