@@ -43,8 +43,10 @@ python -m venv .venv
 Push notification cần thêm file `firebase-service-account.json` ở thư mục gốc.
 
 **System log theo chức năng** (`app/configs/system_log_settings.py`): hiện chỉ ghi API mobile, API admin (`/api/v1/admin/...`) tạm thời không ghi.
-Mỗi chức năng một mức: `ALL` (ghi mọi request), `WARNING` (chỉ lỗi 4xx / 5xx), `ERROR` (chỉ lỗi 5xx), `OFF` (không ghi). Mặc định mọi chức năng mobile là `ALL`, `admin` là `OFF`.
-Mã chức năng: `auth`, `stt`, `agent`, `transaction`, `product`, `inventory`, `customer`, `supplier`, `debt`, `report`, `closing`, `notification`, `other`, `admin`.
+Mỗi chức năng một mức: `ALL` (ghi mọi request), `WARNING` (chỉ lỗi 4xx / 5xx), `ERROR` (chỉ lỗi 5xx), `OFF` (không ghi). Mặc định mọi chức năng mobile là `ALL`, mọi chức năng admin là `OFF`.
+Mã chức năng mobile: `auth`, `stt`, `agent`, `transaction`, `product`, `inventory`, `customer`, `supplier`, `debt`, `report`, `closing`, `notification`, `other`.
+Mã chức năng admin (mặc định `OFF`): `admin_dashboard`, `admin_user`, `admin_product`, `admin_transaction`, `admin_voice`, `admin_dataset`, `admin_notification`, `admin_rbac`, `admin_closing`, `admin_system_log`, `admin` (các API admin còn lại).
+Admin cũng chỉnh được trên trang System Logs > tab "Cài đặt ghi log".
 Đổi mức bằng `SYSTEM_LOG_FEATURES` trong `.env` rồi khởi động lại server; cặp sai bị bỏ qua (có cảnh báo trong log).
 
 ## 4. Migration và dữ liệu phân quyền

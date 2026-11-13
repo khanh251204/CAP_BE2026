@@ -1,7 +1,8 @@
 """
 Cài đặt ghi system log THEO CHỨC NĂNG (bảng system_logs).
 
-Hiện chỉ ghi log cho API mobile; API admin (/api/v1/admin/...) tạm thời KHÔNG ghi (mức OFF).
+Hiện chỉ ghi log cho API mobile; API admin (/api/v1/admin/...) tạm thời KHÔNG ghi (mức OFF), chia theo từng
+chức năng admin (admin_user, admin_transaction, admin_rbac...) để bật riêng khi cần.
 Mỗi chức năng có một mức:
 - ALL     : ghi mọi request (thành công, lỗi người dùng 4xx, lỗi hệ thống 5xx)
 - WARNING : chỉ ghi lỗi 4xx và 5xx (bỏ request thành công -> đỡ phình DB)
@@ -33,28 +34,44 @@ LEVELS = ("ALL", "WARNING", "ERROR", "OFF")
 _MIN_RANK = {"ALL": 0, "WARNING": 1, "ERROR": 2, "OFF": 99}
 _RECORD_RANK = {"INFO": 0, "DEBUG": 0, "WARNING": 1, "ERROR": 2, "CRITICAL": 2}
 
-# (mã chức năng, tên hiển thị, các tiền tố đường dẫn sau /api/v1). Tiền tố dài / cụ thể đặt trước.
-FEATURES: List[Tuple[str, str, Tuple[str, ...]]] = [
-    ("admin", "Quản trị (admin)", ("/admin",)),
-    ("notification", "Thông báo", ("/notifications", "/users/me/devices")),
-    ("auth", "Đăng nhập & tài khoản", ("/auth", "/users/me")),
-    ("stt", "Giọng nói (STT)", ("/speech",)),
-    ("agent", "Trợ lý AI (phân tích câu nói)", ("/agent",)),
-    ("transaction", "Giao dịch", ("/transactions", "/sales", "/purchases")),
-    ("product", "Sản phẩm", ("/products",)),
-    ("inventory", "Kho", ("/inventory",)),
-    ("customer", "Khách hàng", ("/customers",)),
-    ("supplier", "Nhà cung cấp", ("/suppliers",)),
-    ("debt", "Công nợ", ("/debts",)),
-    ("report", "Báo cáo", ("/reports",)),
-    ("closing", "Chốt sổ", ("/closing-periods", "/closing-reports", "/closing-settings")),
-    ("other", "Khác", ()),
-]
-FEATURE_LABELS: Dict[str, str] = {code: label for code, label, _ in FEATURES}
+# Nhóm hiển thị trên trang admin
+GROUPS: Dict[str, str] = {"mobile": "Ứng dụng mobile", "admin": "Quản trị (admin)"}
 
-# Mặc định: mọi chức năng mobile ghi đầy đủ như trước, admin tạm thời không ghi
-DEFAULT_LEVELS: Dict[str, str] = {code: "ALL" for code, _, _ in FEATURES}
-DEFAULT_LEVELS["admin"] = "OFF"
+# (mã chức năng, tên hiển thị, nhóm, các tiền tố đường dẫn sau /api/v1). Tiền tố dài / cụ thể đặt trước:
+# các chức năng admin chi tiết đứng trước "admin" (bắt mọi /admin còn lại), "/users/me/devices" trước "/users/me".
+FEATURES: List[Tuple[str, str, str, Tuple[str, ...]]] = [
+    # --- Quản trị: tạm thời không ghi (OFF), bật riêng từng chức năng khi cần
+    ("admin_dashboard", "Tổng quan (dashboard)", "admin", ("/admin/dashboard",)),
+    ("admin_user", "Người dùng", "admin", ("/admin/users",)),
+    ("admin_product", "Sản phẩm", "admin", ("/admin/products",)),
+    ("admin_transaction", "Giao dịch", "admin", ("/admin/transactions",)),
+    ("admin_voice", "Giọng nói & kết quả AI", "admin", ("/admin/voice-records", "/admin/voice-corrections")),
+    ("admin_dataset", "Dữ liệu huấn luyện (dataset)", "admin", ("/admin/datasets",)),
+    ("admin_notification", "Thông báo", "admin", ("/admin/notifications",)),
+    ("admin_rbac", "Phân quyền (vai trò, quyền)", "admin", ("/admin/rbac",)),
+    ("admin_closing", "Chốt sổ", "admin", ("/admin/closing",)),
+    ("admin_system_log", "System Logs (cài đặt)", "admin", ("/admin/system-logs",)),
+    ("admin", "Quản trị khác", "admin", ("/admin",)),
+    # --- Ứng dụng mobile
+    ("notification", "Thông báo", "mobile", ("/notifications", "/users/me/devices")),
+    ("auth", "Đăng nhập & tài khoản", "mobile", ("/auth", "/users/me")),
+    ("stt", "Giọng nói (STT)", "mobile", ("/speech",)),
+    ("agent", "Trợ lý AI (phân tích câu nói)", "mobile", ("/agent",)),
+    ("transaction", "Giao dịch", "mobile", ("/transactions", "/sales", "/purchases")),
+    ("product", "Sản phẩm", "mobile", ("/products",)),
+    ("inventory", "Kho", "mobile", ("/inventory",)),
+    ("customer", "Khách hàng", "mobile", ("/customers",)),
+    ("supplier", "Nhà cung cấp", "mobile", ("/suppliers",)),
+    ("debt", "Công nợ", "mobile", ("/debts",)),
+    ("report", "Báo cáo", "mobile", ("/reports",)),
+    ("closing", "Chốt sổ", "mobile", ("/closing-periods", "/closing-reports", "/closing-settings")),
+    ("other", "Khác", "mobile", ()),
+]
+FEATURE_LABELS: Dict[str, str] = {code: label for code, label, _, _ in FEATURES}
+FEATURE_GROUP: Dict[str, str] = {code: group for code, _, group, _ in FEATURES}
+
+# Mặc định: mọi chức năng mobile ghi đầy đủ như trước, mọi chức năng admin tạm thời không ghi
+DEFAULT_LEVELS: Dict[str, str] = {code: ("OFF" if group == "admin" else "ALL") for code, _, group, _ in FEATURES}
 
 # log_event không có đường dẫn (vd giải mã token) -> chức năng theo bước kỹ thuật
 _STEP_FEATURE = {"STT": "stt", "LLM": "agent", "AUTH": "auth", "ADMIN": "admin"}
@@ -141,14 +158,14 @@ def describe() -> Dict[str, object]:
     _refresh(force=True)
     levels, env, file_levels = get_levels(), _env_levels(), _state["file_levels"]
     features = []
-    for code, label, prefixes in FEATURES:
+    for code, label, group, prefixes in FEATURES:
         source = "admin" if code in file_levels else "env" if code in env else "default"  # type: ignore[operator]
         features.append({
-            "code": code, "label": label, "paths": [API_PREFIX + p for p in prefixes],
+            "code": code, "label": label, "group": group, "paths": [API_PREFIX + p for p in prefixes],
             "level": levels[code], "default_level": {**DEFAULT_LEVELS, **env}[code], "source": source,
         })
     meta = _state["meta"] or {}
-    return {"features": features, "levels": list(LEVELS),
+    return {"features": features, "levels": list(LEVELS), "groups": [{"code": k, "label": v} for k, v in GROUPS.items()],
             "updated_at": meta.get("updated_at"), "updated_by": meta.get("updated_by")}  # type: ignore[union-attr]
 
 
@@ -212,7 +229,7 @@ def feature_for_path(path: Optional[str]) -> str:
     p = (path or "").rstrip("/").lower()
     if p.startswith(API_PREFIX):
         p = p[len(API_PREFIX):]
-    for code, _, prefixes in FEATURES:
+    for code, _, _, prefixes in FEATURES:
         if any(p == pre or p.startswith(pre + "/") for pre in prefixes):
             return code
     return "other"

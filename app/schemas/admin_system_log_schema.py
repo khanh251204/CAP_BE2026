@@ -59,15 +59,22 @@ class SystemLogSummaryResponse(BaseModel):
 class SystemLogFeatureSetting(BaseModel):
     code: str
     label: str
+    group: str = Field("mobile", description="mobile | admin")
     paths: List[str] = []
     level: str = Field(..., description="ALL | WARNING | ERROR | OFF")
     default_level: str
     source: str = Field(..., description="admin (lưu trên giao diện) | env (biến môi trường) | default")
 
 
+class SystemLogFeatureGroup(BaseModel):
+    code: str
+    label: str
+
+
 class SystemLogSettingsData(BaseModel):
     features: List[SystemLogFeatureSetting]
     levels: List[str]
+    groups: List[SystemLogFeatureGroup] = []
     updated_at: Optional[str] = None
     updated_by: Optional[int] = None
 
