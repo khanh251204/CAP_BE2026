@@ -78,3 +78,6 @@ GEMINI.md
 
 # Benchmark OCR
 ocr_benchmark/
+
+# Cài đặt lưu lúc chạy (vd system log theo chức năng do admin chỉnh)
+runtime/

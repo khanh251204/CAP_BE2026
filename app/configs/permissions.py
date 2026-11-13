@@ -90,6 +90,7 @@ PERMISSIONS: List[Dict[str, str]] = [
     {"code": "admin_closing:manage", "module": "ADMIN_CLOSING", "description": "Mở lại / chốt lại kỳ, gửi lại email, sửa cấu hình chốt sổ của người dùng"},
 
     {"code": "system:log_read", "module": "SYSTEM", "description": "Xem nhật ký hệ thống và audit log"},
+    {"code": "system:setting_manage", "module": "SYSTEM", "description": "Sửa cài đặt ghi system log theo chức năng"},
     {"code": "rbac:read", "module": "SYSTEM", "description": "Xem vai trò và ma trận phân quyền"},
     {"code": "rbac:manage", "module": "SYSTEM", "description": "Tạo / sửa / xóa vai trò, phân quyền và gán vai trò cho người dùng"},
 ]
