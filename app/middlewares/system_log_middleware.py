@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.background import BackgroundTask, BackgroundTasks
 
+from app.configs import system_log_settings as log_settings
 from app.configs.cookie import JWT_ACCESS_COOKIE_NAME
 from app.configs.database import get_db_session
 from app.configs.jwt import decode_access_token
@@ -20,11 +21,18 @@ logger = logging.getLogger(__name__)
 
 # ContextVar lưu trữ request_id cho request hiện tại
 current_request_id_var: ContextVar[Optional[str]] = ContextVar("current_request_id", default=None)
+# Chức năng (theo system_log_settings) của request hiện tại, để log_event trong request dùng cùng cài đặt
+current_log_feature_var: ContextVar[Optional[str]] = ContextVar("current_log_feature", default=None)
 
 
 def get_current_request_id() -> Optional[str]:
     """Lấy request_id của request hiện tại từ ContextVar."""
     return current_request_id_var.get()
+
+
+def get_current_log_feature() -> Optional[str]:
+    """Chức năng system log của request hiện tại (None nếu đang ngoài request)."""
+    return current_log_feature_var.get()
 
 
 SENSITIVE_KEYS = {
@@ -241,13 +249,18 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
         token_ctx = current_request_id_var.set(req_id)
         request.state.request_id = req_id
 
-        # Kiểm tra bỏ qua log nếu đường dẫn/method thuộc danh sách loại trừ
-        if _should_skip_logging(request):
+        # Chức năng của request (cài đặt theo chức năng ở app/configs/system_log_settings.py)
+        feature = log_settings.feature_for_path(path)
+        feature_ctx = current_log_feature_var.set(feature)
+
+        # Bỏ qua log nếu đường dẫn/method thuộc danh sách loại trừ, hoặc chức năng đang tắt (vd admin)
+        if _should_skip_logging(request) or log_settings.is_off(feature):
             try:
                 response = await call_next(request)
                 response.headers["X-Request-ID"] = req_id
                 return response
             finally:
+                current_log_feature_var.reset(feature_ctx)
                 current_request_id_var.reset(token_ctx)
 
         start_time = time.time()
@@ -311,6 +324,7 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
             detail_payload = {
                 "client_host": request.client.host if request.client else None,
                 "query_params": masked_query_params,
+                "feature": feature,
             }
             if body_dict:
                 detail_payload["body"] = body_dict
@@ -333,7 +347,10 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
                 "app_version": str(app_version)[:50] if app_version else None,
             }
 
-            if response is not None:
+            if not log_settings.should_log(feature, level):
+                # Mức cài đặt của chức năng cao hơn mức bản ghi (vd báo cáo chỉ ghi ERROR) -> không ghi
+                pass
+            elif response is not None:
                 if response.background:
                     if isinstance(response.background, BackgroundTasks):
                         response.background.add_task(_write_log_to_db_sync, log_dict)
@@ -348,4 +365,5 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
             else:
                 _write_log_to_db_sync(log_dict)
 
+            current_log_feature_var.reset(feature_ctx)
             current_request_id_var.reset(token_ctx)

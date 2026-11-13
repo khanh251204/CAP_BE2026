@@ -38,8 +38,14 @@ python -m venv .venv
 | `GOOGLE_*_CLIENT_ID` | | Đăng nhập Google |
 | `SMTP_*` | | Gửi OTP qua email |
 | `CLOUDINARY_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | | Lưu file / audio |
+| `SYSTEM_LOG_FEATURES` | | Mức ghi system log theo chức năng, vd `report=ERROR,notification=WARNING` (xem dưới) |
 
 Push notification cần thêm file `firebase-service-account.json` ở thư mục gốc.
+
+**System log theo chức năng** (`app/configs/system_log_settings.py`): hiện chỉ ghi API mobile, API admin (`/api/v1/admin/...`) tạm thời không ghi.
+Mỗi chức năng một mức: `ALL` (ghi mọi request), `WARNING` (chỉ lỗi 4xx / 5xx), `ERROR` (chỉ lỗi 5xx), `OFF` (không ghi). Mặc định mọi chức năng mobile là `ALL`, `admin` là `OFF`.
+Mã chức năng: `auth`, `stt`, `agent`, `transaction`, `product`, `inventory`, `customer`, `supplier`, `debt`, `report`, `closing`, `notification`, `other`, `admin`.
+Đổi mức bằng `SYSTEM_LOG_FEATURES` trong `.env` rồi khởi động lại server; cặp sai bị bỏ qua (có cảnh báo trong log).
 
 ## 4. Migration và dữ liệu phân quyền
 
