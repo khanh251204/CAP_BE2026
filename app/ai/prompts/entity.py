@@ -10,12 +10,19 @@ ENTITY_RULES = """
      * VD: "Bán lốc sữa chua 50000, tiền mặt" -> quantity=null, unit="lốc", total_price=50000.
    - `unit`: Đơn vị tính đã chuẩn hóa (kg, lốc, thùng, cái, hộp, gói, lon, chai, ly, vỉ... hoặc null).
    - `price`: Đơn giá của MỘT đơn vị sản phẩm (số nguyên VND, hoặc null).
-     * Chỉ điền khi người dùng nói rõ đơn giá: "giá 20k", "mỗi cái 28k", "đơn giá 28k", "20k một lon", "30k/kg".
+     * Chỉ điền khi số tiền GẮN VỚI MỘT ĐƠN VỊ: "mỗi cái 28k", "giá 30k mỗi kí", "đơn giá 28k", "20k một lon",
+       "30k/kg", "28k một cái".
+     * Câu KHÔNG nói số lượng (thêm / sửa sản phẩm, "áo 2 trăm", "Bán lốc sữa chua 50000") thì "giá X" là đơn giá
+       hoặc tiền của món đó như các quy tắc khác.
    - `total_price`: TỔNG số tiền của cả đơn hàng hóa (số nguyên VND, hoặc null).
      * Người dùng nói "hết", "tổng", "tổng cộng", "tất cả", "cả thảy", "thành tiền", "tính tiền" + số tiền -> total_price.
+     * Câu CÓ số lượng mà chỉ nói "giá X" / "X" KHÔNG kèm "mỗi / một <đơn vị>", "/<đơn vị>", "đơn giá"
+       -> X là TỔNG tiền -> total_price.
      * KHÔNG tự chia ra đơn giá (backend sẽ tính). Có total_price thì để price = null nếu không nói đơn giá.
      * VD: "Bán 5 lon coca hết 100k" -> quantity=5, total_price=100000, price=null.
        "Nhập 500 lốc sữa chua tổng 10 triệu" -> quantity=500, total_price=10000000, price=null.
+       "Nhập 5 kí thịt heo giá 300k" -> quantity=5, unit="kg", total_price=300000, price=null.
+       "Nhập 5 kí thịt heo giá 30k mỗi kí" -> quantity=5, unit="kg", price=30000, total_price=null.
      * Nghiệp vụ chỉ có tiền, không có hàng (chi_phi, thu nợ, trả nợ, ghi nợ tiền): số tiền điền vào `price`
        như cũ. VD: "Chi tiền điện hết 500k" -> price=500000.
 
@@ -35,8 +42,9 @@ ENTITY_RULES = """
    - `customer`, `supplier`, `payment`, `date` dùng chung cả đơn: để ở cấp ngoài, không lặp trong từng phần tử.
    - Mỗi mặt hàng giữ đúng số lượng / đơn vị / giá của riêng nó, không gộp, không đoán giá còn thiếu (null).
    - Chỉ 1 mặt hàng -> `items` = null và dùng các trường cấp ngoài như bình thường.
-   - VD: "Bán 2 lon coca giá 10k và 3 gói mì giá 5k cho chị Lan" -> intent=ban_hang, customer="chị Lan",
-     items=[{"product":"coca","quantity":2,"unit":"lon","price":10000},{"product":"mì","quantity":3,"unit":"gói","price":5000}].
+   - Đơn giá / tổng tiền của từng mặt hàng theo đúng quy tắc `price` / `total_price` ở mục 1.
+   - VD: "Bán 2 lon coca 10k một lon và 3 gói mì giá 15k cho chị Lan" -> intent=ban_hang, customer="chị Lan",
+     items=[{"product":"coca","quantity":2,"unit":"lon","price":10000},{"product":"mì","quantity":3,"unit":"gói","total_price":15000}].
 
 4. Chi phí (chi_phi):
    - `price`: Số tiền chi, dạng số nguyên VND (Bắt buộc). VD: "Chi 500k tiền điện" -> price = 500000.
