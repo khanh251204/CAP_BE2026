@@ -106,9 +106,12 @@ def get_products_with_stock(db: Session, user_id: int):
     import_prices = get_last_import_prices(db, user_id)
     from app.services.product_unit_service import units_by_product
     units_map = units_by_product(db, user_id, [row[0].product_id for row in results])
+    from app.services import product_edit_lock
+    locks = product_edit_lock.get_locks(db, [row[0] for row in results])
     data = []
     for product, total_imported, total_sold, stock_quantity in results:
         data.append({
+            **locks[product.product_id],
             "product_id": product.product_id,
             "user_id": product.user_id,
             "name": product.product_name,

@@ -51,6 +51,20 @@
 | 11 | **BOM Module** | Nghiệp vụ nâng cao | Production Service | Định mức nguyên vật liệu cho `PRODUCER`. |
 | 12 | **Multi-item Batch** | AI Core nâng cao | LLM 120B Inference | Trích xuất và xử lý nhiều sản phẩm trong 1 câu nói. |
 
+### 2.3. HAI NHÁNH ĐỘC LẬP: `v1` và `v2` (cập nhật 2026-11-17)
+
+`v1` và `v2` mỗi nhánh có danh sách tính năng và tiến độ riêng. **Không coi `v2 = v1 + thêm`** (hay ngược lại): cùng chức năng có thể làm khác nhau, và nhánh này có không có nghĩa nhánh kia có. Trước khi nói "đã có / chưa có", đọc code của đúng nhánh (`git show <nhánh>:<file>`). Làm xong ở nhánh nào → ghi vào bảng nhánh đó; làm ở nhánh kia là việc mới, ghi riêng. Bảng tổng hợp hai nhánh phía FE: `VoiceCashBook/STATUS.md` mục 0.2.
+
+| Tính năng BE | v1 | v2 | Ghi chú |
+| :--- | :---: | :---: | :--- |
+| 7 intent Cap 1, chốt sổ, RBAC, khóa tài khoản + OTP, giá vốn FIFO, giá nhập | ✅ | ✅ | |
+| Xóa mềm / sửa khoản nợ (`PATCH/DELETE /debts`, cột `is_active`) | ✅ | ❌ | v2 sửa / xóa nợ qua giao dịch gốc |
+| Giá vốn theo giao dịch cho biểu đồ (`cogs`), `page_size` tối đa 500 | ✅ | ❌ | commit `a7c278f` |
+| Cài đặt system log tách theo chức năng (admin) | ✅ | ⚠️ | v2 có `App_Setting` observability riêng |
+| Khóa sửa tên + đơn vị sản phẩm (đã có giao dịch hoặc quá 24h) | ⚠️ | ⚠️ | 2026-11-17, `services/product_edit_lock.py`, 409 + `name_locked` ở `/inventory/items`. Chưa commit; phần v1 đang ở `git stash`. v1 còn bỏ `_sync_name_to_open_transactions` (đổi tên không còn lan sang giao dịch chưa chốt); v2 vốn không có hàm này |
+| Intent sản phẩm / kho / kiểm kê / chốt sổ bằng giọng nói, tra cứu tồn | ❌ | ✅ | Cap 2 |
+| BOM, multi-item, Audit Log, OCR (Vintern / Gemini), Qwen 27B | ❌ | ✅ | Cap 2 |
+
 ---
 
 ## 3. TRẠNG THÁI CÁC MCP SERVERS

@@ -11,6 +11,7 @@ from app.repositories import product_repository as repo
 from app.repositories.inventory_repo import InventoryRepository
 from app.services.product_inventory_service import ProductInventoryService
 from app.services.duplicate_guard import clean_name, ensure_unique_product
+from app.services import product_edit_lock
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,15 @@ class ProductService:
         product = repo.get_product_by_id(db, user_id, product_id)
         if not product:
             return None
+
+        # Khóa sửa tên / đơn vị: đã phát sinh giao dịch hoặc quá 24h kể từ lúc tạo
+        # (chỉ chặn khi giá trị thực sự đổi, form gửi lại giá trị cũ thì bỏ qua)
+        name_changed = data.get("product_name") is not None and clean_name(data["product_name"]) != product.product_name
+        unit_changed = data.get("default_unit") is not None and str(data["default_unit"]).strip() != (product.default_unit or "")
+        if name_changed or unit_changed:
+            lock = product_edit_lock.get_lock(db, product)
+            if lock["name_locked"]:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=lock["name_lock_message"])
 
         if "product_name" in data:
             if data["product_name"] is None:
