@@ -20,6 +20,7 @@ from app.schemas.admin_product_schema import (
     AdminProductDetailResponse,
     AdminProductStatusUpdateRequest,
     AdminProductStatusUpdateResponse,
+    AdminProductSummaryResponse,
 )
 from app.services.admin_product_service import AdminProductService
 
@@ -80,6 +81,24 @@ def list_products(
         sort_by=sort_by or "created_at",
         sort_order=sort_order or "desc",
     )
+
+
+@router.get(
+    "/summary",
+    response_model=AdminProductSummaryResponse,
+    summary="Thống kê tổng quan sản phẩm (Admin)",
+    description=(
+        "Đếm số lượng sản phẩm theo trạng thái và loại hàng hóa. "
+        "Nhận cùng `search` / `user_id` với danh sách để khớp với bảng đang lọc."
+    ),
+    dependencies=[Depends(require_permission("admin_product:read"))],
+)
+def get_product_summary(
+    search: Optional[str] = Query(None, description="Từ khóa giống tham số search của danh sách"),
+    user_id: Optional[int] = Query(None, description="Lọc theo user_id"),
+    db: Session = Depends(get_db),
+):
+    return AdminProductService.get_summary(db=db, search=search, user_id=user_id)
 
 
 @router.get(

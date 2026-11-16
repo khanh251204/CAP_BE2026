@@ -11,11 +11,18 @@ from app.repositories import product_repository as repo
 from app.repositories.inventory_repo import InventoryRepository
 from app.services.product_inventory_service import ProductInventoryService
 from app.services.duplicate_guard import clean_name, ensure_unique_product
+from app.services.input_safety import contains_markup, markup_message
 
 logger = logging.getLogger(__name__)
 
 
 class ProductService:
+    @staticmethod
+    def _assert_no_markup(fields: dict) -> None:
+        """Tên, đơn vị tính, link ảnh không được chứa thẻ HTML / script -> 400."""
+        for label, value in fields.items():
+            if value is not None and contains_markup(str(value)):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=markup_message(label))
 
     @staticmethod
     def get_all_products_with_stock(user_id: int, db: Session):
@@ -57,6 +64,12 @@ class ProductService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tên sản phẩm không được để trống")
         if len(product_name) > 255:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tên sản phẩm tối đa 255 ký tự")
+
+        ProductService._assert_no_markup({
+            "Tên sản phẩm": product_name,
+            "Đơn vị tính": data.get("default_unit") or data.get("unit"),
+            "Link ảnh": data.get("img"),
+        })
 
         # Không cho trùng tên (không phân biệt hoa/thường, khoảng trắng thừa) với sản phẩm đang kinh doanh
         ensure_unique_product(db, user_id, product_name)
@@ -125,6 +138,12 @@ class ProductService:
         if not product:
             return None
 
+        ProductService._assert_no_markup({
+            "Tên sản phẩm": data.get("product_name"),
+            "Đơn vị tính": data.get("default_unit"),
+            "Link ảnh": data.get("img"),
+        })
+
         if "product_name" in data:
             if data["product_name"] is None:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tên sản phẩm không được để trống")
@@ -182,7 +201,37 @@ class ProductService:
                         f"[CẢNH BÁO] Đổi default_unit từ '{product.default_unit}' sang '{new_unit}' cho #{product_id} khi còn tồn kho {current_stock}"
                     )
 
+        # Đổi tên -> cập nhật tên trên các dòng giao dịch CHƯA chốt sổ (giá giữ nguyên giá thực tế lúc bán / nhập).
+        # Ghi chung một commit với việc cập nhật sản phẩm (repo.update_product commit).
+        if "product_name" in data and data["product_name"] != product.product_name:
+            ProductService._sync_name_to_open_transactions(db, user_id, product.product_id, data["product_name"])
+
         return repo.update_product(db, product, data)
+
+    @staticmethod
+    def _sync_name_to_open_transactions(db: Session, user_id: int, product_id: int, new_name: str) -> int:
+        """Đổi product_name trên Transaction_Detail của sản phẩm, bỏ qua giao dịch thuộc kỳ đã chốt (CLOSED)."""
+        from app.models.transaction_model import Transaction
+        from app.models.transactionDetail_model import TransactionDetail
+        from app.services.closing.closing_guard import closed_periods_for_transactions
+
+        rows = (
+            db.query(TransactionDetail, Transaction)
+            .join(Transaction, Transaction.transaction_id == TransactionDetail.transaction_id)
+            .filter(TransactionDetail.product_id == product_id, Transaction.user_id == user_id)
+            .all()
+        )
+        if not rows:
+            return 0
+        txs = {tx.transaction_id: tx for _, tx in rows}
+        closed = closed_periods_for_transactions(db, user_id, list(txs.values()))
+        changed = 0
+        for detail, tx in rows:
+            if tx.transaction_id in closed or detail.product_name == new_name:
+                continue
+            detail.product_name = new_name
+            changed += 1
+        return changed
 
     @staticmethod
     def delete_product(product_id: int, user_id: int, db: Session):

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
 from app.models.system_log_model import SystemLog, SystemLogLevel, SystemLogStep
+from app.utils.vn_search import vn_ilike
 
 
 class AdminSystemLogService:
@@ -47,15 +48,20 @@ class AdminSystemLogService:
                 date_to = datetime.combine(date_to.date(), time(23, 59, 59, 999999))
             query = query.filter(SystemLog.created_at <= date_to)
 
-        if keyword:
-            kw = f"%{keyword.strip()}%"
+        if keyword and keyword.strip():
+            term = keyword.strip()
             filters = [
-                SystemLog.message.ilike(kw),
-                SystemLog.api_path.ilike(kw),
-                SystemLog.request_id.ilike(kw),
+                vn_ilike(SystemLog.message, term),
+                vn_ilike(SystemLog.api_path, term),
+                vn_ilike(SystemLog.request_id, term),
+                vn_ilike(SystemLog.step, term),
+                vn_ilike(SystemLog.http_method, term),
             ]
-            if keyword.strip().isdigit():
-                filters.append(SystemLog.user_id == int(keyword.strip()))
+            if term.isdigit():
+                num_val = int(term)
+                filters.append(SystemLog.user_id == num_val)
+                filters.append(SystemLog.id == num_val)
+                filters.append(SystemLog.status_code == num_val)
             query = query.filter(or_(*filters))
 
         total_items = query.count()

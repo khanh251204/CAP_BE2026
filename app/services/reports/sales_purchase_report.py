@@ -49,8 +49,11 @@ class SalesPurchaseReportMixin(ReportBase):
              Transaction.transaction_date <= end_dt
          ).all()
 
-        with_cost = bt != "SERVICE"
-        fifo = fifo_sale_costs(db, user_id, (r.product_id for r in sale_rows)) if with_cost else {}
+        # Mọi mô hình đều tính giá vốn: SERVICE có bán hàng hóa đã nhập thì vẫn phải trừ giá nhập
+        # (dịch vụ thuần không có lịch sử nhập -> giá vốn tự bằng 0)
+        fifo = fifo_sale_costs(
+            db, user_id, (r.product_id for r in sale_rows), untracked_sales=(bt == "SERVICE")
+        )
 
         # Tổng SL bán của mỗi (giao dịch, sản phẩm) — chia giá vốn khi 1 giao dịch có nhiều dòng cùng sản phẩm
         tx_qty: Dict[tuple, Decimal] = {}
@@ -67,7 +70,7 @@ class SalesPurchaseReportMixin(ReportBase):
             })
             g["qty"] += qty
             g["revenue"] += Decimal(str(r.subtotal or 0))
-            if not (with_cost and r.product_id):
+            if not r.product_id:
                 continue
 
             key = (r.transaction_id, r.product_id)
@@ -117,8 +120,6 @@ class SalesPurchaseReportMixin(ReportBase):
         business_type: Optional[str] = None
     ) -> Decimal:
         bt = (business_type or cls._get_user_business_type(db, user_id)).upper()
-        if bt == "SERVICE":
-            return Decimal("0.00")
 
         product_breakdown = cls.get_product_sales_breakdown(db, user_id, start_dt, end_dt, bt)
         total_prod_cogs = sum(item["cogs"] for item in product_breakdown)

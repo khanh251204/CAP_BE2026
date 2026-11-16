@@ -952,6 +952,8 @@ class TransactionService:
 
         total_pages = ceil(total / limit) if limit > 0 else 0
         data = []
+        from app.services.closing.closing_guard import closed_periods_for_transactions, period_label
+        closed_map = closed_periods_for_transactions(db, user_id, transactions)
 
         for transaction in transactions:
             details = []
@@ -1044,7 +1046,13 @@ class TransactionService:
                     if transaction.updated_at
                     else None
                 ),
-                "details": details
+                "details": details,
+                "is_closed": transaction.transaction_id in closed_map,
+                "closed_period": (
+                    period_label(closed_map[transaction.transaction_id])
+                    if transaction.transaction_id in closed_map
+                    else None
+                ),
             })
 
         return {
@@ -1101,6 +1109,11 @@ class TransactionService:
 
         item_intent_name = transaction.intent.intent_name if transaction.intent else None
         resolved_type = resolve_intent_type(transaction.intent, item_intent_name)
+
+        from app.services.closing.closing_guard import find_transaction_closed_period, period_label
+        closed = find_transaction_closed_period(
+            db, user_id, transaction.transaction_id, transaction.transaction_date
+        )
 
         return {
             "transaction_id": transaction.transaction_id,
@@ -1162,7 +1175,9 @@ class TransactionService:
                 if transaction.updated_at
                 else None
             ),
-            "details": details
+            "details": details,
+            "is_closed": closed is not None,
+            "closed_period": period_label(closed) if closed else None,
         }
 
     @staticmethod
@@ -1185,7 +1200,6 @@ class TransactionService:
         4. Ghi log qua log_event (step="TRANSACTION").
         """
         from fastapi import HTTPException, status
-        from app.models.closing_period_model import ClosingPeriod
         from app.models.closing_transaction_model import ClosingTransaction
         from app.models.debt_payment_model import DebtPayment
         from app.models.voice_record_model import VoiceRecord
@@ -1205,36 +1219,14 @@ class TransactionService:
                 detail=f"Không tìm thấy giao dịch #{transaction_id} hoặc bạn không có quyền xóa"
             )
 
-        # 2. Kiểm tra kỳ chốt sổ
-        # A: Kiểm tra qua ClosingTransaction
-        closed_link = (
-            db.query(ClosingPeriod)
-            .join(ClosingTransaction, ClosingTransaction.closing_id == ClosingPeriod.closing_id)
-            .filter(
-                ClosingTransaction.transaction_id == tx.transaction_id,
-                ClosingPeriod.status == "CLOSED"
-            )
-            .first()
-        )
-        # B: Kiểm tra theo ngày giao dịch trong kỳ CLOSED của user
-        if not closed_link and tx.transaction_date:
-            tx_d = tx.transaction_date.date() if isinstance(tx.transaction_date, datetime) else tx.transaction_date
-            closed_link = (
-                db.query(ClosingPeriod)
-                .filter(
-                    ClosingPeriod.user_id == user_id,
-                    ClosingPeriod.status == "CLOSED",
-                    ClosingPeriod.period_start <= tx_d,
-                    ClosingPeriod.period_end >= tx_d
-                )
-                .first()
-            )
+        # 2. Kiểm tra kỳ chốt sổ: thuộc kỳ CLOSED (snapshot hoặc theo ngày) -> 409.
+        #    Kỳ đã mở lại (OPEN / REOPENED) thì xoá bình thường.
+        from app.services.closing.closing_guard import assert_transaction_editable
+        assert_transaction_editable(db, tx, "xoá")
 
-        if closed_link:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Giao dịch thuộc kỳ chốt sổ đã đóng (Kỳ ID: {closed_link.closing_id}). Không thể xóa giao dịch trong kỳ đã chốt."
-            )
+        # 2b. Phiếu nhập kho: hàng của lần nhập này đã bán / xuất sau đó thì không cho xoá
+        #     (xoá sẽ làm tồn kho âm và sai giá vốn FIFO của các đơn bán đã ghi) -> 409.
+        TransactionService._assert_inbound_not_consumed(db, user_id, tx.transaction_id)
 
         try:
             # 3. Hoàn lại tác động phụ (Side effects rollback)
@@ -1427,41 +1419,47 @@ class TransactionService:
     }
 
     @staticmethod
-    def _find_closed_period(
-        db: Session,
-        user_id: int,
-        transaction_id: Optional[int],
-        tx_date: Optional[datetime]
-    ):
-        """Trả về ClosingPeriod (status=CLOSED) chứa giao dịch / ngày giao dịch, nếu có."""
-        from app.models.closing_period_model import ClosingPeriod
-        from app.models.closing_transaction_model import ClosingTransaction
+    def _assert_inbound_not_consumed(db: Session, user_id: int, transaction_id: int) -> None:
+        """Chặn xoá giao dịch nhập kho (IN) khi sản phẩm đó đã có biến động xuất kho (OUT) phát sinh sau."""
+        from fastapi import HTTPException, status
 
-        closed = None
-        if transaction_id is not None:
-            closed = (
-                db.query(ClosingPeriod)
-                .join(ClosingTransaction, ClosingTransaction.closing_id == ClosingPeriod.closing_id)
+        inbound = (
+            db.query(InventoryTransaction)
+            .filter(
+                InventoryTransaction.transaction_id == transaction_id,
+                InventoryTransaction.user_id == user_id,
+                InventoryTransaction.inventory_type == "IN",
+            )
+            .all()
+        )
+        sold_names: List[str] = []
+        for inv in inbound:
+            later_out = (
+                db.query(InventoryTransaction.inventory_transaction_id)
                 .filter(
-                    ClosingTransaction.transaction_id == transaction_id,
-                    ClosingPeriod.user_id == user_id,
-                    ClosingPeriod.status == "CLOSED"
+                    InventoryTransaction.user_id == user_id,
+                    InventoryTransaction.product_id == inv.product_id,
+                    InventoryTransaction.inventory_type == "OUT",
+                    InventoryTransaction.inventory_transaction_id > inv.inventory_transaction_id,
+                    InventoryTransaction.transaction_id != transaction_id,
                 )
                 .first()
             )
-        if not closed and tx_date:
-            tx_d = tx_date.date() if isinstance(tx_date, datetime) else tx_date
-            closed = (
-                db.query(ClosingPeriod)
-                .filter(
-                    ClosingPeriod.user_id == user_id,
-                    ClosingPeriod.status == "CLOSED",
-                    ClosingPeriod.period_start <= tx_d,
-                    ClosingPeriod.period_end >= tx_d
-                )
-                .first()
+            if later_out:
+                prod = db.query(Product).filter(Product.product_id == inv.product_id).first()
+                name = prod.product_name if prod else f"#{inv.product_id}"
+                if name not in sold_names:
+                    sold_names.append(name)
+        if sold_names:
+            names = ", ".join(f"'{n}'" for n in sold_names[:3])
+            more = f" và {len(sold_names) - 3} mặt hàng khác" if len(sold_names) > 3 else ""
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Không thể xoá phiếu nhập vì {names}{more} đã được bán hoặc xuất kho sau lần nhập này. "
+                    "Hãy xoá các đơn bán / xuất kho liên quan trước, hoặc sửa lại phiếu nhập."
+                ),
             )
-        return closed
 
     @staticmethod
     def _resolve_cash_direction(category: Optional[Category], intent_name: str) -> int:
@@ -1570,24 +1568,23 @@ class TransactionService:
         # ------------------------------------------------------
         # 2. Kiểm tra kỳ chốt sổ (cũ & mới)
         # ------------------------------------------------------
-        closed = TransactionService._find_closed_period(db, user_id, tx.transaction_id, tx.transaction_date)
-        if closed:
+        from app.services.closing.closing_guard import (
+            ClosedPeriodError,
+            assert_can_move_transaction_to,
+            assert_transaction_editable,
+        )
+        try:
+            assert_transaction_editable(db, tx, "sửa")
+            if "transaction_date" in fields and request.transaction_date is not None:
+                assert_can_move_transaction_to(db, user_id, request.transaction_date)
+        except ClosedPeriodError:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Giao dịch thuộc kỳ chốt sổ đã đóng (Kỳ ID: {closed.closing_id}). Không thể sửa giao dịch trong kỳ đã chốt."
-            )
-        if "transaction_date" in fields and request.transaction_date is not None:
-            closed_new = TransactionService._find_closed_period(db, user_id, None, request.transaction_date)
-            if closed_new:
-                db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Ngày giao dịch mới thuộc kỳ chốt sổ đã đóng (Kỳ ID: {closed_new.closing_id}). Không thể chuyển giao dịch vào kỳ đã chốt."
-                )
+            raise
 
         try:
             intent_name = ((tx.intent.intent_name if tx.intent else "") or "").lower().strip()
+            # Sản phẩm cần kiểm tra cảnh báo tồn kho sau khi lưu (chỉ khi gửi details)
+            stock_alert_pids: set = set()
 
             # 3. Không cho đổi intent
             if "intent_id" in fields and request.intent_id is not None and request.intent_id != tx.intent_id:
@@ -1859,6 +1856,7 @@ class TransactionService:
                     ):
                         product_map[p.product_id] = p
 
+                stock_alert_pids.update(desired.keys())
                 for pid in sorted(set(desired.keys()) | set(old_by_product.keys())):
                     recs = old_by_product.get(pid, [])
                     old_change = sum(
@@ -2032,7 +2030,7 @@ class TransactionService:
             db.commit()
 
             # Kích hoạt cảnh báo tồn kho nếu có sản phẩm xuất kho bị giảm số lượng tồn
-            for pid in new_by_product.keys():
+            for pid in stock_alert_pids:
                 try:
                     from app.services.stock_alert_service import StockAlertService
                     StockAlertService.check_and_notify_stock(

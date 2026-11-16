@@ -10,7 +10,9 @@ from typing import Optional, Dict, List
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import select, func, desc, or_, cast, String
+from sqlalchemy import select, func, desc, or_, and_, case, cast, String
+
+from app.models.debt_model import Debt
 
 from app.models.transaction_model import Transaction
 from app.models.transactionDetail_model import TransactionDetail
@@ -18,7 +20,10 @@ from app.models.user_model import User
 from app.models.intent_model import Intent
 from app.models.category_model import Category
 from app.models.product_model import Product
-from app.services.transaction_service import resolve_intent_type
+from app.models.customer_model import Customer
+from app.models.supplier_model import Supplier
+from app.services.transaction_service import resolve_intent_type, INTENT_TYPE_MAPPING
+from app.utils.vn_search import vn_ilike
 
 
 class AdminTransactionService:
@@ -39,6 +44,7 @@ class AdminTransactionService:
         input_method: Optional[str] = None,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
+        group: Optional[str] = None,
         sort_by: str = "created_at",
         sort_order: str = "desc",
     ) -> Dict:
@@ -58,81 +64,13 @@ class AdminTransactionService:
         )
         count_stmt = select(func.count()).select_from(Transaction)
 
-        # --- JOIN flags to prevent duplicate joins ---
-        intent_joined = False
-        user_joined = False
-
-        # === Filter: user_id ===
-        if user_id is not None:
-            stmt = stmt.filter(Transaction.user_id == user_id)
-            count_stmt = count_stmt.filter(Transaction.user_id == user_id)
-
-        # === Filter: intent_name (exact match, case-insensitive) ===
-        if intent_name:
-            stmt = stmt.join(Transaction.intent)
-            count_stmt = count_stmt.join(Transaction.intent)
-            intent_joined = True
-            stmt = stmt.filter(
-                Intent.intent_name.ilike(f"%{intent_name.strip()}%")
-            )
-            count_stmt = count_stmt.filter(
-                Intent.intent_name.ilike(f"%{intent_name.strip()}%")
-            )
-
-        # === Filter: intent_type ===
-        if intent_type:
-            if not intent_joined:
-                stmt = stmt.join(Transaction.intent)
-                count_stmt = count_stmt.join(Transaction.intent)
-                intent_joined = True
-            stmt = stmt.filter(
-                func.upper(Intent.intent_type) == intent_type.strip().upper()
-            )
-            count_stmt = count_stmt.filter(
-                func.upper(Intent.intent_type) == intent_type.strip().upper()
-            )
-
-        # === Filter: payment_status ===
-        if payment_status:
-            val = payment_status.strip().upper()
-            stmt = stmt.filter(Transaction.payment_status == val)
-            count_stmt = count_stmt.filter(Transaction.payment_status == val)
-
-        # === Filter: input_method ===
-        if input_method:
-            val = input_method.strip().upper()
-            stmt = stmt.filter(Transaction.input_method == val)
-            count_stmt = count_stmt.filter(Transaction.input_method == val)
-
-        # === Filter: date range ===
-        if date_from:
-            stmt = stmt.filter(Transaction.transaction_date >= date_from)
-            count_stmt = count_stmt.filter(Transaction.transaction_date >= date_from)
-        if date_to:
-            stmt = stmt.filter(Transaction.transaction_date <= date_to)
-            count_stmt = count_stmt.filter(Transaction.transaction_date <= date_to)
-
-        # === Search: transaction_id, input_text, note, user name/email ===
-        if search:
-            term = search.strip()
-            search_conditions = [
-                Transaction.input_text.ilike(f"%{term}%"),
-                Transaction.note.ilike(f"%{term}%"),
-                cast(Transaction.transaction_id, String).ilike(f"%{term}%"),
-            ]
-            # Join User for search on user fields
-            if not user_joined:
-                stmt = stmt.join(Transaction.user, isouter=True)
-                count_stmt = count_stmt.join(User, Transaction.user_id == User.user_id, isouter=True)
-                user_joined = True
-            from app.models.store_model import Store
-            search_conditions.extend([
-                User.full_name.ilike(f"%{term}%"),
-                User.email.ilike(f"%{term}%"),
-                User.store_rel.has(Store.store_name.ilike(f"%{term}%")),
-            ])
-            stmt = stmt.filter(or_(*search_conditions))
-            count_stmt = count_stmt.filter(or_(*search_conditions))
+        filters = dict(
+            search=search, user_id=user_id, intent_name=intent_name, intent_type=intent_type,
+            payment_status=payment_status, input_method=input_method,
+            date_from=date_from, date_to=date_to, group=group,
+        )
+        stmt = _apply_filters(stmt, **filters)
+        count_stmt = _apply_filters(count_stmt, **filters)
 
         # === Count total ===
         total = db.scalar(count_stmt) or 0
@@ -160,6 +98,77 @@ class AdminTransactionService:
                 "total": total,
                 "total_pages": total_pages,
             }
+        }
+
+    # =============================================
+    # SUMMARY (cùng bộ lọc với danh sách, tính trên toàn bộ kết quả lọc)
+    # =============================================
+    @staticmethod
+    def get_summary(
+        db: Session,
+        search: Optional[str] = None,
+        user_id: Optional[int] = None,
+        intent_name: Optional[str] = None,
+        intent_type: Optional[str] = None,
+        payment_status: Optional[str] = None,
+        input_method: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+    ) -> Dict:
+        """
+        Số liệu cho các thẻ KPI, tính trên toàn bộ kết quả lọc (không phân trang), theo cùng
+        cách tách số của màn Báo cáo trên mobile (live_summary_report):
+        doanh thu bán hàng, nhập hàng, chi phí vận hành, nợ phải thu / phải trả còn lại.
+        Mỗi nhóm dùng đúng điều kiện của tham số `group` ở danh sách, nên bấm thẻ ra đúng các dòng đó.
+        """
+        filters = dict(
+            search=search, user_id=user_id, intent_name=intent_name, intent_type=intent_type,
+            payment_status=payment_status, input_method=input_method,
+            date_from=date_from, date_to=date_to,
+        )
+
+        def total_of(cond):
+            return func.coalesce(func.sum(case((cond, Transaction.total_amount), else_=0)), 0)
+
+        stmt = select(
+            func.count(Transaction.transaction_id),
+            total_of(_type_is("INCOME")),
+            total_of(_type_is("EXPENSE")),
+            total_of(_group_condition("sales")),
+            total_of(_group_condition("purchase")),
+            total_of(_group_condition("expense")),
+            total_of(Intent.intent_name.in_(DEBT_COLLECTION_INTENTS)),
+        ).select_from(Transaction)
+        row = db.execute(_apply_filters(stmt, **filters)).one()
+        count, income, expense_all, sales, purchase, operating, collected = (float(v or 0) for v in row)
+
+        # Công nợ còn lại: số dư hiện tại (không theo kỳ) của các cửa hàng có giao dịch khớp bộ lọc.
+        user_ids = _apply_filters(select(Transaction.user_id).select_from(Transaction), **filters).distinct()
+        debt_row = db.execute(
+            select(
+                func.coalesce(func.sum(case(
+                    (and_(Debt.direction == "RECEIVABLE", Debt.status != "PAID"), Debt.remaining_debt),
+                    else_=0,
+                )), 0),
+                func.coalesce(func.sum(case(
+                    (and_(Debt.direction == "PAYABLE", Debt.status != "PAID"), Debt.remaining_debt),
+                    else_=0,
+                )), 0),
+            ).filter(Debt.user_id.in_(user_ids))
+        ).one()
+
+        return {
+            "total_count": int(count),
+            "total_income": income,
+            "total_expense": expense_all,
+            "total_sales": sales,
+            "total_purchase": purchase,
+            "operating_expense": operating,
+            "total_debt_collected": collected,
+            "receivable_outstanding": float(debt_row[0] or 0),
+            "payable_outstanding": float(debt_row[1] or 0),
+            # Lãi tiền mặt = tiền thu vào - tiền chi ra (nhập hàng + chi phí)
+            "net": income - expense_all,
         }
 
     # =============================================
@@ -197,6 +206,119 @@ class AdminTransactionService:
 # ========================================
 # Private helpers
 # ========================================
+
+# Nhóm intent khớp với cách mobile tách số (app/services/reports/live_summary_report.py)
+PURCHASE_INTENTS = ["mua_hang", "nhap_hang"]
+SALES_INTENTS = ["ban_hang"]
+DEBT_COLLECTION_INTENTS = ["thu_no_khach_hang", "thu_no_phai_thu", "thu_no_khach"]
+SUPPLIER_PAYMENT_INTENTS = ["tra_no_cung_cap", "tra_no_nha_cung_cap", "thu_no_nha_cung_cap"]
+RECEIVABLE_INTENTS = ["ghi_no_khach_hang", "ghi_no_phai_thu", "khach_ghi_no", *DEBT_COLLECTION_INTENTS]
+PAYABLE_INTENTS = [
+    "ghi_no_nha_cung_cap", "ghi_no_cung_cap", "ghi_no_phai_tra", "ncc_ghi_no",
+    "tra_no_cung_cap", "tra_no_nha_cung_cap", "tra_no_phai_tra", "tra_no_ncc", "thu_no_nha_cung_cap",
+]
+TRANSACTION_GROUPS = ("sales", "purchase", "expense", "receivable", "payable")
+
+
+def _type_is(intent_type: str):
+    """Loại giao dịch giống resolve_intent_type: lấy Intent.intent_type, null thì suy từ tên intent."""
+    t = intent_type.strip().upper()
+    fallback = [name for name, mapped in INTENT_TYPE_MAPPING.items() if mapped == t]
+    return or_(
+        func.upper(Intent.intent_type) == t,
+        and_(Intent.intent_type.is_(None), Intent.intent_name.in_(fallback)),
+    )
+
+
+def _group_condition(group: str):
+    """Điều kiện SQL của từng thẻ KPI — dùng chung cho lọc danh sách và summary."""
+    if group == "sales":
+        return Intent.intent_name.in_(SALES_INTENTS)
+    if group == "purchase":
+        return Intent.intent_name.in_(PURCHASE_INTENTS)
+    if group == "expense":
+        # Chi phí vận hành — cùng điều kiện operating_expense của mobile
+        excluded = PURCHASE_INTENTS + SUPPLIER_PAYMENT_INTENTS
+        return and_(
+            or_(Intent.intent_name == "chi_tien", Category.category_type == "EXPENSE"),
+            or_(Intent.intent_name.is_(None), Intent.intent_name.notin_(excluded)),
+        )
+    if group == "receivable":
+        return Intent.intent_name.in_(RECEIVABLE_INTENTS)
+    if group == "payable":
+        return Intent.intent_name.in_(PAYABLE_INTENTS)
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"group không hợp lệ. Chọn một trong: {', '.join(TRANSACTION_GROUPS)}",
+    )
+
+
+def _apply_filters(
+    stmt,
+    search: Optional[str] = None,
+    user_id: Optional[int] = None,
+    intent_name: Optional[str] = None,
+    intent_type: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    input_method: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    group: Optional[str] = None,
+):
+    """
+    Áp bộ lọc admin lên một câu select có FROM là Transaction (dùng chung cho list / count / summary).
+    Luôn outer join Intent + Category (quan hệ N-1, không nhân dòng) để các điều kiện nhóm dùng được.
+    """
+    stmt = (
+        stmt.outerjoin(Intent, Transaction.intent_id == Intent.intent_id)
+        .outerjoin(Category, Transaction.category_id == Category.category_id)
+    )
+
+    if user_id is not None:
+        stmt = stmt.filter(Transaction.user_id == user_id)
+    if intent_name:
+        stmt = stmt.filter(Intent.intent_name.ilike(f"%{intent_name.strip()}%"))
+    if intent_type:
+        stmt = stmt.filter(_type_is(intent_type))
+    if group:
+        stmt = stmt.filter(_group_condition(group.strip().lower()))
+    if payment_status:
+        stmt = stmt.filter(Transaction.payment_status == payment_status.strip().upper())
+    if input_method:
+        stmt = stmt.filter(Transaction.input_method == input_method.strip().upper())
+    if date_from:
+        stmt = stmt.filter(Transaction.transaction_date >= date_from)
+    if date_to:
+        stmt = stmt.filter(Transaction.transaction_date <= date_to)
+
+    # Search: transaction_id, input_text, note, user, store, customer, supplier, category, product (hỗ trợ không dấu)
+    if search and search.strip():
+        from app.models.store_model import Store
+
+        term = search.strip()
+        id_term = term.upper().replace("TX-", "").replace("#", "").strip()
+        conditions = [
+            vn_ilike(Transaction.input_text, term),
+            vn_ilike(Transaction.note, term),
+            cast(Transaction.transaction_id, String).ilike(f"%{term}%"),
+            vn_ilike(Category.category_name, term),
+        ]
+        if id_term and id_term != term:
+            conditions.append(cast(Transaction.transaction_id, String).ilike(f"%{id_term}%"))
+        stmt = stmt.join(User, Transaction.user_id == User.user_id, isouter=True)
+        conditions.extend([
+            vn_ilike(User.full_name, term),
+            User.email.ilike(f"%{term}%"),
+            User.phone_number.ilike(f"%{term}%"),
+            User.store_rel.has(vn_ilike(Store.store_name, term)),
+            Transaction.customer.has(vn_ilike(Customer.customer_name, term)),
+            Transaction.supplier.has(vn_ilike(Supplier.supplier_name, term)),
+            Transaction.transaction_detail.any(vn_ilike(TransactionDetail.product_name, term)),
+        ])
+        stmt = stmt.filter(or_(*conditions))
+
+    return stmt
+
 
 def _safe_dt(dt) -> Optional[str]:
     return dt.isoformat() if dt else None

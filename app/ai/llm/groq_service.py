@@ -128,6 +128,15 @@ class GroqService:
             parsed.setdefault("pipeline_version", AI_PIPELINE_VERSION)
             parsed.setdefault("_ai_metadata", get_ai_metadata(self.analysis_model))
 
+            # Số token input / output của lần gọi này (Data Lake ghi lại theo từng giao dịch)
+            from app.ai.token_usage import build_usage
+            parsed["token_usage"] = build_usage(
+                self.analysis_model,
+                benchmark_result.get("input_tokens"),
+                benchmark_result.get("output_tokens"),
+                benchmark_result.get("latency_ms"),
+            )
+
             return parsed
 
         except Exception as error:

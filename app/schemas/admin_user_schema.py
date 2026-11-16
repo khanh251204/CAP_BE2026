@@ -1,6 +1,17 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """
+    Các mốc khóa / mở khóa được ghi bằng datetime.utcnow() (naive UTC).
+    Gắn tzinfo=UTC để JSON có hậu tố "Z"/"+00:00" → trình duyệt tự đổi đúng sang giờ địa phương,
+    tránh lệch 7 tiếng khi hiển thị (giờ UTC bị hiểu nhầm là giờ Việt Nam).
+    """
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=timezone.utc)
 
 
 class AdminUserPagination(BaseModel):
@@ -25,6 +36,10 @@ class AdminUserListItem(BaseModel):
     is_verified: bool = Field(False, description="Trạng thái xác thực email")
     lock_until: Optional[datetime] = Field(None, description="Thời điểm hết hạn khóa tài khoản")
     created_at: datetime = Field(..., description="Thời gian tạo tài khoản")
+
+    @field_serializer("lock_until")
+    def _serialize_lock_until(self, value: Optional[datetime]) -> Optional[datetime]:
+        return _as_utc(value)
 
 
 class AdminUserListResponse(BaseModel):
@@ -58,6 +73,10 @@ class AdminUserDetailResponse(BaseModel):
     locked_by_name: Optional[str] = Field(None, description="Admin đã khóa (trống = hệ thống tự khóa)")
     created_at: datetime = Field(..., description="Thời gian tạo tài khoản")
 
+    @field_serializer("lock_until", "locked_at")
+    def _serialize_lock_times(self, value: Optional[datetime]) -> Optional[datetime]:
+        return _as_utc(value)
+
 
 class AdminUserStatusUpdateRequest(BaseModel):
     status: str = Field(..., description="Trạng thái mới: LOCKED, ACTIVE, UNLOCKED")
@@ -71,6 +90,10 @@ class AdminUserStatusUpdateResponse(BaseModel):
     status: str = Field(..., description="Trạng thái sau khi cập nhật")
     lock_until: Optional[datetime] = Field(None, description="Thời điểm hết hạn khóa tài khoản (nếu có)")
 
+    @field_serializer("lock_until")
+    def _serialize_lock_until(self, value: Optional[datetime]) -> Optional[datetime]:
+        return _as_utc(value)
+
 
 class AdminUserLockHistoryItem(BaseModel):
     id: int
@@ -83,6 +106,10 @@ class AdminUserLockHistoryItem(BaseModel):
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     created_at: datetime
+
+    @field_serializer("created_at")
+    def _serialize_created_at(self, value: datetime) -> datetime:
+        return _as_utc(value)
 
 
 class AdminUserLockHistoryResponse(BaseModel):

@@ -118,6 +118,23 @@ class AdminTransactionListResponse(BaseModel):
 
 
 # ========================================
+# Summary Response (tổng theo bộ lọc, không phân trang)
+# ========================================
+
+class AdminTransactionSummaryResponse(BaseModel):
+    total_count: int = Field(0, description="Tổng số giao dịch khớp bộ lọc")
+    total_income: float = Field(0, description="Tổng tiền giao dịch loại INCOME")
+    total_expense: float = Field(0, description="Tổng tiền giao dịch loại EXPENSE (gồm cả nhập hàng)")
+    total_sales: float = Field(0, description="Doanh thu bán hàng (group=sales) — khớp 'Doanh thu' trên mobile")
+    total_purchase: float = Field(0, description="Nhập hàng (group=purchase) — khớp 'Nhập hàng' trên mobile")
+    operating_expense: float = Field(0, description="Chi phí vận hành (group=expense) — khớp 'Chi phí' trên mobile")
+    total_debt_collected: float = Field(0, description="Tiền thu nợ khách trong tổng thu")
+    receivable_outstanding: float = Field(0, description="Nợ phải thu còn lại (số dư hiện tại, không theo kỳ)")
+    payable_outstanding: float = Field(0, description="Nợ phải trả NCC còn lại (số dư hiện tại, không theo kỳ)")
+    net: float = Field(0, description="Lãi tiền mặt = total_income - total_expense")
+
+
+# ========================================
 # Detail Response (bao gồm details + user đầy đủ)
 # ========================================
 

@@ -1,6 +1,8 @@
 from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, model_validator
 
+from app.services.input_safety import reject_markup as _reject_markup  # chặn thẻ HTML / script
+
 
 # REGISTER
 class RegisterRequest(BaseModel):
@@ -19,6 +21,11 @@ class RegisterRequest(BaseModel):
         if not self.fullName or not self.fullName.strip():
             raise ValueError("Họ và tên không được để trống hoặc chỉ chứa khoảng trắng")
         self.fullName = self.fullName.strip()
+        _reject_markup(self.fullName, "Họ và tên")
+        _reject_markup(self.province, "Tỉnh / thành phố")
+        _reject_markup(self.storeName, "Tên cửa hàng")
+        _reject_markup(self.businessField, "Lĩnh vực kinh doanh")
+        _reject_markup(self.password, "Mật khẩu", strict=False)
 
         if self.accountType == "business":
             if not self.storeName or not self.storeName.strip():
@@ -43,6 +50,11 @@ class LoginRequest(BaseModel):
 
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def no_markup(self):
+        _reject_markup(self.password, "Mật khẩu", strict=False)
+        return self
 
 
 # SEND OTP
@@ -101,6 +113,7 @@ class ResetPasswordRequest(BaseModel):
             raise ValueError("Mật khẩu mới là bắt buộc")
         if len(effective_password) < 8 or len(effective_password) > 128:
             raise ValueError("Mật khẩu phải có từ 8 đến 128 ký tự")
+        _reject_markup(effective_password, "Mật khẩu", strict=False)
         self.newPassword = effective_password
         return self
 
@@ -130,6 +143,7 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError("Mật khẩu mới là bắt buộc")
         if len(new_pwd) < 8 or len(new_pwd) > 128:
             raise ValueError("Mật khẩu mới phải từ 8 đến 128 ký tự")
+        _reject_markup(new_pwd, "Mật khẩu mới", strict=False)
         self.newPassword = new_pwd
 
         if self.confirmPassword is not None and self.confirmPassword != self.newPassword:

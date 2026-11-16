@@ -247,6 +247,8 @@ class TransactionResponseItem(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     details: List[TransactionDetailResponse] = Field(default_factory=list)
+    is_closed: bool = Field(False, description="Giao dịch thuộc kỳ đã chốt sổ (CLOSED) -> không được sửa / xoá")
+    closed_period: Optional[str] = Field(None, description="Nhãn kỳ đã chốt chứa giao dịch, vd 'tháng 10/2026'")
 
 
 class TransactionListResponse(BaseModel):
