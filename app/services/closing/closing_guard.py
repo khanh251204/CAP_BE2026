@@ -89,6 +89,97 @@ def assert_date_open(db: Session, user_id: int, when: Union[date, datetime, None
         )
 
 
+def find_transaction_closed_period(
+    db: Session,
+    user_id: int,
+    transaction_id: Optional[int],
+    tx_date: Union[date, datetime, None],
+) -> Optional[ClosingPeriod]:
+    """
+    Kỳ CLOSED của user chứa giao dịch: theo snapshot (ClosingTransaction) hoặc theo ngày giao dịch.
+    Kỳ OPEN / REOPENED (đã mở lại) không tính. Giao dịch không có ngày chỉ xét theo snapshot.
+    """
+    from app.models.closing_transaction_model import ClosingTransaction
+
+    with db.no_autoflush:
+        if transaction_id is not None:
+            linked = (
+                db.query(ClosingPeriod)
+                .join(ClosingTransaction, ClosingTransaction.closing_id == ClosingPeriod.closing_id)
+                .filter(
+                    ClosingTransaction.transaction_id == transaction_id,
+                    ClosingPeriod.user_id == user_id,
+                    ClosingPeriod.status == "CLOSED",
+                )
+                .all()
+            )
+            if linked:
+                return max(linked, key=lambda cp: _TYPE_RANK.get(cp.period_type, 0))
+        if tx_date is None:
+            return None
+        return find_closed_period(db, user_id, tx_date)
+
+
+def closed_periods_for_transactions(db: Session, user_id: int, transactions) -> dict:
+    """
+    Bản gộp của find_transaction_closed_period cho danh sách giao dịch (2 truy vấn cho cả trang).
+    Trả về {transaction_id: ClosingPeriod CLOSED}; giao dịch không bị khoá thì không có trong dict.
+    """
+    from app.models.closing_transaction_model import ClosingTransaction
+
+    txs = [t for t in transactions if t is not None]
+    if not txs:
+        return {}
+    closed = (
+        db.query(ClosingPeriod)
+        .filter(ClosingPeriod.user_id == user_id, ClosingPeriod.status == "CLOSED")
+        .all()
+    )
+    if not closed:
+        return {}
+    by_id = {cp.closing_id: cp for cp in closed}
+    links: dict = {}
+    for tx_id, closing_id in (
+        db.query(ClosingTransaction.transaction_id, ClosingTransaction.closing_id)
+        .filter(
+            ClosingTransaction.transaction_id.in_([t.transaction_id for t in txs]),
+            ClosingTransaction.closing_id.in_(list(by_id)),
+        )
+        .all()
+    ):
+        links.setdefault(tx_id, []).append(by_id[closing_id])
+
+    result = {}
+    for t in txs:
+        candidates = list(links.get(t.transaction_id, []))
+        if t.transaction_date is not None:
+            d = _to_date(t.transaction_date)
+            candidates += [cp for cp in closed if cp.period_start <= d <= cp.period_end]
+        if candidates:
+            result[t.transaction_id] = max(candidates, key=lambda cp: _TYPE_RANK.get(cp.period_type, 0))
+    return result
+
+
+def assert_transaction_editable(db: Session, tx, action: str) -> None:
+    """Chặn sửa / xoá giao dịch thuộc kỳ đã chốt (409). `action`: 'sửa' hoặc 'xoá'."""
+    closed = find_transaction_closed_period(db, tx.user_id, tx.transaction_id, tx.transaction_date)
+    if closed:
+        raise ClosedPeriodError(
+            f"Giao dịch thuộc kỳ {period_label(closed)} {PERIOD_CLOSED_MARKER} nên không thể {action}. "
+            f"Hãy mở lại kỳ {period_label(closed)} nếu cần điều chỉnh."
+        )
+
+
+def assert_can_move_transaction_to(db: Session, user_id: int, new_date: Union[date, datetime]) -> None:
+    """Chặn đổi ngày giao dịch sang một ngày thuộc kỳ đã chốt (409), kể cả hôm nay."""
+    closed = find_closed_period(db, user_id, new_date)
+    if closed:
+        raise ClosedPeriodError(
+            f"Không thể chuyển giao dịch sang ngày {_to_date(new_date).strftime('%d/%m/%Y')} vì kỳ "
+            f"{period_label(closed)} {PERIOD_CLOSED_MARKER}."
+        )
+
+
 def find_closed_parent(db: Session, child: ClosingPeriod) -> Optional[ClosingPeriod]:
     """Kỳ cấp cao hơn đang CLOSED bao trùm kỳ `child`."""
     child_rank = _TYPE_RANK.get(child.period_type, 0)

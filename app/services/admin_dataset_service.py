@@ -47,10 +47,13 @@ class AdminDatasetService:
         if from_date and to_date and from_date > to_date:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="from không được lớn hơn to")
 
+        # Khi lọc theo data_type (zone), phân loại phụ thuộc vào llm_output / UserCorrection nên không thể lọc bằng SQL trước khi phân trang.
+        # Lấy toàn bộ bản ghi thỏa điều kiện SQL trước rồi lọc & phân trang chính xác.
+        target_type = data_type.strip().upper() if data_type and data_type.strip() else None
         records, total_count = AdminVoiceRepository.get_voice_records(
             db=db,
-            page=page,
-            limit=limit,
+            page=1 if target_type else page,
+            limit=10000 if target_type else limit,
             search=search,
             intent=intent,
             status=status_filter,
@@ -75,8 +78,17 @@ class AdminDatasetService:
             else:
                 classified_type = "RAW"
 
-            if data_type and data_type.upper() != classified_type:
-                continue
+            if target_type:
+                if target_type == "RAW":
+                    matches = bool(record.audio_path) or classified_type == "RAW"
+                elif target_type == "PROCESSED":
+                    matches = bool(record.transcript or record.llm_output) or classified_type == "PROCESSED"
+                elif target_type == "DATASET":
+                    matches = bool(is_success and record.transcript)
+                else:
+                    matches = classified_type == target_type
+                if not matches:
+                    continue
 
             storage_meta = DataLakeService.get_storage_meta(record.voice_id, record.created_at)
 
@@ -104,6 +116,11 @@ class AdminDatasetService:
                     created_at=record.created_at,
                 )
             )
+
+        if target_type:
+            total_count = len(items)
+            start = (page - 1) * limit
+            items = items[start : start + limit]
 
         total_pages = math.ceil(total_count / limit) if total_count > 0 else 0
 

@@ -6,7 +6,10 @@ from email.utils import formataddr
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
 
-from app.services.email_templates import build_otp_email_content
+from app.services.email_templates import (
+    build_otp_email_content,
+    build_new_password_email_content,
+)
 
 load_dotenv()
 
@@ -102,7 +105,7 @@ def send_otp_email(
         title = "Mở khóa tài khoản"
         description = (
             "Tài khoản VoiceCashBook của bạn đã bị tạm khóa do nhập sai mật khẩu nhiều lần. "
-            "Nhập mã dưới đây để mở khóa. Nếu không phải bạn, hãy đổi mật khẩu ngay sau khi mở khóa."
+            "Nhập mã dưới đây để mở khóa và nhận mật khẩu mới qua email."
         )
     else:
         raise ValueError("OTP purpose không hợp lệ")
@@ -122,8 +125,36 @@ def send_otp_email(
     )
 
 
+def send_new_password_email(
+    *,
+    to_email: str,
+    new_password: str,
+):
+    """Gửi mật khẩu mới ngẫu nhiên sau khi người dùng xác thực OTP mở khóa tài khoản thành công."""
+    subject = "Mật khẩu mới sau khi mở khóa tài khoản - VoiceCashBook"
+    title = "Mở khóa tài khoản thành công"
+    description = (
+        "Tài khoản VoiceCashBook của bạn đã được mở khóa thành công. "
+        "Hệ thống đã cấp mật khẩu đăng nhập mới cho bạn như bên dưới:"
+    )
+
+    text_content, html_content = build_new_password_email_content(
+        title=title,
+        description=description,
+        new_password=new_password,
+    )
+
+    send_email(
+        to_email=to_email,
+        subject=subject,
+        text_content=text_content,
+        html_content=html_content,
+    )
+
+
 __all__ = [
     "validate_smtp_config",
     "send_email",
     "send_otp_email",
+    "send_new_password_email",
 ]

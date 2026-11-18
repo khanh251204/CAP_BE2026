@@ -12,7 +12,7 @@ from sqlalchemy import (
 )
 
 from app.configs.database import Base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 
 class ProductType(str, PyEnum):
@@ -95,3 +95,11 @@ class Product(Base):
         "InventoryTransaction",
         back_populates="product"
     )
+
+    # Lưới an toàn cho MỌI đường tạo / sửa sản phẩm (nhập tay, giọng nói, nhập kho, admin):
+    # không lưu tên / đơn vị / link ảnh có thẻ HTML / script.
+    @validates("product_name", "default_unit", "img")
+    def _validate_no_markup(self, key, value):
+        from app.services.input_safety import reject_markup
+        labels = {"product_name": "Tên sản phẩm", "default_unit": "Đơn vị tính", "img": "Link ảnh"}
+        return reject_markup(value, labels[key])

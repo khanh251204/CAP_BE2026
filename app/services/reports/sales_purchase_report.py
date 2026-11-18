@@ -1,6 +1,7 @@
 import logging
+from collections import defaultdict
 from decimal import Decimal
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -9,6 +10,8 @@ from app.models.transaction_model import Transaction
 from app.models.transactionDetail_model import TransactionDetail
 from app.models.product_model import Product
 from app.models.intent_model import Intent
+from app.models.inventory_model import InventoryTransaction
+from app.models.bom_model import BillOfMaterial
 from app.models.supplier_model import Supplier
 from app.services.period_service import PeriodService
 from app.services.reports.report_base import ReportBase
@@ -25,8 +28,10 @@ class SalesPurchaseReportMixin(ReportBase):
         user_id: int,
         start_dt: datetime,
         end_dt: datetime,
-        business_type: Optional[str] = None
+        business_type: Optional[str] = None,
+        tx_cogs_out: Optional[Dict[int, Decimal]] = None
     ) -> List[Dict[str, Any]]:
+        """tx_cogs_out: nếu truyền dict, hàm điền giá vốn của từng giao dịch bán (transaction_id -> cogs)."""
         bt = (business_type or cls._get_user_business_type(db, user_id)).upper()
 
         # Từng dòng bán trong kỳ (giữ transaction_id để gắn giá vốn FIFO của đúng lần xuất kho)
@@ -47,14 +52,21 @@ class SalesPurchaseReportMixin(ReportBase):
              Transaction.transaction_date <= end_dt
          ).all()
 
-        with_cost = bt != "SERVICE"
-        fifo = fifo_sale_costs(db, user_id, (r.product_id for r in sale_rows)) if with_cost else {}
+        # Mọi mô hình đều tính giá vốn: SERVICE có bán hàng hóa đã nhập thì vẫn phải trừ giá nhập
+        # (dịch vụ thuần không có lịch sử nhập -> giá vốn tự bằng 0)
+        fifo = fifo_sale_costs(
+            db, user_id, (r.product_id for r in sale_rows), untracked_sales=(bt == "SERVICE")
+        )
 
         # Tổng SL bán của mỗi (giao dịch, sản phẩm) — chia giá vốn khi 1 giao dịch có nhiều dòng cùng sản phẩm
         tx_qty: Dict[tuple, Decimal] = {}
         for r in sale_rows:
             key = (r.transaction_id, r.product_id)
             tx_qty[key] = tx_qty.get(key, Decimal("0")) + Decimal(str(r.quantity or 0))
+
+        # Món / combo có định mức (BOM): lúc bán kho xuất NGUYÊN LIỆU gắn với giao dịch bán, không xuất thành phẩm.
+        # Giá vốn của món = giá vốn FIFO của các phiếu xuất nguyên liệu đó.
+        material_cost = cls._bom_material_costs(db, user_id, sale_rows, tx_qty, fifo)
 
         groups: Dict[tuple, Dict[str, Any]] = {}
         fallback_price: Dict[int, Decimal] = {}
@@ -65,20 +77,27 @@ class SalesPurchaseReportMixin(ReportBase):
             })
             g["qty"] += qty
             g["revenue"] += Decimal(str(r.subtotal or 0))
-            if not (with_cost and r.product_id):
+            if not r.product_id:
                 continue
 
             key = (r.transaction_id, r.product_id)
             total_qty = tx_qty[key]
             share = qty / total_qty if total_qty > 0 else Decimal("0")
             fifo_qty, fifo_cost = fifo.get(key, (Decimal("0"), Decimal("0")))
-            g["cogs"] += fifo_cost * share
+            line_cogs = fifo_cost * share
+            bom_cost = material_cost.get(key)
+            if bom_cost is not None:
+                # Phần làm từ nguyên liệu theo định mức
+                line_cogs += bom_cost * share
             # Phần bán không qua sổ kho (vd: thành phẩm bán khi tồn = 0) -> giá nhập gần nhất
             uncovered = max(total_qty - fifo_qty, Decimal("0")) * share
-            if uncovered > 0:
+            if uncovered > 0 and bom_cost is None:
                 if r.product_id not in fallback_price:
                     fallback_price[r.product_id] = latest_purchase_price(db, user_id, r.product_id, end_dt)
-                g["cogs"] += uncovered * fallback_price[r.product_id]
+                line_cogs += uncovered * fallback_price[r.product_id]
+            g["cogs"] += line_cogs
+            if tx_cogs_out is not None:
+                tx_cogs_out[r.transaction_id] = tx_cogs_out.get(r.transaction_id, Decimal("0")) + line_cogs
 
         results = []
         for (prod_id, prod_name, unit), g in groups.items():
@@ -102,6 +121,84 @@ class SalesPurchaseReportMixin(ReportBase):
 
         return results
 
+    @staticmethod
+    def _bom_material_costs(
+        db: Session,
+        user_id: int,
+        sale_rows,
+        tx_qty: Dict[tuple, Decimal],
+        own_fifo: Dict[Tuple[int, int], Tuple[Decimal, Decimal]],
+    ) -> Dict[Tuple[int, int], Decimal]:
+        """
+        {(transaction_id bán, product_id thành phẩm): giá vốn nguyên liệu đã xuất cho phần thành phẩm đó}.
+
+        Nguyên liệu xuất kho gắn với giao dịch bán (OUT, transaction_id = giao dịch bán) mà không phải chính
+        mặt hàng được bán. Một giao dịch có nhiều món dùng chung nguyên liệu (vd phở + bún cùng thịt bò):
+        chia giá vốn nguyên liệu theo lượng cần theo định mức hiện tại x số phần làm từ nguyên liệu;
+        không có định mức để đối chiếu thì chia đều theo số phần.
+        """
+        sale_tx_ids = {r.transaction_id for r in sale_rows if r.product_id}
+        if not sale_tx_ids:
+            return {}
+        sold_by_tx: Dict[int, Set[int]] = defaultdict(set)
+        for r in sale_rows:
+            if r.product_id:
+                sold_by_tx[r.transaction_id].add(r.product_id)
+
+        out_rows = (
+            db.query(InventoryTransaction.transaction_id, InventoryTransaction.product_id)
+            .filter(
+                InventoryTransaction.user_id == user_id,
+                InventoryTransaction.inventory_type == "OUT",
+                InventoryTransaction.transaction_id.in_(sale_tx_ids),
+            )
+            .distinct()
+            .all()
+        )
+        materials_by_tx: Dict[int, Set[int]] = defaultdict(set)
+        for tx_id, pid in out_rows:
+            if pid not in sold_by_tx[tx_id]:
+                materials_by_tx[tx_id].add(pid)
+        if not materials_by_tx:
+            return {}
+
+        material_ids = {pid for mids in materials_by_tx.values() for pid in mids}
+        mat_fifo = fifo_sale_costs(db, user_id, material_ids)
+
+        finished_ids = {pid for tx_id in materials_by_tx for pid in sold_by_tx[tx_id]}
+        bom_need: Dict[Tuple[int, int], Decimal] = {}
+        for line in (
+            db.query(BillOfMaterial)
+            .filter(
+                BillOfMaterial.user_id == user_id,
+                BillOfMaterial.finished_product_id.in_(finished_ids),
+                BillOfMaterial.material_product_id.in_(material_ids),
+            )
+            .all()
+        ):
+            bom_need[(line.finished_product_id, line.material_product_id)] = Decimal(str(line.quantity_per_unit or 0))
+
+        zero = Decimal("0")
+        result: Dict[Tuple[int, int], Decimal] = {}
+        for tx_id, mids in materials_by_tx.items():
+            # Số phần mỗi món làm từ nguyên liệu = SL bán - phần lấy từ tồn thành phẩm có sẵn
+            made: Dict[int, Decimal] = {}
+            for pid in sold_by_tx[tx_id]:
+                own_qty = own_fifo.get((tx_id, pid), (zero, zero))[0]
+                made[pid] = max(tx_qty.get((tx_id, pid), zero) - own_qty, zero)
+            for mid in mids:
+                cost = mat_fifo.get((tx_id, mid), (zero, zero))[1]
+                if cost <= 0:
+                    continue
+                weights = {pid: bom_need.get((pid, mid), zero) * q for pid, q in made.items()}
+                if sum(weights.values()) <= 0:
+                    weights = {pid: q for pid, q in made.items() if q > 0} or {pid: Decimal("1") for pid in made}
+                total_w = sum(weights.values())
+                for pid, w in weights.items():
+                    if w > 0:
+                        result[(tx_id, pid)] = result.get((tx_id, pid), zero) + cost * w / total_w
+        return result
+
     @classmethod
     def calculate_cogs(
         cls,
@@ -112,8 +209,6 @@ class SalesPurchaseReportMixin(ReportBase):
         business_type: Optional[str] = None
     ) -> Decimal:
         bt = (business_type or cls._get_user_business_type(db, user_id)).upper()
-        if bt == "SERVICE":
-            return Decimal("0.00")
 
         product_breakdown = cls.get_product_sales_breakdown(db, user_id, start_dt, end_dt, bt)
         total_prod_cogs = sum(item["cogs"] for item in product_breakdown)

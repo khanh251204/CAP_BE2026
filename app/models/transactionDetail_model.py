@@ -23,7 +23,8 @@ class TransactionDetail(Base):
     # Snapshot tên sản phẩm tại thời điểm giao dịch (bảo đảm hóa đơn bất biến)
     product_name = Column(String(255), nullable=True)
     
-    quantity = Column(Numeric(15, 0), nullable=False)
+    # 2 chữ số lẻ như Inventory_Transaction: bán theo cân (0,3 kg thịt, 1,5 kg rau) không bị làm tròn về số nguyên
+    quantity = Column(Numeric(15, 2), nullable=False)
     unit = Column(String(50), nullable=False)
     
     # 3. Đơn giá không được để NULL, mặc định = 0.00

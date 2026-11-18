@@ -226,6 +226,10 @@ def save_transaction(
             "data": saved_transaction
         }
 
+    except HTTPException:
+        # Lỗi nghiệp vụ đã có mã HTTP rõ ràng (vd 409 kỳ đã chốt sổ) -> trả nguyên, không bọc thành 500
+        db.rollback()
+        raise
     except ValueError as ve:
         err_msg = str(ve)
         # Gửi thông báo lỗi giao dịch tới người dùng & đẩy Push FCM

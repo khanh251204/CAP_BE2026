@@ -24,7 +24,8 @@ from app.services.permission_service import PermissionService
 from app.ai.llm.groq_service import GroqService
 from app.ai.core.agent import Agent as TransactionAgent
 
-from app.schemas.analysis_schema import AnalysisRequest
+from app.schemas.analysis_schema import AnalysisRequest, FormDraftRequest
+from app.ai.core.form_draft import FORM_INTENTS, build_entities, describe
 from app.configs.jwt import get_current_user_id, require_permission
 
 from app.ai.rag.normalization_service import NormalizationService
@@ -87,9 +88,26 @@ async def voice_transaction(
                         v_rec = db_session.query(VoiceRecord).filter(VoiceRecord.voice_id == request.voice_id).first()
                         if v_rec:
                             v_rec.intent = result.get("intent")
-                            v_rec.llm_output = result.get("analysis")
+                            # Cộng dồn token với lần phân tích ở bước STT trước đó (cùng giao dịch)
+                            from app.ai.token_usage import merge_usage
+                            v_rec.llm_output = merge_usage(v_rec.llm_output, result.get("analysis"))
                             if not v_rec.user_id:
                                 v_rec.user_id = current_user_id
+                            mcp_res = result.get("mcp_result") if isinstance(result, dict) else None
+                            if not result.get("success") or (
+                                isinstance(mcp_res, dict)
+                                and (mcp_res.get("success") is False or mcp_res.get("status") in ("error", "need_information"))
+                            ):
+                                v_rec.status = "FAILED"
+                                err_msg = (mcp_res.get("message") if isinstance(mcp_res, dict) else None) or result.get("message")
+                                if err_msg:
+                                    v_rec.error_message = str(err_msg)
+                            elif (
+                                isinstance(mcp_res, dict)
+                                and mcp_res.get("status") != "waiting_confirmation"
+                                and mcp_res.get("success") is True
+                            ):
+                                v_rec.status = "SUCCESS"
                             db_session.commit()
                 except Exception as ex:
                     logger.warning(f"Lỗi cập nhật VoiceRecord analysis: {ex}")
@@ -184,6 +202,28 @@ def _resolve_account_id(db: Session, user_id: int, payload: dict) -> int:
         db=db, user_id=user_id, account_name="Tiền mặt", account_type="CASH"
     )
     return account.account_id
+
+
+@router.post("/agent/form-drafts", dependencies=[Depends(require_permission("voice:use"))])
+async def form_draft(
+    request: FormDraftRequest,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """
+    Nhập giao dịch bằng biểu mẫu (không gọi AI): cùng định dạng kết quả với /agent/messages,
+    app đưa thẳng sang màn Xác nhận rồi /agent/pending-action/confirmation.
+    """
+    if request.intent not in FORM_INTENTS:
+        raise HTTPException(status_code=422, detail=f"Nghiệp vụ '{request.intent}' chưa hỗ trợ nhập bằng biểu mẫu")
+    text = describe(request)
+    result = await transaction_agent.run_structured(
+        user_id=current_user_id,
+        intent=request.intent,
+        entities=build_entities(request),
+        text=text,
+    )
+    SessionStoreService.update_confirmation(current_user_id, {"voice_id": None, "input_method": "MANUAL"})
+    return result
 
 
 @router.post("/agent/pending-action/confirmation", dependencies=[Depends(require_permission("voice:use"))])

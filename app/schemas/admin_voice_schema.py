@@ -24,14 +24,27 @@ class AdminVoiceListItem(BaseModel):
     created_at: Optional[datetime] = Field(None, description="Thời gian khởi tạo bản ghi")
 
 
+class AdminVoiceStatusCounts(BaseModel):
+    total: int = Field(0, description="Tổng số bản ghi xử lý voice")
+    success: int = Field(0, description="Số bản ghi thành công (Đã xác nhận giao dịch)")
+    processing: int = Field(0, description="Số bản ghi chờ xác nhận / đang xử lý")
+    failed: int = Field(0, description="Số bản ghi thất bại / hủy")
+    review: int = Field(0, description="Số bản ghi cần kiểm tra")
+
+
 class AdminVoiceListResponse(BaseModel):
     items: List[AdminVoiceListItem] = Field(..., description="Danh sách lịch sử xử lý voice")
     pagination: AdminVoicePagination = Field(..., description="Thông tin phân trang")
+    status_counts: AdminVoiceStatusCounts = Field(
+        default_factory=AdminVoiceStatusCounts,
+        description="Thống kê số lượng phiên voice theo từng trạng thái"
+    )
 
 
 class AdminVoiceDetailUser(BaseModel):
     id: Optional[int] = Field(None, description="ID người dùng")
     name: Optional[str] = Field(None, description="Họ và tên người dùng")
+    phone: Optional[str] = Field(None, description="Số điện thoại người dùng")
 
 
 class AdminVoiceDetailAudio(BaseModel):
@@ -53,11 +66,18 @@ class AdminVoiceDetailValidation(BaseModel):
 class AdminVoiceDetailTransaction(BaseModel):
     id: Optional[int] = Field(None, description="ID giao dịch phát sinh")
     status: Optional[str] = Field(None, description="Trạng thái giao dịch (PAID, PARTIAL, PENDING hoặc CREATED)")
+    total_amount: Optional[float] = Field(None, description="Tổng số tiền giao dịch")
+    transaction_date: Optional[datetime] = Field(None, description="Thời điểm giao dịch phát sinh")
 
 
 class AdminVoiceDetailProcessing(BaseModel):
     status: str = Field(..., description="Trạng thái xử lý hệ thống: SUCCESS, FAILED, PROCESSING, REVIEW")
     processing_time_ms: Optional[int] = Field(None, description="Thời gian xử lý tính bằng mili-giây (ms)")
+    provider: Optional[str] = Field(None, description="Nhà cung cấp dịch vụ AI/STT (Groq/Whisper)")
+    model: Optional[str] = Field(None, description="Model AI sử dụng")
+    model_version: Optional[str] = Field(None, description="Phiên bản model AI")
+    prompt_version: Optional[str] = Field(None, description="Phiên bản prompt AI")
+    pipeline_version: Optional[str] = Field(None, description="Phiên bản pipeline xử lý AI")
     error_message: Optional[str] = Field(None, description="Thông điệp lỗi nếu xử lý thất bại")
 
 

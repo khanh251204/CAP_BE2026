@@ -22,6 +22,46 @@ from app.repositories.inventory.inventory_stock_repo import InventoryStockReposi
 class AdminProductService:
 
     @staticmethod
+    def get_summary(
+        db: Session,
+        search: Optional[str] = None,
+        user_id: Optional[int] = None,
+    ) -> Dict[str, int]:
+        """
+        Thống kê số sản phẩm theo trạng thái và loại hàng.
+        Nhận cùng `search` / `user_id` với danh sách để thẻ KPI khớp với bảng đang lọc.
+        """
+        type_col = func.upper(Product.product_type)
+        stmt = select(Product.is_active, type_col, func.count()).select_from(Product)
+        if user_id is not None:
+            stmt = stmt.filter(Product.user_id == user_id)
+        if search and search.strip():
+            from app.models.store_model import Store
+
+            term = search.strip()
+            stmt = stmt.join(User, Product.user_id == User.user_id, isouter=True).filter(or_(
+                Product.product_name.ilike(f"%{term}%"),
+                User.full_name.ilike(f"%{term}%"),
+                User.email.ilike(f"%{term}%"),
+                User.store_rel.has(Store.store_name.ilike(f"%{term}%")),
+            ))
+        rows = db.execute(stmt.group_by(Product.is_active, type_col)).all()
+
+        result = {"total": 0, "active": 0, "inactive": 0, "resale": 0, "raw_material": 0, "finished_good": 0}
+        type_keys = {"RESALE": "resale", "RAW_MATERIAL": "raw_material", "FINISHED_GOOD": "finished_good"}
+        for is_active, ptype, count in rows:
+            n = int(count or 0)
+            result["total"] += n
+            if is_active is True:
+                result["active"] += n
+            elif is_active is False:
+                result["inactive"] += n
+            key = type_keys.get(str(ptype or ""))
+            if key:
+                result[key] += n
+        return result
+
+    @staticmethod
     def list_products(
         db: Session,
         page: int = 1,

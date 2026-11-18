@@ -12,6 +12,7 @@ from app.schemas.admin_voice_schema import (
     AdminVoiceListResponse,
     AdminVoiceListItem,
     AdminVoicePagination,
+    AdminVoiceStatusCounts,
     AdminVoiceDetailResponse,
     AdminVoiceDetailUser,
     AdminVoiceDetailAudio,
@@ -123,6 +124,16 @@ class AdminVoiceService:
             )
 
         total_pages = math.ceil(total_count / limit) if total_count > 0 else 0
+        counts_dict = AdminVoiceRepository.get_voice_status_counts(
+            db=db,
+            search=search,
+            user_id=user_id,
+            intent=intent,
+            confidence_min=confidence_min,
+            confidence_max=confidence_max,
+            from_date=from_date,
+            to_date=to_date,
+        )
 
         return AdminVoiceListResponse(
             items=items,
@@ -131,7 +142,8 @@ class AdminVoiceService:
                 limit=limit,
                 total=total_count,
                 total_pages=total_pages
-            )
+            ),
+            status_counts=AdminVoiceStatusCounts(**counts_dict),
         )
 
     @classmethod
@@ -154,10 +166,12 @@ class AdminVoiceService:
         user_obj = None
         resolved_user_id = user.user_id if user else (record.user_id or (transaction.user_id if transaction else None))
         resolved_user_name = user.full_name if user else None
+        resolved_user_phone = getattr(user, "phone_number", None) if user else None
         if resolved_user_id or resolved_user_name:
             user_obj = AdminVoiceDetailUser(
                 id=resolved_user_id,
-                name=resolved_user_name
+                name=resolved_user_name,
+                phone=resolved_user_phone,
             )
 
         # 2. Audio
@@ -210,7 +224,9 @@ class AdminVoiceService:
         if transaction:
             tx_obj = AdminVoiceDetailTransaction(
                 id=transaction.transaction_id,
-                status=transaction.payment_status or "CREATED"
+                status=transaction.payment_status or "CREATED",
+                total_amount=float(transaction.total_amount) if transaction.total_amount is not None else None,
+                transaction_date=transaction.transaction_date,
             )
         elif record.transaction_id:
             tx_obj = AdminVoiceDetailTransaction(
@@ -220,15 +236,29 @@ class AdminVoiceService:
 
         # 6. Processing
         processing_time_ms = cls._normalize_processing_time_ms(record.processing_time)
+        ai_meta = llm_data.get("_ai_metadata") if isinstance(llm_data.get("_ai_metadata"), dict) else {}
+        provider = llm_data.get("provider") or ai_meta.get("llm", {}).get("provider") or ("Groq" if record.processing_time is not None else None)
+        model = llm_data.get("model") or ai_meta.get("llm", {}).get("model") or ("whisper-large-v3-turbo" if record.audio_path else None)
+        model_ver = llm_data.get("model_version") or ai_meta.get("llm", {}).get("version")
+        prompt_ver = llm_data.get("prompt_version") or ai_meta.get("prompt_version")
+        pipe_ver = llm_data.get("pipeline_version") or ai_meta.get("pipeline_version")
+
         processing_obj = AdminVoiceDetailProcessing(
             status=resolved_status,
             processing_time_ms=processing_time_ms,
+            provider=provider,
+            model=model,
+            model_version=model_ver,
+            prompt_version=prompt_ver,
+            pipeline_version=pipe_ver,
             error_message=record.error_message
         )
 
         # 7. Correction
         from app.services.admin_voice_ai_service import AdminVoiceAiService
-        correction_obj = AdminVoiceAiService._detect_user_correction(llm_data, transaction, db)
+        correction_obj = AdminVoiceAiService._detect_user_correction(
+            llm_data, transaction, db, voice_id=record.voice_id
+        )
 
         return AdminVoiceDetailResponse(
             id=record.voice_id,

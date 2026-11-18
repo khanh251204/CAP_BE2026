@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, cast, String
 
 from app.models.user_model import User
+from app.utils.vn_search import vn_ilike
 
 
 class AdminUserRepository:
@@ -28,16 +29,20 @@ class AdminUserRepository:
         filters = []
         now = datetime.utcnow()
 
-        # 1. Search (full_name, email, phone_number, store_name)
+        # 1. Search (full_name, email, phone_number, store_name, region, ward_name, user_id) — hỗ trợ tìm không dấu
         if search and search.strip():
             from app.models.store_model import Store
-            kw = f"%{search.strip()}%"
+            raw_kw = search.strip()
+            kw = f"%{raw_kw}%"
             filters.append(
                 or_(
-                    User.full_name.ilike(kw),
+                    vn_ilike(User.full_name, raw_kw),
                     User.email.ilike(kw),
                     User.phone_number.ilike(kw),
-                    User.store_rel.has(Store.store_name.ilike(kw))
+                    cast(User.user_id, String).ilike(kw),
+                    vn_ilike(User.region, raw_kw),
+                    vn_ilike(User.ward_name, raw_kw),
+                    User.store_rel.has(vn_ilike(Store.store_name, raw_kw)),
                 )
             )
 
@@ -45,7 +50,15 @@ class AdminUserRepository:
         if role and role.strip():
             from app.models.role_permission_model import Role
             clean_role = role.strip()
-            filters.append(User.role_rel.has(Role.role_name.ilike(clean_role)))
+            if clean_role.upper() == "USER":
+                filters.append(
+                    or_(
+                        User.role_id.is_(None),
+                        User.role_rel.has(Role.role_name.ilike(clean_role)),
+                    )
+                )
+            else:
+                filters.append(User.role_rel.has(Role.role_name.ilike(clean_role)))
 
         # 3. Filter theo Business Type
         if business_type and business_type.strip():

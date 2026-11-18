@@ -51,11 +51,14 @@ class _PriceHistory:
 
 
 def fifo_sale_costs(
-    db: Session, user_id: int, product_ids: Iterable[int]
+    db: Session, user_id: int, product_ids: Iterable[int], untracked_sales: bool = False
 ) -> Dict[Tuple[int, int], Tuple[Decimal, Decimal]]:
     """
     Trả về {(transaction_id bán, product_id): (số lượng đã xuất kho, giá vốn FIFO)}.
     Chỉ tính trên dữ liệu của user (multi-tenant).
+
+    untracked_sales=True (mô hình SERVICE): bán hàng không tạo OUT trong sổ kho, nhưng mua hàng vẫn tạo IN.
+    Khi đó mỗi lần bán được coi là một lần xuất kho tại thời điểm giao dịch để lấy hàng từ lô cũ nhất.
     """
     product_ids = [p for p in set(product_ids) if p]
     if not product_ids:
@@ -114,6 +117,37 @@ def fifo_sale_costs(
         .all()
     )
 
+    # Dòng thời gian của từng sản phẩm: (thời điểm, thứ tự, loại, dữ liệu)
+    events: List[Tuple] = [(row.product_id, row.created_at, 0, row.inventory_transaction_id, row) for row in ledger]
+    if untracked_sales:
+        sold_out = {
+            (row.transaction_id, row.product_id)
+            for row in ledger
+            if row.inventory_type == "OUT" and row.transaction_id in sale_tx_ids
+        }
+        sale_rows = (
+            db.query(
+                TransactionDetail.transaction_id,
+                TransactionDetail.product_id,
+                Transaction.transaction_date,
+                func.sum(TransactionDetail.quantity),
+            )
+            .join(Transaction, TransactionDetail.transaction_id == Transaction.transaction_id)
+            .join(Intent, Transaction.intent_id == Intent.intent_id)
+            .filter(
+                Transaction.user_id == user_id,
+                Intent.intent_name.in_(SALE_INTENTS),
+                TransactionDetail.product_id.in_(product_ids),
+            )
+            .group_by(TransactionDetail.transaction_id, TransactionDetail.product_id, Transaction.transaction_date)
+            .all()
+        )
+        for tx_id, pid, tx_date, qty in sale_rows:
+            if (tx_id, pid) not in sold_out and _dec(qty) > 0:
+                # Cùng thời điểm thì sổ kho (nhập) đi trước lần bán ảo
+                events.append((pid, tx_date, 1, tx_id, (tx_id, _dec(qty))))
+    events.sort(key=lambda e: (e[0], e[1] is None, e[1] or 0, e[2], e[3]))
+
     result: Dict[Tuple[int, int], Tuple[Decimal, Decimal]] = {}
     lots: Dict[int, deque] = defaultdict(deque)  # product_id -> deque([qty, unit_cost])
 
@@ -139,7 +173,15 @@ def fifo_sale_costs(
         if qty > 0:
             lots[pid].append([qty, unit_cost])
 
-    for row in ledger:
+    for pid, when, kind, _, row in events:
+        if kind == 1:
+            # Bán không qua sổ kho (SERVICE) -> xuất ảo tại thời điểm bán
+            tx_id, qty = row
+            cost = take(pid, qty, when)
+            prev_qty, prev_cost = result.get((tx_id, pid), (ZERO, ZERO))
+            result[(tx_id, pid)] = (prev_qty + qty, prev_cost + cost)
+            continue
+
         pid = row.product_id
         qty = _dec(row.quantity)
         history = histories.get(pid)

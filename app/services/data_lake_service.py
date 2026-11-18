@@ -91,6 +91,9 @@ class DataLakeService:
             model = llm_data.get("model") or ai_meta.get("llm", {}).get("model") or ("whisper-large-v3-turbo" if record.audio_path else None)
             prompt_ver = llm_data.get("prompt_version") or ai_meta.get("prompt_version")
             pipe_ver = llm_data.get("pipeline_version") or ai_meta.get("pipeline_version")
+            # Token LLM input / output của giao dịch (cộng dồn mọi lần gọi LLM cho bản ghi này)
+            from app.ai.token_usage import summary as token_summary
+            token_usage = token_summary(llm_data)
 
             storage_paths: Dict[str, str] = {}
 
@@ -127,6 +130,9 @@ class DataLakeService:
                 "model": model,
                 "prompt_version": prompt_ver,
                 "pipeline_version": pipe_ver,
+                "token_usage": token_usage,
+                "input_tokens": token_usage["input_tokens"] if token_usage else None,
+                "output_tokens": token_usage["output_tokens"] if token_usage else None,
                 "status": record.status,
                 "error_message": record.error_message,
                 "request_id": resolved_req_id,
@@ -179,6 +185,9 @@ class DataLakeService:
                     "model": model,
                     "prompt_version": prompt_ver,
                     "pipeline_version": pipe_ver,
+                    "token_usage": token_usage,
+                    "input_tokens": token_usage["input_tokens"] if token_usage else None,
+                    "output_tokens": token_usage["output_tokens"] if token_usage else None,
                     "user_correction": correction,
                     "status": "SUCCESS",
                     "request_id": resolved_req_id,

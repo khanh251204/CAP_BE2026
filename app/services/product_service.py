@@ -11,12 +11,20 @@ from app.repositories import product_repository as repo
 from app.repositories.inventory_repo import InventoryRepository
 from app.services.product_inventory_service import ProductInventoryService
 from app.services.duplicate_guard import clean_name, ensure_unique_product
+from app.services.input_safety import contains_markup, markup_message
 from app.services import product_edit_lock
 
 logger = logging.getLogger(__name__)
 
 
 class ProductService:
+    @staticmethod
+    def _assert_no_markup(fields: dict) -> None:
+        """Tên, đơn vị tính, link ảnh không được chứa thẻ HTML / script -> 400."""
+        for label, value in fields.items():
+            if value is not None and contains_markup(str(value)):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=markup_message(label))
+
 
     @staticmethod
     def get_all_products_with_stock(user_id: int, db: Session):
@@ -58,6 +66,12 @@ class ProductService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tên sản phẩm không được để trống")
         if len(product_name) > 255:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tên sản phẩm tối đa 255 ký tự")
+
+        ProductService._assert_no_markup({
+            "Tên sản phẩm": product_name,
+            "Đơn vị tính": data.get("default_unit") or data.get("unit"),
+            "Link ảnh": data.get("img"),
+        })
 
         # Không cho trùng tên (không phân biệt hoa/thường, khoảng trắng thừa) với sản phẩm đang kinh doanh
         ensure_unique_product(db, user_id, product_name)
@@ -126,14 +140,11 @@ class ProductService:
         if not product:
             return None
 
-        # Khóa sửa tên / đơn vị: đã phát sinh giao dịch hoặc quá 24h kể từ lúc tạo
-        # (chỉ chặn khi giá trị thực sự đổi, form gửi lại giá trị cũ thì bỏ qua)
-        name_changed = data.get("product_name") is not None and clean_name(data["product_name"]) != product.product_name
-        unit_changed = data.get("default_unit") is not None and str(data["default_unit"]).strip() != (product.default_unit or "")
-        if name_changed or unit_changed:
-            lock = product_edit_lock.get_lock(db, product)
-            if lock["name_locked"]:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=lock["name_lock_message"])
+        ProductService._assert_no_markup({
+            "Tên sản phẩm": data.get("product_name"),
+            "Đơn vị tính": data.get("default_unit"),
+            "Link ảnh": data.get("img"),
+        })
 
         if "product_name" in data:
             if data["product_name"] is None:
@@ -187,6 +198,15 @@ class ProductService:
         conflict = product_change_conflict(db, user_id, product, data)
         if conflict:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict)
+
+        # Khóa sửa tên / đơn vị: đã phát sinh giao dịch hoặc quá 24h kể từ lúc tạo
+        # (chỉ chặn khi giá trị thực sự đổi, form gửi lại giá trị cũ thì bỏ qua)
+        name_changed = data.get("product_name") is not None and clean_name(data["product_name"]) != product.product_name
+        unit_changed = data.get("default_unit") is not None and str(data["default_unit"]).strip() != (product.default_unit or "")
+        if name_changed or unit_changed:
+            lock = product_edit_lock.get_lock(db, product)
+            if lock["name_locked"]:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=lock["name_lock_message"])
 
         if "default_unit" in data and data["default_unit"] is not None:
             new_unit = str(data["default_unit"]).strip()

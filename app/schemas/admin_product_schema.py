@@ -13,6 +13,15 @@ class AdminProductPagination(BaseModel):
     total_pages: int = Field(..., description="Tổng số trang")
 
 
+class AdminProductSummaryResponse(BaseModel):
+    total: int = Field(0, description="Tổng số sản phẩm")
+    active: int = Field(0, description="Số sản phẩm đang bán")
+    inactive: int = Field(0, description="Số sản phẩm ngừng bán")
+    resale: int = Field(0, description="Thương mại / Bán lẻ (RESALE)")
+    raw_material: int = Field(0, description="Nguyên vật liệu (RAW_MATERIAL)")
+    finished_good: int = Field(0, description="Thành phẩm (FINISHED_GOOD)")
+
+
 class AdminProductOwnerInfo(BaseModel):
     user_id: int = Field(..., description="ID chủ sở hữu sản phẩm")
     full_name: str = Field(..., description="Họ và tên người dùng")
