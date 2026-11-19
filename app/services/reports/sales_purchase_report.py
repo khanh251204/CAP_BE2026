@@ -64,7 +64,7 @@ class SalesPurchaseReportMixin(ReportBase):
             key = (r.transaction_id, r.product_id)
             tx_qty[key] = tx_qty.get(key, Decimal("0")) + Decimal(str(r.quantity or 0))
 
-        # Món / combo có định mức (BOM): lúc bán kho xuất NGUYÊN LIỆU gắn với giao dịch bán, không xuất thành phẩm.
+        # Món có định mức (BOM): lúc bán kho xuất NGUYÊN LIỆU gắn với giao dịch bán, không xuất thành phẩm.
         # Giá vốn của món = giá vốn FIFO của các phiếu xuất nguyên liệu đó.
         material_cost = cls._bom_material_costs(db, user_id, sale_rows, tx_qty, fifo)
 

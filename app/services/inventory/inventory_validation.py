@@ -164,7 +164,8 @@ class InventoryValidationMixin:
                 })
                 continue
 
-            if business_type == "PRODUCER":
+            # RESELLER có thành phẩm / nguyên liệu (khai định mức) thì theo đúng luật của PRODUCER
+            if business_type == "PRODUCER" or product_type in ("RAW_MATERIAL", "FINISHED_GOOD"):
                 if product_type == "RAW_MATERIAL":
                     return {
                         "valid": False,

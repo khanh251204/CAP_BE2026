@@ -1,8 +1,8 @@
 """
-Định mức nguyên vật liệu (BOM) cho PRODUCER.
+Định mức nguyên vật liệu (BOM) cho PRODUCER và RESELLER (cùng một cách).
 
 Quy tắc khai báo:
-- Chỉ user PRODUCER.
+- User PRODUCER hoặc RESELLER (SERVICE không quản lý kho nên không có định mức).
 - Thành phẩm phải là FINISHED_GOOD, nguyên liệu phải là RAW_MATERIAL, cùng user, đang kinh doanh.
   (Nguyên liệu không thể có BOM nên không có BOM lồng nhiều tầng.)
 - Định mức > 0 và tối đa 2 chữ số thập phân: Inventory_Transaction chỉ lưu 2 chữ số lẻ,
@@ -292,10 +292,10 @@ class BomService:
 
     def replace_bom(self, user_id: int, product_id: int, materials: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Ghi đè toàn bộ định mức của thành phẩm (dòng không còn trong danh sách -> xóa mềm)."""
-        if get_user_business_type(self.db, user_id) != "PRODUCER":
+        if get_user_business_type(self.db, user_id) == "SERVICE":
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                "Chỉ cơ sở sản xuất / chế biến (PRODUCER) mới khai báo định mức nguyên liệu",
+                "Dịch vụ không quản lý kho nên không khai báo định mức nguyên liệu được",
             )
 
         product = self._get_finished_product(user_id, product_id)

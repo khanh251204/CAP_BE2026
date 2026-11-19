@@ -39,11 +39,12 @@ def get_sale_stock_policy(business_type: Optional[str], product_type: Optional[s
 
     if bt == "SERVICE":
         return NO_INVENTORY
-    if bt == "PRODUCER":
-        if pt == "RAW_MATERIAL":
-            return RAW_MATERIAL_BLOCKED
-        if pt == "FINISHED_GOOD":
-            return MADE_TO_ORDER
+    # PRODUCER và RESELLER cùng luật: thành phẩm làm theo đơn (có định mức thì trừ nguyên liệu),
+    # nguyên liệu không bán trực tiếp, hàng bán lại phải đủ tồn
+    if pt == "RAW_MATERIAL":
+        return RAW_MATERIAL_BLOCKED
+    if pt == "FINISHED_GOOD":
+        return MADE_TO_ORDER
     return STRICT
 
 

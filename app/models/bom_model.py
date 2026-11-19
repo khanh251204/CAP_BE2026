@@ -16,7 +16,7 @@ from app.configs.database import Base
 
 class BillOfMaterial(Base):
     """
-    Định mức nguyên vật liệu (BOM) cho PRODUCER: mỗi dòng là một nguyên liệu của một thành phẩm.
+    Định mức nguyên vật liệu (BOM) cho PRODUCER / RESELLER: mỗi dòng là một nguyên liệu của một thành phẩm.
     Ví dụ: 1 tô phở (FINISHED_GOOD) dùng 150 g thịt bò (RAW_MATERIAL).
     """
     __tablename__ = "Bill_Of_Material"
