@@ -124,14 +124,33 @@ def invalid_unit_message(product_name: str, requested_unit: str, product_unit: s
 _CUSTOMER_DEBT_INTENTS = ("khach_ghi_no", "ghi_no_khach_hang")
 
 
+# Cụm từ chắc chắn là CHƯA TRẢ TIỀN: câu có cụm này thì là ghi nợ, kể cả khi LLM ghi "tiền mặt".
+# (Không gồm "nợ" / "thiếu" đứng riêng: "bán 5 lon, thiếu 1 lon" không phải ghi nợ.)
+_STRONG_UNPAID = re.compile(
+    r"(chưa trả|chua tra|chưa thanh toán|chua thanh toan|chưa đưa tiền|chua dua tien|"
+    r"ghi nợ|ghi no|bán nợ|ban no|mua nợ|mua no|nhập nợ|nhap no|lấy nợ|lay no|còn nợ|con no|"
+    r"bán chịu|ban chiu|mua chịu|mua chiu|lấy chịu|lay chiu|nhập chịu|nhap chiu|ghi sổ|ghi so|"
+    r"trả sau|tra sau|để sau trả|de sau tra)",
+    re.IGNORECASE,
+)
+
+
 def resolve_payment(payment: Optional[str], text: Optional[str]) -> Optional[str]:
     """
-    LLM không trả payment nhưng câu gốc có ý chưa trả ("bán chịu", "ghi sổ", "trả sau"...)
-    -> coi là "PENDING". Có payment từ LLM thì giữ nguyên.
+    Trạng thái thanh toán của bán / nhập hàng:
+    - Câu gốc có cụm chưa trả tiền ("chưa trả tiền", "ghi nợ", "bán chịu", "trả sau"...) -> "PENDING".
+    - LLM ghi payment là chữ chưa trả ("chưa trả tiền", "nợ") -> chuẩn hóa thành "PENDING".
+    - LLM bỏ trống payment, câu có ý chưa trả theo mẫu rộng ("bán chịu", "thiếu lại"...) -> "PENDING".
+    - Còn lại giữ payment của LLM.
     """
+    raw_text = str(text or "")
+    if _STRONG_UNPAID.search(raw_text) and not _PAID_PATTERN.search(raw_text):
+        return "PENDING"
+    if is_unpaid_payment(payment):
+        return "PENDING"
     if str(payment or "").strip():
         return payment
-    return "PENDING" if is_unpaid_payment(text) else payment
+    return "PENDING" if is_unpaid_payment(raw_text) else payment
 
 
 def resolve_credit_sale_intent(intent: Optional[str], entities: dict) -> tuple:

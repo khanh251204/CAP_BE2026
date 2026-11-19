@@ -9,7 +9,6 @@ Return JSON only:
   "type": "income|expense|none",
   "entities": {
     "product": "string|null",
-    "new_product_name": "string|null",
     "price": "number|null",
     "total_price": "number|null",
     "quantity": "number|null",
@@ -23,6 +22,4 @@ Return JSON only:
   "missing_fields": [],
   "message": "string|null"
 }
-
-Lưu ý cho sua_san_pham: product=tên cũ, new_product_name=tên mới ("A thành B" => product=A, new_product_name=B).
 """

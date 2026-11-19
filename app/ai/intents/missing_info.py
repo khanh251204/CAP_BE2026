@@ -157,3 +157,45 @@ def restore_negative_numbers(entities: dict, text: str) -> dict:
         if value > 0 and value in negatives:
             fixed[field] = -value
     return fixed
+
+# ---------------------------------------------------------------------------
+# Số tiền LLM bỏ trống
+# ---------------------------------------------------------------------------
+# Nghiệp vụ chỉ có tiền (thu / trả / ghi nợ, chi phí): LLM đôi khi nhận đúng intent và tên người
+# nhưng để price = null ("thu nợ 20000000 từ Mai" -> price=null) -> người dùng bị hỏi lại số tiền đã nói.
+# Câu có ĐÚNG MỘT số tiền thì lấy số đó. Số âm GIỮ NGUYÊN dấu (không đổi thành dương)
+# để handler cảnh báo "phải lớn hơn 0". Số 0 không điền (để validator xử lý như thiếu số tiền).
+MONEY_ONLY_INTENTS = {
+    "chi_phi", "chi_tien",
+    "khach_ghi_no", "ghi_no_khach_hang",
+    "thu_no_khach", "thu_no_khach_hang",
+    "ghi_no_nha_cung_cap",
+    "tra_no_nha_cung_cap",
+}
+_AMOUNT_FIELDS = ("price", "amount", "total_price")
+_AMOUNT = re.compile(
+    r"(?<![\w.,\-−–])((?:[-−–]|âm\s+)?)(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)(?![\d.,]*\d)",
+    re.IGNORECASE,
+)
+
+
+def fill_missing_amount(intent: Optional[str], entities: dict, text: str) -> dict:
+    """Điền price từ câu gốc khi LLM bỏ trống. Không đoán khi câu có nhiều số hoặc có hàng hóa."""
+    if intent not in MONEY_ONLY_INTENTS or not isinstance(entities, dict) or _is_empty(text):
+        return entities
+    if any(not _is_empty(entities.get(f)) for f in _AMOUNT_FIELDS):
+        return entities
+    if not _is_empty(entities.get("product")) or not _is_empty(entities.get("quantity")):
+        return entities
+    values = set()
+    for sign, raw in _AMOUNT.findall(str(text)):
+        value = _parse_number(raw)
+        if value is None:
+            continue
+        values.add(-value if sign else value)
+    if len(values) != 1:
+        return entities
+    value = values.pop()
+    if value == 0:
+        return entities
+    return {**entities, "price": int(value) if float(value).is_integer() else value}
