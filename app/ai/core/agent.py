@@ -3,9 +3,19 @@ import importlib
 from typing import Any, Optional
 
 from app.ai.core.router import IntentRouter
-from app.ai.intents.missing_info import drop_unspoken_quantity, missing_message, restore_negative_numbers
+from app.ai.intents.missing_info import (
+    drop_unspoken_quantity,
+    fill_missing_amount,
+    missing_message,
+    restore_negative_numbers,
+)
 from app.services.session_store_service import SessionStoreService
-from app.services.sales_policy import resolve_credit_sale_intent, resolve_total_price
+from app.services.sales_policy import (
+    resolve_amount_paid,
+    resolve_credit_sale_intent,
+    resolve_payment,
+    resolve_total_price,
+)
 
 UNKNOWN_INTENT_MESSAGE = (
     "Mình chưa hiểu bạn muốn ghi nghiệp vụ gì. Bạn nói rõ hơn giúp mình, ví dụ: "
@@ -119,6 +129,12 @@ class Agent:
         if signed != entities:
             entities = signed
             analysis = {**analysis, "entities": entities}
+        # LLM bỏ trống số tiền ở nghiệp vụ chỉ có tiền (thu / trả / ghi nợ, chi phí): lấy số duy nhất trong câu.
+        # Số âm giữ nguyên dấu để handler cảnh báo, không tự đổi thành dương.
+        filled = fill_missing_amount(intent, entities, input_to_model)
+        if filled != entities:
+            entities = filled
+            analysis = {**analysis, "entities": entities}
 
         # 5. LLM Error (thiếu field) — intent lạ được xử lý ở bước 6
         missing_info = (
@@ -159,8 +175,18 @@ class Agent:
         # Phải chạy trước resolve_total_price, nếu không đơn giá bị tính từ số lượng đoán.
         guessed_qty = entities.get("quantity")
         entities = drop_unspoken_quantity(intent, entities, input_to_model)
+        # Câu có "chưa trả tiền", "ghi nợ", "bán chịu"... -> bán / nhập NỢ (payment = PENDING), dù LLM bỏ sót
+        if intent in ("ban_hang", "mua_hang", "nhap_hang"):
+            entities = {**entities, "payment": resolve_payment(entities.get("payment"), input_to_model)}
+        # "mới trả 20k", "đưa trước 200k còn lại ghi nợ", "trả một nửa" -> số tiền / tỉ lệ đã trả (phần còn lại ghi nợ)
+        entities = resolve_amount_paid(intent, entities, input_to_model)
         entities = resolve_total_price(intent, entities)
-        if intent != llm_intent or entities.get("quantity") != guessed_qty:
+        llm_payment = (analysis.get("entities") or {}).get("payment")
+        paid_found = entities.get("amount_paid") is not None or entities.get("amount_paid_ratio") is not None
+        if (
+            intent != llm_intent or entities.get("quantity") != guessed_qty
+            or entities.get("payment") != llm_payment or paid_found
+        ):
             analysis = {**analysis, "intent": intent, "entities": entities, "llm_intent": llm_intent}
 
         # 7. Router điều phối sang Intent Handler
