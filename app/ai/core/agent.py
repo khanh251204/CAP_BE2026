@@ -12,7 +12,12 @@ from app.ai.intents.missing_info import (
 )
 from app.ai.core.multi_item import build_multi_item_draft, resolve_multi_intent
 from app.services.session_store_service import SessionStoreService
-from app.services.sales_policy import resolve_credit_sale_intent, resolve_payment, resolve_total_price
+from app.services.sales_policy import (
+    resolve_amount_paid,
+    resolve_credit_sale_intent,
+    resolve_payment,
+    resolve_total_price,
+)
 
 UNKNOWN_INTENT_MESSAGE = (
     "Mình chưa hiểu bạn muốn ghi nghiệp vụ gì. Bạn nói rõ hơn giúp mình, ví dụ: "
@@ -166,6 +171,9 @@ class Agent:
         if multi_intent:
             intent = multi_intent
             analysis = {**analysis, "intent": intent, "llm_intent": analysis.get("intent")}
+            # Tiền đã trả là của cả đơn ("bán 2 coca và 3 mì 80k, khách trả 50k")
+            if not structured:
+                entities = resolve_amount_paid(intent, entities, input_to_model)
             handler_result = await build_multi_item_draft(self.router, intent, user_id, entities, input_to_model)
             # Cùng dạng kết quả với handler một sản phẩm (bước 9) để app xử lý giống nhau
             if handler_result.get("status") == "waiting_confirmation":
@@ -227,9 +235,16 @@ class Agent:
         # Nhập bằng biểu mẫu giữ nguyên lựa chọn thanh toán của người dùng.
         if not structured and intent in ("ban_hang", "mua_hang", "nhap_hang"):
             entities = {**entities, "payment": resolve_payment(entities.get("payment"), input_to_model)}
+        # "mới trả 20k", "đưa trước 200k còn lại ghi nợ", "trả một nửa" -> số tiền / tỉ lệ đã trả (phần còn lại ghi nợ)
+        if not structured:
+            entities = resolve_amount_paid(intent, entities, input_to_model)
         entities = resolve_total_price(intent, entities)
         llm_payment = (analysis.get("entities") or {}).get("payment")
-        if intent != llm_intent or entities.get("quantity") != guessed_qty or entities.get("payment") != llm_payment:
+        paid_found = entities.get("amount_paid") is not None or entities.get("amount_paid_ratio") is not None
+        if (
+            intent != llm_intent or entities.get("quantity") != guessed_qty
+            or entities.get("payment") != llm_payment or paid_found
+        ):
             analysis = {**analysis, "intent": intent, "entities": entities, "llm_intent": llm_intent}
 
         # 7. Router điều phối sang Intent Handler

@@ -12,6 +12,8 @@ from app.services.sales_policy import (
     ERROR_INVALID_UNIT,
     order_total,
     is_unpaid_payment,
+    is_partial_payment,
+    resolve_order_paid,
     is_unit_valid,
     to_product_unit,
     invalid_unit_message,
@@ -204,14 +206,21 @@ class MuaHangHandler:
             payload["total_amount"] = total_amount
 
         is_unpaid = is_unpaid_payment(entities.get("payment"))
-        amount_paid = entities.get("amount_paid")
-        if amount_paid is not None:
-            try:
-                amount_paid = float(amount_paid)
-            except (ValueError, TypeError):
-                amount_paid = 0.0
-        elif is_unpaid:
+        # Trả trước một phần: "trả trước 2 triệu" (amount_paid) / "trả một nửa" (amount_paid_ratio x tổng tiền)
+        amount_paid = resolve_order_paid(entities, total_amount)
+        if amount_paid is None and is_unpaid:
             amount_paid = 0.0
+        if amount_paid is None and is_partial_payment(entities.get("payment")):
+            return {
+                "success": False,
+                "status": "need_information",
+                "intent": intent,
+                "missing_fields": ["amount_paid"],
+                "message": (
+                    "Mới trả nhà cung cấp một phần: đã trả bao nhiêu tiền? Bạn nói lại cả câu kèm số tiền, "
+                    "ví dụ: \"nhập 10 thùng bia 3 triệu của anh Tâm, trả trước 1 triệu\"."
+                ),
+            }
         if amount_paid is not None:
             payload["amount_paid"] = amount_paid
 
@@ -222,7 +231,11 @@ class MuaHangHandler:
             elif is_unpaid:
                 unpaid_val = total_amount
 
-        has_debt = is_unpaid or (unpaid_val is not None and unpaid_val > 0)
+        # Đã biết số tiền trả thì chỉ có nợ khi còn thiếu
+        if amount_paid is not None and unpaid_val is not None:
+            has_debt = unpaid_val > 0
+        else:
+            has_debt = is_unpaid or (unpaid_val is not None and unpaid_val > 0)
         if has_debt and not supplier_id and not is_new_supplier:
             return {
                 "success": False,
@@ -237,7 +250,9 @@ class MuaHangHandler:
         debt_info = ""
         if has_debt:
             supplier_label = f" cho NCC '{supplier_name}'" if supplier_name else ""
-            if unpaid_val is not None and unpaid_val > 0:
+            if unpaid_val is not None and unpaid_val > 0 and amount_paid:
+                debt_info = f" (Đã trả {amount_paid:,.0f}đ - ghi nợ{supplier_label}: {unpaid_val:,.0f}đ)"
+            elif unpaid_val is not None and unpaid_val > 0:
                 debt_info = f" (Chưa trả tiền - ghi nợ{supplier_label}: {unpaid_val:,.0f}đ)"
             else:
                 debt_info = f" (Chưa trả tiền - ghi nợ{supplier_label})"

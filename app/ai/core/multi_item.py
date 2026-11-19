@@ -19,7 +19,12 @@ from app.ai.intents.missing_info import clean_entities_for_intent, drop_unspoken
 from app.services.new_customer_service import NEW_CUSTOMER_KEY
 from app.services.new_product_service import NEW_PRODUCT_KEY
 from app.services.new_supplier_service import NEW_SUPPLIER_KEY
-from app.services.sales_policy import is_unpaid_payment, resolve_total_price
+from app.services.sales_policy import (
+    is_partial_payment,
+    is_unpaid_payment,
+    resolve_order_paid,
+    resolve_total_price,
+)
 
 MAX_ITEMS = 20
 
@@ -154,12 +159,14 @@ async def build_multi_item_draft(
 
     # amount_paid / tổng tiền là của cả đơn, không áp xuống từng dòng
     shared = {k: entities.get(k) for k in _SHARED_KEYS if not _empty(entities.get(k))}
-    amount_paid = entities.get("amount_paid")
 
     lines: list[dict] = []
     first: Optional[dict] = None
     for idx, line in enumerate(items, start=1):
         ent = _line_entities(intent, shared, line, text)
+        if is_partial_payment(ent.get("payment")):
+            # Trả một phần tính trên cả đơn (bên dưới); từng dòng không hỏi lại số tiền đã trả
+            ent["amount_paid"] = 0.0
         result = await router.route(intent=intent, user_id=user_id, entities=ent, text=text)
         label = f"Dòng {idx} ({line.get('product')})"
 
@@ -232,14 +239,21 @@ async def build_multi_item_draft(
     if new_party:
         payload[flag] = True
 
-    paid: Optional[float] = None
-    if amount_paid is not None:
-        try:
-            paid = float(amount_paid)
-        except (TypeError, ValueError):
-            paid = 0.0
-    elif is_unpaid_payment(base.get("payment_status")):
+    # Tiền đã trả của cả đơn: amount_paid, hoặc tỉ lệ ("trả một nửa") x tổng tiền; không vượt tổng
+    paid = resolve_order_paid(entities, float(total))
+    if paid is None and is_unpaid_payment(base.get("payment_status")):
         paid = 0.0
+    if paid is None and is_partial_payment(entities.get("payment")):
+        return {
+            "success": False,
+            "status": "need_information",
+            "intent": intent,
+            "missing_fields": ["amount_paid"],
+            "message": (
+                "Mới trả một phần: đã trả bao nhiêu tiền? Bạn nói lại cả câu kèm số tiền, "
+                "ví dụ: \"bán cho bà Hoa 2 lốc sữa chua và 3 gói mì hết 80k, bà trả 50k\"."
+            ),
+        }
     if paid is not None:
         payload["amount_paid"] = paid
 
@@ -264,7 +278,8 @@ async def build_multi_item_draft(
     debt_txt = ""
     if has_debt:
         who = f" cho {'khách' if is_sale else 'NCC'} '{party_name}'" if party_name else ""
-        debt_txt = f" (Chưa thanh toán - ghi nợ{who}: {unpaid:,.0f}đ)"
+        paid_txt = f"Đã trả {paid:,.0f}đ" if paid else "Chưa thanh toán"
+        debt_txt = f" ({paid_txt} - ghi nợ{who}: {unpaid:,.0f}đ)"
     verb = "bán" if is_sale else "nhập"
     if has_debt and is_sale:
         verb = "bán nợ"

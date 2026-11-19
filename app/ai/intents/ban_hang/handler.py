@@ -24,6 +24,8 @@ from app.services.sales_policy import (
     invalid_unit_message,
     normalize_business_type,
     is_unpaid_payment,
+    is_partial_payment,
+    resolve_order_paid,
     resolve_payment,
     order_total,
 )
@@ -327,14 +329,21 @@ class BanHangHandler:
 
         is_unpaid = is_unpaid_payment(entities.get("payment"))
 
-        amount_paid = entities.get("amount_paid")
-        if amount_paid is not None:
-            try:
-                amount_paid = float(amount_paid)
-            except (ValueError, TypeError):
-                amount_paid = 0.0
-        elif is_unpaid:
+        # Trả trước một phần: "mới trả 20k" (amount_paid) / "trả một nửa" (amount_paid_ratio x tổng tiền)
+        amount_paid = resolve_order_paid(entities, total_amount)
+        if amount_paid is None and is_unpaid:
             amount_paid = 0.0
+        if amount_paid is None and is_partial_payment(entities.get("payment")):
+            return {
+                "success": False,
+                "status": "need_information",
+                "intent": intent,
+                "missing_fields": ["amount_paid"],
+                "message": (
+                    "Khách mới trả một phần: khách đã trả bao nhiêu tiền? Bạn nói lại cả câu kèm số tiền, "
+                    "ví dụ: \"bán cho bà Hoa 3 lốc sữa chua 84k, bà trả 20k\"."
+                ),
+            }
 
         if amount_paid is not None:
             payload["amount_paid"] = amount_paid
@@ -346,7 +355,11 @@ class BanHangHandler:
             elif is_unpaid:
                 unpaid_val = total_amount
 
-        has_debt = is_unpaid or (unpaid_val is not None and unpaid_val > 0)
+        # Đã biết số tiền trả thì chỉ có nợ khi còn thiếu ("đưa trước 200k còn lại ghi nợ")
+        if amount_paid is not None and unpaid_val is not None:
+            has_debt = unpaid_val > 0
+        else:
+            has_debt = is_unpaid or (unpaid_val is not None and unpaid_val > 0)
 
         # Phát sinh nợ nhưng không có khách hàng -> cần khách hàng để ghi nợ
         if has_debt and not customer_id and not is_new_customer:
@@ -367,7 +380,9 @@ class BanHangHandler:
         debt_info = ""
         if has_debt:
             cust_label = f" cho khách '{customer_name}'" if customer_name else ""
-            if unpaid_val is not None and unpaid_val > 0:
+            if unpaid_val is not None and unpaid_val > 0 and amount_paid:
+                debt_info = f" (Đã trả {amount_paid:,.0f}đ - ghi nợ{cust_label}: {unpaid_val:,.0f}đ)"
+            elif unpaid_val is not None and unpaid_val > 0:
                 debt_info = f" (Chưa thanh toán - ghi nợ{cust_label}: {unpaid_val:,.0f}đ)"
             else:
                 debt_info = f" (Chưa thanh toán - ghi nợ{cust_label})"
