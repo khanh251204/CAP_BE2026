@@ -8,6 +8,8 @@ ENTITY_RULES = """
    - `quantity`: Số lượng dạng số (Number hoặc null).
      * Chỉ điền khi người dùng NÓI RÕ số lượng. KHÔNG tự đoán là 1 khi câu chỉ có đơn vị.
      * VD: "Bán lốc sữa chua 50000, tiền mặt" -> quantity=null, unit="lốc", total_price=50000.
+     * Số đứng NGAY TRƯỚC đơn vị tính (lốc, thùng, kg, lon, gói...) LUÔN là `quantity`, kể cả số rất lớn;
+       KHÔNG đưa số đó vào price / total_price.
    - `unit`: Đơn vị tính đã chuẩn hóa (kg, lốc, thùng, cái, hộp, gói, lon, chai, ly, vỉ... hoặc null).
    - `price`: Đơn giá của MỘT đơn vị sản phẩm (số nguyên VND, hoặc null).
      * Chỉ điền khi số tiền GẮN VỚI MỘT ĐƠN VỊ: "mỗi cái 28k", "giá 30k mỗi kí", "đơn giá 28k", "20k một lon",
@@ -23,17 +25,23 @@ ENTITY_RULES = """
        "Nhập 500 lốc sữa chua tổng 10 triệu" -> quantity=500, total_price=10000000, price=null.
        "Nhập 5 kí thịt heo giá 300k" -> quantity=5, unit="kg", total_price=300000, price=null.
        "Nhập 5 kí thịt heo giá 30k mỗi kí" -> quantity=5, unit="kg", price=30000, total_price=null.
-     * Nghiệp vụ chỉ có tiền, không có hàng (chi_phi, thu nợ, trả nợ, ghi nợ tiền): số tiền điền vào `price`
-       như cũ. VD: "Chi tiền điện hết 500k" -> price=500000.
+     * Nghiệp vụ chỉ có tiền, không có hàng (chi_phi, thu nợ, trả nợ, ghi nợ tiền): số tiền BẮT BUỘC điền vào `price`.
+       Câu có nói số tiền thì KHÔNG được để price = null (kể cả số rất lớn; số âm giữ nguyên dấu âm để backend báo lỗi).
+       Áp dụng cho MỌI cách nói thu nợ / trả nợ (có hay không có chữ "nợ", số tiền đứng trước hay sau tên người).
+       VD: "Chi tiền điện hết 500k" -> price=500000.
 
 2. Thông tin đối tác & thanh toán:
    - `customer`: Tên hoặc cách xưng hô khách hàng (String hoặc null).
    - `supplier`: Tên nhà cung cấp (String hoặc null).
+     * `mua_hang` / `nhap_hang`: người bán hàng cho mình ("nhập ... từ X", "mua của X", "lấy hàng của X") LUÔN là
+       `supplier`, KHÔNG phải `customer`, dù đã trả hay chưa trả tiền.
    - `date`: Thời gian được nhắc tới (String hoặc null).
    - `payment`: Hình thức/trạng thái thanh toán ("tiền mặt", "chuyển khoản" hoặc trạng thái công nợ: "PAID", "PARTIAL", "PENDING", null).
      * "đã trả đủ", "thanh toán rồi" -> "PAID".
      * "trả một phần", "trả bớt" -> "PARTIAL".
      * "chưa trả", "còn nợ", "ghi nợ", "bán nợ", "bán chịu", "mua chịu", "lấy chịu", "ghi sổ", "thiếu lại", "trả sau" -> "PENDING".
+     * Câu KHÔNG có các chữ trên thì KHÔNG được ghi "PENDING" (nhập / bán hàng bình thường -> payment = null
+       hoặc hình thức thanh toán người dùng nói).
 
 3. Nhiều sản phẩm trong MỘT câu (chỉ ban_hang, mua_hang):
    - Câu nêu từ 2 mặt hàng KHÁC NHAU trở lên ("bán 2 lon coca và 3 gói mì") -> điền `items`, mỗi phần tử là

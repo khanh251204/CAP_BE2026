@@ -12,7 +12,7 @@ from app.ai.intents.missing_info import (
 )
 from app.ai.core.multi_item import build_multi_item_draft, resolve_multi_intent
 from app.services.session_store_service import SessionStoreService
-from app.services.sales_policy import resolve_credit_sale_intent, resolve_total_price
+from app.services.sales_policy import resolve_credit_sale_intent, resolve_payment, resolve_total_price
 
 UNKNOWN_INTENT_MESSAGE = (
     "Mình chưa hiểu bạn muốn ghi nghiệp vụ gì. Bạn nói rõ hơn giúp mình, ví dụ: "
@@ -153,6 +153,12 @@ class Agent:
         if signed != entities:
             entities = signed
             analysis = {**analysis, "entities": entities}
+        # LLM bỏ trống số tiền ở nghiệp vụ chỉ có tiền (thu / trả / ghi nợ, chi phí): lấy số duy nhất trong câu.
+        # Chạy trước bước 5 để không hỏi lại số tiền người dùng đã nói. Số âm giữ nguyên dấu để handler cảnh báo.
+        filled = entities if structured else fill_missing_amount(intent, entities, input_to_model)
+        if filled != entities:
+            entities = filled
+            analysis = {**analysis, "entities": entities}
 
         # 4b. Nhiều sản phẩm trong một câu ("bán 2 coca và 3 mì"): backend tự kiểm tra từng dòng,
         # không dựa vào status/missing_fields của LLM (top-level product / quantity để trống).
@@ -217,9 +223,13 @@ class Agent:
         if not structured:
             entities = drop_unspoken_quantity(intent, entities, input_to_model)
         entities = clean_entities_for_intent(intent, entities, input_to_model)
-        entities = fill_missing_amount(intent, entities, input_to_model)
+        # Câu có "chưa trả tiền", "ghi nợ", "bán chịu"... -> bán / nhập NỢ (payment = PENDING), dù LLM bỏ sót.
+        # Nhập bằng biểu mẫu giữ nguyên lựa chọn thanh toán của người dùng.
+        if not structured and intent in ("ban_hang", "mua_hang", "nhap_hang"):
+            entities = {**entities, "payment": resolve_payment(entities.get("payment"), input_to_model)}
         entities = resolve_total_price(intent, entities)
-        if intent != llm_intent or entities.get("quantity") != guessed_qty:
+        llm_payment = (analysis.get("entities") or {}).get("payment")
+        if intent != llm_intent or entities.get("quantity") != guessed_qty or entities.get("payment") != llm_payment:
             analysis = {**analysis, "intent": intent, "entities": entities, "llm_intent": llm_intent}
 
         # 7. Router điều phối sang Intent Handler
