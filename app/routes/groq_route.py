@@ -62,6 +62,13 @@ transaction_agent = TransactionAgent(
 # TRANSACTION - AGENT
 # ============================================================
 
+from pydantic import BaseModel, Field
+
+
+class SubscribePlanRequest(BaseModel):
+    plan_code: str = Field(..., min_length=1, max_length=64, description="Mã gói AI muốn đăng ký (vd: basic_50k, standard, pro)")
+
+
 @router.get("/agent/features", dependencies=[Depends(require_permission("voice:use"))])
 def get_my_ai_features(
     current_user_id: int = Depends(get_current_user_id),
@@ -71,20 +78,141 @@ def get_my_ai_features(
     Trả về gói AI và danh sách intent / tính năng (multi-item, OCR) đang mở cho tài khoản hiện tại.
     Mobile / Web dùng để hiển thị gói đang dùng và ẩn/khóa các chức năng chưa mở.
     """
-    from app.services.ai_feature_service import get_user_ai_config
+    from app.services.ai_feature_service import INTENT_LABELS, get_plans, get_user_ai_config
 
     cfg = get_user_ai_config(current_user_id, db=db)
+    plans = get_plans(db)
+    plan_info = plans.get(cfg.plan_code) if cfg.plan_code else None
+    effective = cfg.effective_intents()
     return {
         "success": True,
         "data": {
             "user_id": current_user_id,
             "plan_code": cfg.plan_code,
+            "plan_name": plan_info["name"] if plan_info else ("Mặc định (Toàn diện)" if cfg.is_unrestricted else "Tùy chỉnh"),
             "is_unrestricted": cfg.is_unrestricted,
             "is_ai_locked": cfg.is_ai_locked,
             "allowed_intents": list(cfg.allowed_intents) if cfg.allowed_intents is not None else None,
-            "effective_intents": cfg.effective_intents(),
+            "effective_intents": effective,
+            "effective_intent_labels": [INTENT_LABELS.get(c, c) for c in effective],
+            "intent_count": len(effective),
             "allow_multi_item": cfg.allow_multi_item,
             "allow_ocr": cfg.allow_ocr,
+        },
+    }
+
+
+@router.get("/agent/plans", dependencies=[Depends(require_permission("voice:use"))])
+def list_available_ai_plans(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Danh sách các gói dịch vụ AI đang mở bán cho người dùng trên Mobile xem & đăng ký,
+    kèm thông tin gói hiện tại của tài khoản.
+    """
+    from app.services.ai_feature_service import INTENT_LABELS, INTENT_ORDER, get_plans, get_user_ai_config
+
+    plans_map = get_plans(db)
+    cfg = get_user_ai_config(current_user_id, db=db)
+
+    subscribable = []
+    for plan in sorted(plans_map.values(), key=lambda p: (int(p.get("price_vnd") or 0), p["code"])):
+        if plan["code"] == "locked":
+            continue
+        allowed = plan.get("allowed_intents")
+        effective_codes = list(INTENT_ORDER) if allowed is None else list(allowed)
+        subscribable.append({
+            "code": plan["code"],
+            "name": plan["name"],
+            "price_vnd": int(plan.get("price_vnd") or 0),
+            "description": plan.get("description") or "",
+            "allowed_intents": allowed,
+            "intent_count": len(effective_codes),
+            "intent_labels": [INTENT_LABELS.get(c, c) for c in effective_codes],
+            "allow_multi_item": bool(plan.get("allow_multi_item", True)),
+            "allow_ocr": bool(plan.get("allow_ocr", True)),
+            "is_current": cfg.plan_code == plan["code"],
+        })
+
+    current_effective = cfg.effective_intents()
+    current_plan_info = plans_map.get(cfg.plan_code) if cfg.plan_code else None
+    return {
+        "success": True,
+        "data": {
+            "current": {
+                "plan_code": cfg.plan_code,
+                "plan_name": current_plan_info["name"] if current_plan_info else ("Mặc định (Toàn diện)" if cfg.is_unrestricted else "Tùy chỉnh"),
+                "is_unrestricted": cfg.is_unrestricted,
+                "is_ai_locked": cfg.is_ai_locked,
+                "intent_count": len(current_effective),
+                "effective_intents": current_effective,
+                "allow_multi_item": cfg.allow_multi_item,
+                "allow_ocr": cfg.allow_ocr,
+            },
+            "plans": subscribable,
+        },
+    }
+
+
+@router.post("/agent/plans/subscribe", dependencies=[Depends(require_permission("voice:use"))])
+def subscribe_ai_plan(
+    body: SubscribePlanRequest,
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Người dùng tự đăng ký / chuyển đổi gói AI trên ứng dụng Mobile.
+    Có hiệu lực ngay lập tức (xóa cache RAM và áp dụng prompt rút gọn tương ứng).
+    """
+    from app.services import ai_feature_service
+    from app.services.system_log_service import log_event
+
+    code = body.plan_code.strip().lower()
+    if code == "locked":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Không thể đăng ký gói khóa AI",
+        )
+
+    plans_map = ai_feature_service.get_plans(db)
+    if code not in plans_map:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy gói dịch vụ '{code}'",
+        )
+
+    plan = plans_map[code]
+    updated = ai_feature_service.set_user_ai_feature(
+        db=db,
+        user_id=current_user_id,
+        plan_code=code,
+        note=f"Đăng ký gói {plan['name']} trên Mobile",
+        admin_id=current_user_id,
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tài khoản")
+
+    log_event(
+        level="INFO",
+        step="OTHER",
+        message=f"Người dùng đăng ký gói AI '{plan['name']}' ({code})",
+        detail={"plan_code": code, "price_vnd": plan.get("price_vnd", 0)},
+        user_id=current_user_id,
+        status_code=200,
+        api_path="/api/v1/agent/plans/subscribe",
+    )
+
+    return {
+        "success": True,
+        "message": f"Đã kích hoạt {plan['name']} thành công!",
+        "data": {
+            "plan_code": updated["plan_code"],
+            "plan_name": plan["name"],
+            "intent_count": updated["intent_count"],
+            "effective_intents": updated["effective_intents"],
+            "allow_multi_item": updated["allow_multi_item"],
+            "allow_ocr": updated["allow_ocr"],
         },
     }
 
