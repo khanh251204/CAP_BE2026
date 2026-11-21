@@ -38,6 +38,12 @@ async def scan_receipt_image(
     """
     if not settings.OCR_ENABLED:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Tính năng quét hóa đơn đang tắt")
+    from app.services.ai_feature_service import is_ocr_allowed
+    if not is_ocr_allowed(current_user_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Gói hiện tại của tài khoản chưa hỗ trợ tính năng quét hóa đơn (OCR). Vui lòng nâng cấp gói hoặc liên hệ quản trị viên.",
+        )
     if (image.content_type or "").lower() not in ALLOWED_TYPES:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Chỉ hỗ trợ ảnh jpg, png, webp")
 

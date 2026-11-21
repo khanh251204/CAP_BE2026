@@ -47,6 +47,7 @@ from app.routes.admin_notification_route import router as admin_notification_rou
 from app.routes.admin_rbac_route import router as admin_rbac_router, ui_router as admin_rbac_ui_router
 from app.routes.admin_closing_route import router as admin_closing_router
 from app.routes.admin_audit_route import router as admin_audit_router
+from app.routes.admin_ai_feature_route import router as admin_ai_feature_router
 
 
 @asynccontextmanager
@@ -200,6 +201,7 @@ ADMIN_ROUTERS = [
     admin_rbac_ui_router,
     admin_closing_router,
     admin_audit_router,
+    admin_ai_feature_router,
 ]
 
 

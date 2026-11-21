@@ -20,7 +20,20 @@ SYSTEM_PROMPT = f"""You are an AI for Vietnamese transaction logging. Parse Spee
 """.strip()
 
 
-def get_system_prompt(current_date: str = None) -> str:
+def get_system_prompt(
+    current_date: str = None,
+    allowed_intents=None,
+    allow_multi_item: bool = True,
+) -> str:
+    if allowed_intents is not None or not allow_multi_item:
+        from app.ai.prompts.builder import INTENT_ORDER, build_pruned_system_prompt
+
+        intents = INTENT_ORDER if allowed_intents is None else allowed_intents
+        return build_pruned_system_prompt(
+            allowed_intents=intents,
+            allow_multi_item=allow_multi_item,
+            current_date=current_date,
+        )
     prompt = SYSTEM_PROMPT
     if current_date:
         prompt += f"\nSystem Date: {current_date}."

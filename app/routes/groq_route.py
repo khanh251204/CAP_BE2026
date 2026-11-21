@@ -30,6 +30,8 @@ from app.configs.jwt import get_current_user_id, require_permission
 
 from app.ai.rag.normalization_service import NormalizationService
 from app.services.session_store_service import SessionStoreService
+from app.configs.database import get_db
+from sqlalchemy.orm import Session
 
 
 router = APIRouter()
@@ -59,6 +61,33 @@ transaction_agent = TransactionAgent(
 # ============================================================
 # TRANSACTION - AGENT
 # ============================================================
+
+@router.get("/agent/features", dependencies=[Depends(require_permission("voice:use"))])
+def get_my_ai_features(
+    current_user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Trả về gói AI và danh sách intent / tính năng (multi-item, OCR) đang mở cho tài khoản hiện tại.
+    Mobile / Web dùng để hiển thị gói đang dùng và ẩn/khóa các chức năng chưa mở.
+    """
+    from app.services.ai_feature_service import get_user_ai_config
+
+    cfg = get_user_ai_config(current_user_id, db=db)
+    return {
+        "success": True,
+        "data": {
+            "user_id": current_user_id,
+            "plan_code": cfg.plan_code,
+            "is_unrestricted": cfg.is_unrestricted,
+            "is_ai_locked": cfg.is_ai_locked,
+            "allowed_intents": list(cfg.allowed_intents) if cfg.allowed_intents is not None else None,
+            "effective_intents": cfg.effective_intents(),
+            "allow_multi_item": cfg.allow_multi_item,
+            "allow_ocr": cfg.allow_ocr,
+        },
+    }
+
 
 @router.post("/agent/messages", dependencies=[Depends(require_permission("voice:use"))])
 async def voice_transaction(
@@ -113,6 +142,54 @@ async def voice_transaction(
                     logger.warning(f"Lỗi cập nhật VoiceRecord analysis: {ex}")
 
             await asyncio.to_thread(_sync_update_vr)
+
+        # Ghi SystemLog (step=LLM) đo token & độ trễ của mỗi giao dịch AI (chạy nền, không làm chậm response)
+        analysis_data = result.get("analysis") if isinstance(result, dict) else None
+        tok_usage = analysis_data.get("token_usage") if isinstance(analysis_data, dict) else None
+        if isinstance(tok_usage, dict):
+            def _log_llm_token_usage():
+                try:
+                    from app.services.system_log_service import log_event
+                    from app.services.ai_feature_service import get_user_ai_config
+                    cfg = get_user_ai_config(current_user_id)
+                    calls = tok_usage.get("calls") or []
+                    last_call = calls[-1] if calls and isinstance(calls[-1], dict) else {}
+                    in_tok = tok_usage.get("input_tokens")
+                    out_tok = tok_usage.get("output_tokens")
+                    tot_tok = tok_usage.get("total_tokens")
+                    lat_ms = last_call.get("latency_ms")
+                    intent_name = result.get("intent") or analysis_data.get("intent") or "unknown"
+                    log_event(
+                        level="INFO",
+                        step="LLM",
+                        message=(
+                            f"AI [{intent_name}] — {tot_tok if tot_tok is not None else '?'} tokens "
+                            f"(in: {in_tok}, out: {out_tok})"
+                        ),
+                        detail={
+                            "intent": intent_name,
+                            "model": analysis_data.get("model") or last_call.get("model"),
+                            "provider": analysis_data.get("provider"),
+                            "prompt_version": analysis_data.get("prompt_version"),
+                            "plan_code": cfg.plan_code,
+                            "prompt_pruned": not cfg.is_unrestricted or not cfg.allow_multi_item,
+                            "input_tokens": in_tok,
+                            "output_tokens": out_tok,
+                            "total_tokens": tot_tok,
+                            "llm_calls": tok_usage.get("llm_calls", 1),
+                            "token_usage": tok_usage,
+                            "voice_id": request.voice_id,
+                            "input_method": input_method_val,
+                        },
+                        user_id=current_user_id,
+                        status_code=200,
+                        api_path="/api/v1/agent/messages",
+                        duration_ms=float(lat_ms) if lat_ms is not None else None,
+                    )
+                except Exception as ex:
+                    logger.debug(f"Không ghi được SystemLog token LLM: {ex}")
+
+            await asyncio.to_thread(_log_llm_token_usage)
 
         SessionStoreService.update_confirmation(
             current_user_id,
@@ -251,6 +328,15 @@ async def confirm_action(
         }
 
     intent = pending["intent"]
+
+    # Kiểm tra gói AI của tài khoản (chặn nếu admin vừa hạ gói/tắt intent trước lúc bấm xác nhận)
+    from app.services.ai_feature_service import get_user_ai_config, locked_intent_message
+    ai_cfg = get_user_ai_config(current_user_id, db=db)
+    if not ai_cfg.is_intent_allowed(intent):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=locked_intent_message(intent, ai_cfg.plan_code),
+        )
 
     # Thao tác bằng giọng nói phải có cùng quyền như thao tác bằng tay
     required_permission = INTENT_PERMISSIONS.get(intent)

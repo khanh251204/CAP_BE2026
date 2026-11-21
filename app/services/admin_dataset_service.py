@@ -100,6 +100,9 @@ class AdminDatasetService:
                 else (f"/api/v1/admin/voice-records/{record.voice_id}/audio" if record.audio_path else None)
             )
 
+            from app.ai.token_usage import summary as token_summary
+            tok = token_summary(llm_data)
+
             items.append(
                 AdminDatasetItem(
                     id=record.voice_id,
@@ -113,6 +116,10 @@ class AdminDatasetService:
                     has_correction=bool(correction),
                     audio_url=audio_url,
                     storage_path=storage_meta.get("dataset_path") or storage_meta.get("processed_path"),
+                    input_tokens=tok["input_tokens"] if tok else None,
+                    output_tokens=tok["output_tokens"] if tok else None,
+                    total_tokens=tok["total_tokens"] if tok else None,
+                    llm_calls=tok["llm_calls"] if tok else None,
                     created_at=record.created_at,
                 )
             )
@@ -169,6 +176,18 @@ class AdminDatasetService:
 
         resolved_status = record.status or ("SUCCESS" if record.transaction_id else "PROCESSING")
 
+        from app.ai.token_usage import summary as token_summary
+        tok = token_summary(llm_data)
+        processing_dict = ai_result.processing.model_dump()
+        if tok:
+            processing_dict.update({
+                "input_tokens": tok["input_tokens"],
+                "output_tokens": tok["output_tokens"],
+                "total_tokens": tok["total_tokens"],
+                "llm_calls": tok["llm_calls"],
+                "token_usage": tok,
+            })
+
         return AdminDatasetDetailResponse(
             id=record.voice_id,
             voice_record_id=record.voice_id,
@@ -185,7 +204,7 @@ class AdminDatasetService:
             validation=ai_result.validation.model_dump(),
             correction=ai_result.correction,
             transaction=tx_dict,
-            processing=ai_result.processing.model_dump(),
+            processing=processing_dict,
             storage=AdminDatasetStorageMeta(**storage_meta),
             created_at=record.created_at,
         )

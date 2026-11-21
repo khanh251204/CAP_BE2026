@@ -26,6 +26,7 @@ from app.models.bom_model import BillOfMaterial
 from app.models.product_unit_model import ProductUnit
 from app.models.audit_log_model import AuditLog
 from app.models.app_setting_model import AppSetting
+from app.models.user_ai_feature_model import UserAIFeature
 
 __all__ = [
     "User",
@@ -58,6 +59,7 @@ __all__ = [
     "ProductUnit",
     "AuditLog",
     "AppSetting",
+    "UserAIFeature",
 ]
 from app.models.user_lock_history_model import UserLockHistory
 

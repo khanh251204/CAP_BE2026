@@ -133,6 +133,7 @@ class DataLakeService:
                 "token_usage": token_usage,
                 "input_tokens": token_usage["input_tokens"] if token_usage else None,
                 "output_tokens": token_usage["output_tokens"] if token_usage else None,
+                "total_tokens": token_usage["total_tokens"] if token_usage else None,
                 "status": record.status,
                 "error_message": record.error_message,
                 "request_id": resolved_req_id,

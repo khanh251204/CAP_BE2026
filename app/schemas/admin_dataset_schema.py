@@ -22,6 +22,10 @@ class AdminDatasetItem(BaseModel):
     has_correction: bool = Field(False, description="Có dữ liệu hiệu chỉnh từ người dùng không")
     audio_url: Optional[str] = Field(None, description="URL stream/nghe file âm thanh")
     storage_path: Optional[str] = Field(None, description="Đường dẫn snapshot lưu trữ trong Data Lake")
+    input_tokens: Optional[int] = Field(None, description="Tổng số input tokens gửi lên LLM")
+    output_tokens: Optional[int] = Field(None, description="Tổng số output tokens LLM trả về")
+    total_tokens: Optional[int] = Field(None, description="Tổng số tokens (input + output)")
+    llm_calls: Optional[int] = Field(None, description="Số lần gọi LLM")
     created_at: Optional[datetime] = Field(None, description="Thời điểm khởi tạo bản ghi")
 
 

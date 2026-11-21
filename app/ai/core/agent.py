@@ -1,8 +1,10 @@
 import asyncio
 import importlib
+import inspect
 from typing import Any, Optional
 
 from app.ai.core.router import IntentRouter
+from app.services.ai_feature_service import UserAIConfig, get_user_ai_config, locked_intent_message
 from app.ai.intents.missing_info import (
     clean_entities_for_intent,
     drop_unspoken_quantity,
@@ -94,6 +96,19 @@ class Agent:
                     "payload": pending["payload"]
                 }
 
+        # 1b. Kiểm tra gói tính năng AI của tài khoản (cache RAM 30s)
+        ai_config = get_user_ai_config(user_id)
+        if ai_config.is_ai_locked:
+            # Khóa toàn bộ AI (0 intent) -> chặn ngay, KHÔNG gọi LLM (0 token, < 1ms)
+            return {
+                "success": False,
+                "status": "feature_locked",
+                "code": "AI_FEATURE_LOCKED",
+                "user_id": user_id,
+                "intent": "khac",
+                "message": "Tài khoản chưa được kích hoạt chức năng trợ lý AI. Vui lòng nâng cấp gói hoặc liên hệ quản trị viên.",
+            }
+
         # 2. Normalization RAG (Kiến trúc mới nhất)
         knowledge = ""
         input_to_model = text
@@ -110,14 +125,23 @@ class Agent:
                 # Dự phòng nếu self.rag là phiên bản quá cũ chưa có hàm normalize
                 pass
 
-        # 3. LLM Analysis
-        analysis = await asyncio.to_thread(
-            self.llm.analyze_transaction,
-            input_to_model,
-            knowledge
-        )
+        # 3. LLM Analysis (truyền system_prompt rút gọn theo gói của user nếu có giới hạn)
+        pruned_prompt = ai_config.build_system_prompt()
+        if pruned_prompt is not None and "system_prompt" in inspect.signature(self.llm.analyze_transaction).parameters:
+            analysis = await asyncio.to_thread(
+                self.llm.analyze_transaction,
+                input_to_model,
+                knowledge,
+                pruned_prompt,
+            )
+        else:
+            analysis = await asyncio.to_thread(
+                self.llm.analyze_transaction,
+                input_to_model,
+                knowledge
+            )
 
-        return await self._handle_analysis(user_id, text, input_to_model, analysis)
+        return await self._handle_analysis(user_id, text, input_to_model, analysis, ai_config=ai_config)
 
     async def run_structured(
         self,
@@ -138,12 +162,21 @@ class Agent:
             "original_text": text,
             "input_source": "FORM",
         }
-        return await self._handle_analysis(user_id, text, text, analysis, structured=True)
+        return await self._handle_analysis(
+            user_id, text, text, analysis, structured=True, ai_config=get_user_ai_config(user_id)
+        )
 
     async def _handle_analysis(
-        self, user_id: int, text: str, input_to_model: str, analysis: Any, structured: bool = False
+        self,
+        user_id: int,
+        text: str,
+        input_to_model: str,
+        analysis: Any,
+        structured: bool = False,
+        ai_config: Optional[UserAIConfig] = None,
     ) -> dict:
         # structured=True: dữ liệu từ biểu mẫu là chính xác, không cần các bước "sửa lỗi LLM" dựa trên câu chữ
+        cfg = ai_config or get_user_ai_config(user_id)
         # 4. Kiểm tra format kết quả phân tích
         if not isinstance(analysis, dict):
             return {
@@ -169,6 +202,26 @@ class Agent:
         # không dựa vào status/missing_fields của LLM (top-level product / quantity để trống).
         multi_intent = resolve_multi_intent(intent, entities)
         if multi_intent:
+            if not cfg.is_intent_allowed(multi_intent):
+                return {
+                    "success": False,
+                    "status": "feature_locked",
+                    "code": "INTENT_NOT_ALLOWED",
+                    "user_id": user_id,
+                    "intent": multi_intent,
+                    "analysis": analysis,
+                    "message": locked_intent_message(multi_intent, cfg.plan_code),
+                }
+            if not cfg.allow_multi_item:
+                return {
+                    "success": False,
+                    "status": "feature_locked",
+                    "code": "MULTI_ITEM_LOCKED",
+                    "user_id": user_id,
+                    "intent": multi_intent,
+                    "analysis": analysis,
+                    "message": "Gói hiện tại chưa hỗ trợ ghi nhiều sản phẩm trong một câu. Vui lòng nói từng sản phẩm một hoặc nâng cấp gói.",
+                }
             intent = multi_intent
             analysis = {**analysis, "intent": intent, "llm_intent": analysis.get("intent")}
             # Tiền đã trả là của cả đơn ("bán 2 coca và 3 mì 80k, khách trả 50k")
@@ -188,6 +241,18 @@ class Agent:
                 "intent": intent,
                 "analysis": analysis,
                 "mcp_result": handler_result,
+            }
+
+        # 4c. Chặn sớm nếu LLM trả về intent nằm ngoài gói được phép của tài khoản
+        if intent and intent != "khac" and self.router.get_handler(intent) and not cfg.is_intent_allowed(intent):
+            return {
+                "success": False,
+                "status": "feature_locked",
+                "code": "INTENT_NOT_ALLOWED",
+                "user_id": user_id,
+                "intent": intent,
+                "analysis": analysis,
+                "message": locked_intent_message(intent, cfg.plan_code),
             }
 
         # 5. LLM Error (thiếu field) — intent lạ được xử lý ở bước 6
@@ -246,6 +311,18 @@ class Agent:
             or entities.get("payment") != llm_payment or paid_found
         ):
             analysis = {**analysis, "intent": intent, "entities": entities, "llm_intent": llm_intent}
+
+        # 6c. Kiểm tra lại sau khi resolve_credit_sale_intent (tránh chuyển sang intent ngoài gói)
+        if intent != llm_intent and not cfg.is_intent_allowed(intent):
+            return {
+                "success": False,
+                "status": "feature_locked",
+                "code": "INTENT_NOT_ALLOWED",
+                "user_id": user_id,
+                "intent": intent,
+                "analysis": analysis,
+                "message": locked_intent_message(intent, cfg.plan_code),
+            }
 
         # 7. Router điều phối sang Intent Handler
         handler_result = await self.router.route(
