@@ -74,6 +74,7 @@ graphify-out/
 .claude/CLAUDE.md
 .claude/skills/graphify/
 .gemini/
+.agents/
 GEMINI.md
 /CLAUDE.md
 

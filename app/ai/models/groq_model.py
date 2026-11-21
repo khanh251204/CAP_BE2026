@@ -14,7 +14,7 @@ class GroqModel(ModelProvider):
         system_prompt: Optional[str] = None,
         temperature: float = 0.0
     ):
-        name = model_name or "openai/gpt-oss-120b"
+        name = model_name or "qwen/qwen3.8-27b"
         super().__init__(model_name=name, system_prompt=system_prompt)
 
         from app.ai.llm.groq_client_pool import GroqFailoverClient, get_groq_pool

@@ -37,8 +37,25 @@ def units_by_product(db: Session, user_id: int, product_ids: Iterable[int]) -> D
     )
     result: Dict[int, List[Dict[str, Any]]] = {}
     for r in rows:
-        result.setdefault(r.product_id, []).append({"unit_name": r.unit_name, "factor": float(r.factor)})
+        item: Dict[str, Any] = {"unit_name": r.unit_name, "factor": float(r.factor)}
+        if getattr(r, "unit_price", None) is not None:
+            item["unit_price"] = float(r.unit_price)
+        else:
+            item["unit_price"] = None
+        result.setdefault(r.product_id, []).append(item)
     return result
+
+
+def _parse_unit_price(value: Any, unit_name: str) -> Optional[Decimal]:
+    if value in (None, ""):
+        return None
+    try:
+        price = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Giá bán của '{unit_name}' không hợp lệ")
+    if price <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Giá bán của 1 {unit_name} phải lớn hơn 0")
+    return price.quantize(Decimal("0.01"))
 
 
 def _parse_factor(value: Any, unit_name: str, default_unit: str) -> Decimal:
@@ -88,7 +105,7 @@ class ProductUnitService:
         if not default_unit:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sản phẩm chưa có đơn vị tính kho, hãy đặt đơn vị trước")
 
-        wanted: Dict[str, tuple] = {}  # unit_key -> (tên hiển thị, factor)
+        raw_entries: Dict[str, tuple] = {}  # unit_key -> (tên hiển thị, factor, base_unit, unit_price)
         for u in units:
             name = " ".join(str(u.get("unit_name") or "").split())
             if not name:
@@ -103,9 +120,53 @@ class ProductUnitService:
                     f"'{name}' và '{default_unit}' đã tự quy đổi cho nhau, không cần khai báo",
                 )
             key = unit_key(name)
-            if key in wanted:
+            if key in raw_entries:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Đơn vị '{name}' bị khai báo nhiều lần")
-            wanted[key] = (name, _parse_factor(u.get("factor"), name, default_unit))
+            base_unit = " ".join(str(u.get("base_unit") or "").split()) or default_unit
+            raw_entries[key] = (
+                name,
+                _parse_factor(u.get("factor"), name, base_unit),
+                base_unit,
+                _parse_unit_price(u.get("unit_price"), name),
+            )
+
+        # Giải quy đổi phân cấp / theo đơn vị đo cùng loại về default_unit:
+        # vd: 1 lốc = 6 lon, 1 thùng = 4 lốc -> 1 thùng = 24 lon; 1 bao = 25 kg (kho g) -> 25000 g.
+        resolved: Dict[str, Decimal] = {}
+
+        def _resolve_factor(key: str, visiting: set) -> Decimal:
+            if key in resolved:
+                return resolved[key]
+            if key in visiting:
+                name = raw_entries[key][0]
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Đơn vị '{name}' đang quy đổi vòng lặp, hãy kiểm tra lại.",
+                )
+            visiting.add(key)
+            name, factor, base_unit, _ = raw_entries[key]
+            if is_unit_valid(base_unit, default_unit):
+                total = factor
+            else:
+                generic = unit_ratio(base_unit, default_unit)
+                if generic is not None:
+                    total = factor * generic
+                else:
+                    base_key = unit_key(base_unit)
+                    if base_key not in raw_entries:
+                        raise HTTPException(
+                            status.HTTP_400_BAD_REQUEST,
+                            f"Đơn vị tham chiếu '{base_unit}' của '{name}' không quy đổi được sang '{default_unit}'.",
+                        )
+                    total = factor * _resolve_factor(base_key, visiting)
+            visiting.remove(key)
+            total = _parse_factor(total, name, default_unit)
+            resolved[key] = total
+            return total
+
+        wanted: Dict[str, tuple] = {}  # unit_key -> (tên hiển thị, factor theo default_unit, unit_price)
+        for key, (name, _, _, unit_price) in raw_entries.items():
+            wanted[key] = (name, _resolve_factor(key, set()), unit_price)
 
         now = datetime.now()
         existing = {
@@ -119,23 +180,33 @@ class ProductUnitService:
                 if key not in wanted and row.is_active:
                     row.is_active = False
                     row.updated_at = now
-            for key, (name, factor) in wanted.items():
+            for key, (name, factor, unit_price) in wanted.items():
                 row = existing.get(key)
                 if row:
                     row.unit_name = name
                     row.factor = factor
+                    row.unit_price = unit_price
                     row.is_active = True
                     row.updated_at = now
                 else:
                     self.db.add(ProductUnit(
                         user_id=user_id, product_id=product_id, unit_name=name, factor=factor,
-                        is_active=True, created_at=now, updated_at=now,
+                        unit_price=unit_price, is_active=True, created_at=now, updated_at=now,
                     ))
             self.db.commit()
         except Exception:
             self.db.rollback()
             raise
         return self._serialize(user_id, product)
+
+    def add_units(self, user_id: int, product_id: int, units: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Thêm (hoặc cập nhật) một hoặc nhiều đơn vị quy đổi mới, giữ nguyên các đơn vị đang có."""
+        if not units:
+            return self.get_units(user_id, product_id)
+        existing_active = units_by_product(self.db, user_id, [product_id]).get(product_id, [])
+        incoming_keys = {unit_key(u.get("unit_name")) for u in units if u.get("unit_name")}
+        merged = [u for u in existing_active if unit_key(u.get("unit_name")) not in incoming_keys] + list(units)
+        return self.replace_units(user_id, product_id, merged)
 
 
 # ======================================================================

@@ -25,6 +25,8 @@ from app.services.sales_policy import (
     get_sale_stock_policy,
     get_user_business_type,
     is_unit_valid,
+    unit_ratio,
+    unit_catalog_price,
     invalid_unit_message,
     normalize_product_type,
     is_unpaid_payment,
@@ -144,12 +146,14 @@ class InventoryService:
             # 3. Lấy đơn giá người dùng nhập
             input_price = item.get("unit_price") if item.get("unit_price") is not None else item.get("price")
             final_unit_price = None
+            price_from_catalog = False
 
             # TH1: Có giá người dùng nhập vào (> 0)
             if input_price is not None and float(input_price) > 0:
                 final_unit_price = Decimal(str(input_price))
             else:
-                # TH2: Tự lấy unit_price từ bảng Product
+                # TH2: Tự lấy unit_price từ bảng Product (đã tính theo default_unit)
+                price_from_catalog = True
                 if hasattr(self.repo, "get_product_price"):
                     final_unit_price = self.repo.get_product_price(user_id=user_id, product_id=p_id)
                 elif product_obj and getattr(product_obj, "unit_price", None) is not None:
@@ -180,6 +184,7 @@ class InventoryService:
                 "unit": unit,
                 "default_unit": getattr(product_obj, "default_unit", None) or "",
                 "unit_price": final_unit_price,
+                "price_from_catalog": price_from_catalog,
                 "product_type": normalize_product_type(getattr(product_obj, "product_type", None)),
             })
 
@@ -201,24 +206,43 @@ class InventoryService:
             # 1. Tính tổng giá trị đơn hàng
             total_amount = Decimal("0.0")
             processed_items = []
+            units_map = units_by_product(self.db, user_id, [it["product_id"] for it in items])
 
             for item in items:
-                if not is_unit_valid(item.get("unit"), item.get("default_unit")):
-                    self.db.rollback()
-                    return {
-                        "status": "invalid_unit",
-                        "error_code": ERROR_INVALID_UNIT,
-                        "success": False,
-                        "message": invalid_unit_message(
-                            item.get("product_name") or item["product_id"], item.get("unit"), item.get("default_unit")
-                        ),
-                    }
-                if item.get("default_unit"):
-                    item["unit"] = item["default_unit"]
-
                 qty = Decimal(str(item["quantity"]))
                 price = Decimal(str(item["unit_price"]))
                 subtotal = qty * price
+
+                if not is_unit_valid(item.get("unit"), item.get("default_unit")):
+                    extra_units = units_map.get(item["product_id"], [])
+                    ratio = unit_ratio(item.get("unit"), item.get("default_unit"), extra_units)
+                    if ratio is None:
+                        self.db.rollback()
+                        return {
+                            "status": "invalid_unit",
+                            "error_code": ERROR_INVALID_UNIT,
+                            "success": False,
+                            "message": invalid_unit_message(
+                                item.get("product_name") or item["product_id"],
+                                item.get("unit"),
+                                item.get("default_unit"),
+                                extra_units,
+                            ),
+                        }
+                    raw_qty = qty
+                    qty = qty * ratio
+                    if item.get("price_from_catalog"):
+                        special_price = unit_catalog_price(item.get("unit"), extra_units)
+                        if special_price is not None:
+                            subtotal = raw_qty * special_price
+                            price = special_price / ratio
+                        else:
+                            subtotal = qty * price
+                    else:
+                        price = price / ratio
+                if item.get("default_unit"):
+                    item["unit"] = item["default_unit"]
+
                 total_amount += subtotal
                 
                 pname = item.get("product_name") or item.get("name")
@@ -405,11 +429,13 @@ class InventoryService:
 
             # Nhiều dòng cùng một sản phẩm: các dòng sau phải thấy tồn đã bị dòng trước trừ, nếu không bán vượt tồn
             consumed: Dict[int, Decimal] = {}
+            units_map = units_by_product(self.db, user_id, [it["product_id"] for it in items])
 
             for item in items:
                 qty = Decimal(str(item["quantity"]))
                 product_id = item["product_id"]
                 price = Decimal(str(item["unit_price"]))
+                subtotal = qty * price
                 display_name = item.get("product_name") or product_id
                 policy = get_sale_stock_policy(business_type, item.get("product_type"))
 
@@ -423,13 +449,29 @@ class InventoryService:
                     }
 
                 if not is_unit_valid(item.get("unit"), item.get("default_unit")):
-                    self.db.rollback()
-                    return {
-                        "status": "invalid_unit",
-                        "error_code": ERROR_INVALID_UNIT,
-                        "success": False,
-                        "message": invalid_unit_message(display_name, item.get("unit"), item.get("default_unit")),
-                    }
+                    extra_units = units_map.get(product_id, [])
+                    ratio = unit_ratio(item.get("unit"), item.get("default_unit"), extra_units)
+                    if ratio is None:
+                        self.db.rollback()
+                        return {
+                            "status": "invalid_unit",
+                            "error_code": ERROR_INVALID_UNIT,
+                            "success": False,
+                            "message": invalid_unit_message(
+                                display_name, item.get("unit"), item.get("default_unit"), extra_units
+                            ),
+                        }
+                    raw_qty = qty
+                    qty = qty * ratio
+                    if item.get("price_from_catalog"):
+                        special_price = unit_catalog_price(item.get("unit"), extra_units)
+                        if special_price is not None:
+                            subtotal = raw_qty * special_price
+                            price = special_price / ratio
+                        else:
+                            subtotal = qty * price
+                    else:
+                        price = price / ratio
                 if item.get("default_unit"):
                     # Lưu đúng cách viết đơn vị trong DB
                     item["unit"] = item["default_unit"]
@@ -457,7 +499,6 @@ class InventoryService:
 
                 consumed[product_id] = consumed.get(product_id, Decimal("0")) + stock_out_qty
 
-                subtotal = qty * price
                 total_amount += subtotal
 
                 pname = item.get("product_name") or item.get("name")

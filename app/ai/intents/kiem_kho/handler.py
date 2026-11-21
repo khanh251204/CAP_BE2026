@@ -77,7 +77,7 @@ class KiemKhoHandler:
                 "product_name": product_name,
                 "unit_requested": entities.get("unit"),
                 "default_unit": product_unit,
-                "message": invalid_unit_message(product_name, entities.get("unit"), product_unit),
+                "message": invalid_unit_message(product_name, entities.get("unit"), product_unit, stock.get("units")),
             }
         if converted is not entities:
             ratio = unit_ratio(entities.get("unit"), product_unit, stock.get("units"))

@@ -71,7 +71,7 @@ class HangHongHandler:
                 "product_name": product.get("product_name"),
                 "unit_requested": entities.get("unit"),
                 "default_unit": product_unit,
-                "message": invalid_unit_message(product.get("product_name"), entities.get("unit"), product_unit),
+                "message": invalid_unit_message(product.get("product_name"), entities.get("unit"), product_unit, product.get("units")),
             }
         entities = converted
         qty = float(entities.get("quantity") or qty)

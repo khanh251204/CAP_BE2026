@@ -39,11 +39,11 @@ INTENT_RULES = """
    - `ban_hang` vs `khach_ghi_no` (BÁN NỢ):
      * Có hàng hóa cụ thể (product + quantity) kèm "nợ", "chịu", "ghi sổ", "trả sau", "thiếu lại"
        -> `ban_hang` với payment="PENDING". VD: "Bán nợ 5 lon coca cho chị Lan", "Chị Lan lấy chịu 2 thùng bia",
-       "Ghi nợ chị Lan 3 gói mì" -> đều là `ban_hang`.
-     * Chỉ ghi nợ một số tiền, không kèm số lượng hàng -> `khach_ghi_no`. VD: "Ghi nợ chị Lan 200k", "Chị Lan nợ 500 nghìn".
+       "Ghi nợ anh Sơn 4 chai dầu ăn" -> đều là `ban_hang`.
+     * Chỉ ghi nợ một số tiền, không kèm số lượng hàng -> `khach_ghi_no`. VD: "Ghi nợ anh Phúc 350k", "Chị Lan nợ 500 nghìn".
    - `chi_phi` vs `tra_no_nha_cung_cap`: "thanh toán", "đóng", "trả", "chi" + một khoản chi
      (tiền điện, nước, internet, mặt bằng, lương, vận chuyển, rác...) -> `chi_phi`.
-     VD: "Thanh toán tiền điện 1 triệu", "Đóng tiền nước 200k", "Trả lương nhân viên 5 triệu" -> `chi_phi`.
+     VD: "Thanh toán tiền điện 1 triệu", "Đóng tiền nước 200k", "Trả lương bảo vệ 4 triệu" -> `chi_phi`.
      Chỉ khi trả cho NHÀ CUNG CẤP / trả nợ tiền hàng -> `tra_no_nha_cung_cap`.
      "Trả"/"đóng"/"chi" + khoản chi vận hành (vận chuyển, giao hàng, nhân công, thuê mặt bằng/xưởng, quảng cáo,
      phí ngân hàng, sửa máy, xăng xe...) mà KHÔNG có "nợ" và KHÔNG nêu nhà cung cấp -> luôn là `chi_phi`.

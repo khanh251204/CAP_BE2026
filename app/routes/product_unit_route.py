@@ -12,8 +12,17 @@ product_unit_router = APIRouter(tags=["Product Unit"])
 
 
 class ProductUnitInput(BaseModel):
-    unit_name: str = Field(..., description="Tên đơn vị quy đổi, vd 'gói', 'thùng'")
-    factor: float = Field(..., gt=0, description="Số đơn vị tính kho trong 1 đơn vị này (1 gói = 1000 g -> 1000)")
+    unit_name: str = Field(..., description="Tên đơn vị quy đổi, vd 'gói', 'thùng', 'lốc'")
+    factor: float = Field(..., gt=0, description="Số đơn vị tham chiếu trong 1 đơn vị này (vd 1 thùng = 24 lon hoặc 1 thùng = 4 lốc)")
+    base_unit: Optional[str] = Field(
+        None,
+        description="Đơn vị tham chiếu (mặc định là đơn vị kho). Có thể là đơn vị đo cùng loại (vd 'kg' khi kho 'g') hoặc đơn vị quy đổi khác (vd 'lốc').",
+    )
+    unit_price: Optional[float] = Field(
+        None,
+        gt=0,
+        description="Giá bán riêng cho 1 đơn vị này (vd 1 thùng = 210000đ rẻ hơn 24 lon); bỏ trống = tự nhân theo giá lẻ",
+    )
 
 
 class ProductUnitReplaceRequest(BaseModel):
@@ -24,6 +33,7 @@ class ProductUnitReplaceRequest(BaseModel):
 class ProductUnitItem(BaseModel):
     unit_name: str
     factor: float
+    unit_price: Optional[float] = None
 
 
 class ProductUnitResponse(BaseModel):
@@ -61,3 +71,19 @@ def replace_product_units(
 ):
     units = [u.model_dump() for u in request.units]
     return ProductUnitService(db).replace_units(user_id, product_id, units)
+
+
+@product_unit_router.post(
+    "/products/{product_id}/units",
+    response_model=ProductUnitResponse,
+    summary="Thêm một hoặc nhiều đơn vị quy đổi (giữ nguyên các đơn vị đã có)",
+    dependencies=[Depends(require_permission("product:update"))],
+)
+def add_product_units(
+    request: ProductUnitReplaceRequest,
+    product_id: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    units = [u.model_dump() for u in request.units]
+    return ProductUnitService(db).add_units(user_id, product_id, units)

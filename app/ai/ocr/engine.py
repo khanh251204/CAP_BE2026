@@ -181,14 +181,19 @@ def resolve_engine_name() -> str:
 
 
 def extract_text(image) -> Dict:
-    """Ảnh -> {"text", "n_tiles", "latency_ms", "engine"}. Vintern lỗi thì chuyển sang Gemini (nếu có khóa)."""
+    """Ảnh -> {"text", "n_tiles", "latency_ms", "engine", "model"}. Vintern lỗi thì chuyển sang Gemini (nếu có khóa)."""
     from app.configs.settings import settings
     name = resolve_engine_name()
     if name == "vintern":
+        logger.info("[OCR] Đang đọc ảnh bằng engine=vintern | model=%s", settings.OCR_MODEL_ID)
         try:
-            return {**_get_vintern().extract_text(image), "engine": "vintern"}
+            return {**_get_vintern().extract_text(image), "engine": "vintern", "model": settings.OCR_MODEL_ID}
         except OcrUnavailableError as e:
             if not (settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")):
                 raise
-            logger.warning("[OCR] Vintern không dùng được (%s), chuyển sang Gemini", e)
-    return {**_get_gemini().extract_text(image), "engine": "gemini"}
+            logger.warning(
+                "[OCR] Vintern (%s) không dùng được (%s), chuyển sang engine=gemini | model=%s",
+                settings.OCR_MODEL_ID, e, settings.OCR_GEMINI_MODEL,
+            )
+    logger.info("[OCR] Đang đọc ảnh bằng engine=gemini | model=%s", settings.OCR_GEMINI_MODEL)
+    return {**_get_gemini().extract_text(image), "engine": "gemini", "model": settings.OCR_GEMINI_MODEL}

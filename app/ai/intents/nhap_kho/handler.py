@@ -93,7 +93,7 @@ class NhapKhoHandler:
                 "product_name": product["product_name"],
                 "unit_requested": entities.get("unit"),
                 "default_unit": product_unit,
-                "message": invalid_unit_message(product["product_name"], entities.get("unit"), product_unit),
+                "message": invalid_unit_message(product["product_name"], entities.get("unit"), product_unit, product.get("units")),
             }
         entities = converted
         if not new_product_spec and product_unit:

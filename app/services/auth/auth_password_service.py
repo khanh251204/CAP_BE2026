@@ -88,7 +88,12 @@ def send_auth_otp(db: Session, data: SendOTPRequest):
             "otpExpiresIn": OTP_EXPIRE_MINUTES * 60,
             "resendCountdown": OTP_RESEND_COOLDOWN_SECONDS
         }
-        if not user or not user.password_hash or not user.is_verified:
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email này chưa được đăng ký tài khoản"
+            )
+        if not user.password_hash or not user.is_verified:
             return response
 
     if data.purpose == UNLOCK_ACCOUNT:

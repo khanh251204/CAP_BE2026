@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-PARSE_MODEL = "openai/gpt-oss-120b"
+PARSE_MODEL = "qwen/qwen3.8-27b"
 TOLERANCE = Decimal("1")  # lệch tối đa 1đ do làm tròn
 
 SYSTEM_PROMPT = (
@@ -70,7 +70,8 @@ def _call_llm(text: str) -> Dict:
         model=PARSE_MODEL, temperature=0.0, response_format={"type": "json_object"},
         messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}],
     ))
-    return _extract_json(resp.choices[0].message.content or "")
+    raw = re.sub(r"<think>.*?</think>", "", resp.choices[0].message.content or "", flags=re.DOTALL).strip()
+    return _extract_json(raw)
 
 
 def validate_items(raw_items: List[Any], receipt_total: Optional[int]) -> Dict:

@@ -112,17 +112,24 @@ def is_unit_valid(requested_unit: Optional[str], product_unit: Optional[str]) ->
     return req == prod or _strip_accents(req) == _strip_accents(prod)
 
 
-# Quy đổi đơn vị cùng loại (khối lượng về gram, thể tích về ml). Khóa đã bỏ dấu, viết thường.
+# Quy đổi đơn vị cùng loại (khối lượng về gram, thể tích về ml, chiều dài về mm). Khóa đã bỏ dấu, viết thường.
 _UNIT_FACTORS = {
     "mass": {
         "g": 1, "gr": 1, "gam": 1, "gram": 1,
         "lang": 100,
-        "kg": 1000, "kilogram": 1000, "kilo": 1000, "ki lo": 1000, "ky": 1000, "ki": 1000,
+        "kg": 1000, "kilogram": 1000, "kilo": 1000, "ki lo": 1000, "ky": 1000, "ki": 1000, "can": 1000,
         "yen": 10_000, "ta": 100_000, "tan": 1_000_000,
     },
     "volume": {
-        "ml": 1, "mililit": 1, "mi li lit": 1,
+        "ml": 1, "mililit": 1, "mi li lit": 1, "cc": 1,
         "l": 1000, "lit": 1000, "liter": 1000, "litre": 1000,
+    },
+    "length": {
+        "mm": 1, "milimet": 1, "mi li met": 1,
+        "cm": 10, "centimet": 10, "xang ti met": 10, "phan": 10,
+        "dm": 100, "tac": 100,
+        "m": 1000, "met": 1000, "meter": 1000, "metre": 1000,
+        "km": 1_000_000,
     },
 }
 
@@ -151,6 +158,29 @@ def unit_ratio(requested_unit: Optional[str], product_unit: Optional[str], extra
     for table in _UNIT_FACTORS.values():
         if req in table and prod in table:
             return Decimal(table[req]) / Decimal(table[prod])
+    return None
+
+
+def unit_catalog_price(requested_unit: Optional[str], extra_units: Optional[list] = None):
+    """
+    Giá bán riêng đã khai báo cho 1 đơn vị quy đổi (vd 1 thùng = 210000đ rẻ hơn 24 lon).
+    Trả None nếu không khai báo giá riêng (sẽ tự nhân theo giá lẻ).
+    """
+    from decimal import Decimal, InvalidOperation
+
+    req = unit_key(requested_unit)
+    if not req:
+        return None
+    for u in extra_units or []:
+        if unit_key(u.get("unit_name")) == req:
+            raw = u.get("unit_price")
+            if raw in (None, ""):
+                return None
+            try:
+                val = Decimal(str(raw))
+                return val if val > 0 else None
+            except (InvalidOperation, ValueError, TypeError):
+                return None
     return None
 
 
@@ -184,7 +214,23 @@ def to_product_unit(entities: dict, product_unit: Optional[str], extra_units: Op
     return converted
 
 
-def invalid_unit_message(product_name: str, requested_unit: str, product_unit: str) -> str:
+def invalid_unit_message(
+    product_name: str,
+    requested_unit: str,
+    product_unit: str,
+    extra_units: Optional[list] = None,
+) -> str:
+    extra_names = [
+        str(u.get("unit_name")).strip()
+        for u in (extra_units or [])
+        if isinstance(u, dict) and str(u.get("unit_name") or "").strip()
+    ]
+    if extra_names:
+        allowed = ", ".join([f"'{product_unit}'"] + [f"'{n}'" for n in extra_names])
+        return (
+            f"Đơn vị '{requested_unit}' không tồn tại cho sản phẩm '{product_name}'. "
+            f"Sản phẩm này hỗ trợ các đơn vị: {allowed}. Vui lòng nói lại số lượng theo đơn vị hợp lệ."
+        )
     return (
         f"Đơn vị '{requested_unit}' không tồn tại cho sản phẩm '{product_name}'. "
         f"Sản phẩm này được tính theo '{product_unit}', vui lòng nói lại số lượng theo '{product_unit}'."

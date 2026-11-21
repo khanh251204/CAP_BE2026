@@ -22,6 +22,8 @@ class ProductUnit(Base):
     unit_name = Column(String(50), nullable=False)
     # Số default_unit trong 1 đơn vị này (1 gói = 1000 g -> 1000)
     factor = Column(Numeric(15, 4), nullable=False)
+    # Giá bán riêng cho 1 đơn vị này (vd 1 thùng = 210000đ rẻ hơn 24 lon); NULL = tự nhân theo giá lẻ
+    unit_price = Column(Numeric(15, 2), nullable=True)
 
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)

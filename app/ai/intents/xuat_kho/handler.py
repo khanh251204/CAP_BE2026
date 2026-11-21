@@ -68,7 +68,7 @@ class XuatKhoHandler:
                 "product_name": product_name,
                 "unit_requested": entities.get("unit"),
                 "default_unit": product_unit,
-                "message": invalid_unit_message(product_name, entities.get("unit"), product_unit),
+                "message": invalid_unit_message(product_name, entities.get("unit"), product_unit, stock_result.get("units")),
             }
         entities = converted
         if product_unit:
@@ -77,7 +77,7 @@ class XuatKhoHandler:
         stock_quantity = stock_result.get("quantity", 0)
 
         try:
-            qty_requested = float(quantity_requested)
+            qty_requested = float(entities.get("quantity") or quantity_requested)
             qty_in_stock = float(stock_quantity)
         except (TypeError, ValueError):
             qty_requested = 0.0

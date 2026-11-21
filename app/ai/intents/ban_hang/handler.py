@@ -21,6 +21,7 @@ from app.services.sales_policy import (
     get_sale_stock_policy,
     is_unit_valid,
     to_product_unit,
+    unit_catalog_price,
     invalid_unit_message,
     normalize_business_type,
     is_unpaid_payment,
@@ -199,6 +200,21 @@ class BanHangHandler:
                     f"Ví dụ: \"bán {qty_requested:g} {product_unit or 'cái'} {product_name}\"."
                 ),
             }
+        # Nếu bán theo đơn vị quy đổi có giá riêng (vd 1 thùng = 210k rẻ hơn 24 lon) và người dùng không nói giá -> dùng giá riêng đó
+        if (
+            not new_product_spec
+            and entities.get("price") in (None, "")
+            and entities.get("unit_price") in (None, "")
+            and entities.get("total_price") in (None, "")
+        ):
+            special_price = unit_catalog_price(requested_unit, stock_result.get("units"))
+            if special_price is not None:
+                from decimal import Decimal
+                entities = {
+                    **entities,
+                    "price": float(special_price),
+                    "total_price": float(Decimal(str(qty_requested)) * special_price),
+                }
         # "bán 2 lạng thịt" với sản phẩm tính theo kg -> quy đổi; khác loại đơn vị mới báo lỗi
         converted = entities if new_product_spec else to_product_unit(entities, product_unit, stock_result.get("units"))
         if converted is None:
@@ -210,7 +226,7 @@ class BanHangHandler:
                 "product_name": product_name,
                 "unit_requested": requested_unit,
                 "default_unit": product_unit,
-                "message": invalid_unit_message(product_name, requested_unit, product_unit),
+                "message": invalid_unit_message(product_name, requested_unit, product_unit, stock_result.get("units")),
             }
         entities = converted
         qty_requested = float(entities.get("quantity") or qty_requested)

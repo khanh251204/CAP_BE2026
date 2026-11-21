@@ -222,5 +222,110 @@
     "type": "unit",
     "region": "all",
     "confidence": 1.0
+  },
+  {
+    "term": "mét",
+    "normalized": "m",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "xăng ti mét",
+    "normalized": "cm",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "xăng-ti-mét",
+    "normalized": "cm",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "centimet",
+    "normalized": "cm",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "mi li mét",
+    "normalized": "mm",
+    "type": "unit",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa lạng",
+    "normalized": "0.5 lạng",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa mét",
+    "normalized": "0.5 m",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa thùng",
+    "normalized": "0.5 thùng",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa lốc",
+    "normalized": "0.5 lốc",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa chục",
+    "normalized": "0.5 chục",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa tá",
+    "normalized": "0.5 tá",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa hộp",
+    "normalized": "0.5 hộp",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa bao",
+    "normalized": "0.5 bao",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa vỉ",
+    "normalized": "0.5 vỉ",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
+  },
+  {
+    "term": "nửa két",
+    "normalized": "0.5 két",
+    "type": "number",
+    "region": "all",
+    "confidence": 1.0
   }
 ]

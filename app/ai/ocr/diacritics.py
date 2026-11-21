@@ -13,7 +13,7 @@ from app.ai.ocr.text_utils import strip_accents
 
 logger = logging.getLogger(__name__)
 
-RESTORE_MODEL = "openai/gpt-oss-120b"
+RESTORE_MODEL = "qwen/qwen3.8-27b"
 
 _DIAC = set("àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ")
 
@@ -82,7 +82,7 @@ def verify_merge(original: str, restored: str) -> Dict:
 def _call_groq(text: str) -> str:
     from app.ai.llm.groq_client_pool import get_groq_pool
     resp = get_groq_pool().call(lambda c: c.chat.completions.create(
-        model=RESTORE_MODEL, temperature=0.0, reasoning_effort="low",
+        model=RESTORE_MODEL, temperature=0.0,
         messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}],
     ))
     return resp.choices[0].message.content or ""

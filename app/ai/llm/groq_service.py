@@ -27,9 +27,9 @@ class GroqService:
         # ========================================================
         # PLUGGABLE AI MODEL INITIALIZATION
         # ========================================================
-        # Đọc cấu hình từ .env (ACTIVE_AI_MODEL), mặc định là groq_120b (openai/gpt-oss-120b).
-        # Đổi sang Qwen 27B: ACTIVE_AI_MODEL=qwen_27b (hoặc điền thẳng tên model Groq).
-        self.active_ai_model = (os.getenv("ACTIVE_AI_MODEL") or "groq_120b").strip()
+        # Đọc cấu hình từ .env (ACTIVE_AI_MODEL), mặc định là qwen (qwen/qwen3.8-27b).
+        # Đổi sang GPT-OSS 120B: ACTIVE_AI_MODEL=groq_120b (hoặc điền thẳng tên model Groq).
+        self.active_ai_model = (os.getenv("ACTIVE_AI_MODEL") or "qwen").strip()
 
         from app.ai.models import get_model_provider
 

@@ -17,6 +17,8 @@ from app.ai.ocr import engine
 from app.ai.ocr.receipt_parser import parse_receipt
 from app.ai.ocr.text_utils import extract_total
 from app.repositories.inventory.inventory_lookup_repo import AmbiguousMatchError, InventoryLookupRepository
+from app.services.new_product_service import FLOW_PURCHASE, NEW_PRODUCT_KEY, build_spec, default_product_type
+from app.services.sales_policy import get_user_business_type
 from app.services.session_store_service import SessionStoreService
 
 logger = logging.getLogger(__name__)
@@ -37,7 +39,7 @@ def _match_products(db: Session, user_id: int, items: List[Dict[str, Any]]) -> N
         it["match"] = "matched" if pid else "not_found"
 
 
-def _draft_payload(parsed: Dict[str, Any], text: str) -> Dict[str, Any]:
+def _draft_payload(parsed: Dict[str, Any], text: str, business_type: Optional[str] = None) -> Dict[str, Any]:
     items = [{
         "product_id": i["product_id"],
         "product_name": i["name"],
@@ -54,6 +56,13 @@ def _draft_payload(parsed: Dict[str, Any], text: str) -> Dict[str, Any]:
         "date": parsed.get("date"),
         "input_text": text,
         "source": "OCR",
+        # Cho phép tự thêm sản phẩm mới vào danh mục khi người dùng bấm xác nhận phiếu nhập
+        NEW_PRODUCT_KEY: build_spec(
+            name="",
+            unit=None,
+            sale_price=None,
+            product_type=default_product_type(FLOW_PURCHASE, business_type),
+        ),
     }
 
 
@@ -82,11 +91,31 @@ def process_image(user_id: int, image: Any, quality: Dict[str, Any], db: Session
     parsed = parse_receipt(text, extract_total(text))
     _match_products(db, user_id, parsed["items"])
 
+    from app.ai.ocr.diacritics import RESTORE_MODEL
+    from app.ai.ocr.receipt_parser import PARSE_MODEL
+    logger.info(
+        "[OCR] Hoàn tất user_id=%s | engine=%s | model=%s | diacritics=%s | parser=%s | items=%d | latency_ms=%s",
+        user_id,
+        ocr.get("engine"),
+        ocr.get("model"),
+        RESTORE_MODEL if settings.OCR_RESTORE_DIACRITICS else "off",
+        PARSE_MODEL,
+        len(parsed["items"]),
+        ocr.get("latency_ms"),
+    )
+
     result: Dict[str, Any] = {
         "intent": INTENT,
         "quality": quality,
-        "ocr": {"text": text, "text_original": ocr["text"], "n_tiles": ocr["n_tiles"], "engine": ocr.get("engine"),
-                "latency_ms": ocr["latency_ms"], "diacritics_restored": fixed["changed"]},
+        "ocr": {
+            "text": text,
+            "text_original": ocr["text"],
+            "n_tiles": ocr["n_tiles"],
+            "engine": ocr.get("engine"),
+            "model": ocr.get("model"),
+            "latency_ms": ocr["latency_ms"],
+            "diacritics_restored": fixed["changed"],
+        },
         "receipt": parsed,
     }
 
@@ -106,7 +135,8 @@ def process_image(user_id: int, image: Any, quality: Dict[str, Any], db: Session
     # POST /agent/pending-action/confirmation (corrected_transaction.items). Bản sửa luôn được kiểm lại
     # từng dòng ở AgentConfirmService, nên không ghi sổ được khi còn dòng thiếu / sai.
     if items:
-        payload = _draft_payload(parsed, text)
+        bt = get_user_business_type(db, user_id)
+        payload = _draft_payload(parsed, text, business_type=bt)
         SessionStoreService.save_confirmation(
             session_key=user_id,
             data={"intent": INTENT, "payload": payload, "input_method": "MANUAL"},

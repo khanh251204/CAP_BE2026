@@ -7,14 +7,14 @@ ENTITY_RULES = """
    - `product`: Tên sản phẩm/hàng hóa (String hoặc null).
    - `quantity`: Số lượng dạng số (Number hoặc null).
      * Chỉ điền khi người dùng NÓI RÕ số lượng. KHÔNG tự đoán là 1 khi câu chỉ có đơn vị.
-     * VD: "Bán lốc sữa chua 50000, tiền mặt" -> quantity=null, unit="lốc", total_price=50000.
+     * VD: "Bán thùng nước ngọt 180k, chuyển khoản" -> quantity=null, unit="thùng", total_price=180000.
      * Số đứng NGAY TRƯỚC đơn vị tính (lốc, thùng, kg, lon, gói...) LUÔN là `quantity`, kể cả số rất lớn;
        KHÔNG đưa số đó vào price / total_price.
    - `unit`: Đơn vị tính đã chuẩn hóa (kg, lốc, thùng, cái, hộp, gói, lon, chai, ly, vỉ... hoặc null).
    - `price`: Đơn giá của MỘT đơn vị sản phẩm (số nguyên VND, hoặc null).
      * Chỉ điền khi số tiền GẮN VỚI MỘT ĐƠN VỊ: "mỗi cái 28k", "giá 30k mỗi kí", "đơn giá 28k", "20k một lon",
        "30k/kg", "28k một cái".
-     * Câu KHÔNG nói số lượng (thêm / sửa sản phẩm, "áo 2 trăm", "Bán lốc sữa chua 50000") thì "giá X" là đơn giá
+     * Câu KHÔNG nói số lượng (thêm / sửa sản phẩm, "áo 2 trăm", "Bán thùng nước ngọt 180k") thì "giá X" là đơn giá
        hoặc tiền của món đó như các quy tắc khác.
    - `total_price`: TỔNG số tiền của cả đơn hàng hóa (số nguyên VND, hoặc null).
      * Người dùng nói "hết", "tổng", "tổng cộng", "tất cả", "cả thảy", "thành tiền", "tính tiền" + số tiền -> total_price.
@@ -28,7 +28,7 @@ ENTITY_RULES = """
      * Nghiệp vụ chỉ có tiền, không có hàng (chi_phi, thu nợ, trả nợ, ghi nợ tiền): số tiền BẮT BUỘC điền vào `price`.
        Câu có nói số tiền thì KHÔNG được để price = null (kể cả số rất lớn; số âm giữ nguyên dấu âm để backend báo lỗi).
        Áp dụng cho MỌI cách nói thu nợ / trả nợ (có hay không có chữ "nợ", số tiền đứng trước hay sau tên người).
-       VD: "Chi tiền điện hết 500k" -> price=500000.
+       VD: "Chi tiền gas hết 400k" -> price=400000.
 
 2. Thông tin đối tác & thanh toán:
    - `customer`: Tên hoặc cách xưng hô khách hàng (String hoặc null).
@@ -55,8 +55,8 @@ ENTITY_RULES = """
      items=[{"product":"coca","quantity":2,"unit":"lon","price":10000},{"product":"mì","quantity":3,"unit":"gói","total_price":15000}].
 
 4. Chi phí (chi_phi):
-   - `price`: Số tiền chi, dạng số nguyên VND (Bắt buộc). VD: "Chi 500k tiền điện" -> price = 500000.
+   - `price`: Số tiền chi, dạng số nguyên VND (Bắt buộc). VD: "Chi 800k tiền vệ sinh" -> price = 800000.
    - `category`: Tên khoản chi ngắn gọn như người dùng nói (String hoặc null), bỏ các từ "thanh toán", "đóng", "chi".
      VD: "Thanh toán tiền điện 1 triệu" -> category="tiền điện"; "Đóng tiền internet 300k" -> category="tiền internet";
-     "Trả lương nhân viên 5 triệu" -> category="lương nhân viên". Nghiệp vụ khác -> null.
+     "Trả lương bảo vệ 4 triệu" -> category="lương bảo vệ". Nghiệp vụ khác -> null.
 """

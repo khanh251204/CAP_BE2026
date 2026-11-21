@@ -11,11 +11,13 @@ from io import BytesIO
 from typing import Dict
 
 from app.ai.ocr.engine import OCR_PROMPT, OcrUnavailableError
+from app.ai.ocr.preprocess import resize_long_side
 from app.ai.ocr.text_utils import collapse_repeats
 
 logger = logging.getLogger(__name__)
 
 _PROMPT = OCR_PROMPT.replace("<image>\n", "")
+_GEMINI_MAX_SIDE = 1280
 
 
 class GeminiOcrEngine:
@@ -32,20 +34,36 @@ class GeminiOcrEngine:
             if not api_key:
                 raise OcrUnavailableError("GEMINI_API_KEY chưa được cấu hình")
             from google import genai
-            self._client = genai.Client(api_key=api_key)
+            from google.genai import types
+            self._client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=45000))
         return self._client
 
     def extract_text(self, image) -> Dict:
         from google.genai import types
+        resized = resize_long_side(image, _GEMINI_MAX_SIDE)
         buf = BytesIO()
-        image.convert("RGB").save(buf, format="JPEG", quality=90)
+        resized.convert("RGB").save(buf, format="JPEG", quality=82)
+        image_part = types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg")
         start = time.perf_counter()
         try:
-            response = self._get_client().models.generate_content(
-                model=self.model,
-                contents=[types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"), _PROMPT],
-                config=types.GenerateContentConfig(temperature=0.0),
-            )
+            config_kwargs: Dict = {"temperature": 0.0}
+            if hasattr(types, "ThinkingConfig"):
+                config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+            try:
+                response = self._get_client().models.generate_content(
+                    model=self.model,
+                    contents=[image_part, _PROMPT],
+                    config=types.GenerateContentConfig(**config_kwargs),
+                )
+            except Exception as cfg_err:
+                if "thinking_config" not in config_kwargs:
+                    raise
+                logger.debug("[OCR] Model %s không hỗ trợ thinking_budget=0 (%s), thử lại mặc định", self.model, cfg_err)
+                response = self._get_client().models.generate_content(
+                    model=self.model,
+                    contents=[image_part, _PROMPT],
+                    config=types.GenerateContentConfig(temperature=0.0),
+                )
         except OcrUnavailableError:
             raise
         except Exception as e:  # noqa: BLE001

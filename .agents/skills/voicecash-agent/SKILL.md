@@ -200,13 +200,23 @@ When handling sales (`ban_hang`) or inventory movements, strictly enforce:
 | Business Type | Product Type | Stock Checking Rule | Error Handling |
 | :--- | :--- | :--- | :--- |
 | **RESELLER** | `RESALE` | Mandatory: `quantity <= current_stock` | Return `INSUFFICIENT_STOCK` / `out_of_stock`. Do NOT commit or create negative stock. |
-| **PRODUCER** | `FINISHED_GOOD` | **Bypass stock check**: Allowed to sell even when `stock == 0` (on-demand production). | Allow sale. Do NOT generate negative inventory transaction if BOM is not configured. |
-| **PRODUCER** | `RAW_MATERIAL` | Raw materials cannot be sold directly as finished goods. | Return `cannot_sell_raw_material`. |
-| **SERVICE** | Any / None | **Bypass stock check entirely**. | No inventory movement (`Inventory_Transaction` is not created). |
+| **PRODUCER / RESELLER** | `FINISHED_GOOD` | **Made-to-order**: Allowed to sell even when `stock == 0` (trừ nguyên liệu BOM nếu có). | Allow sale; thiếu nguyên liệu BOM thì rollback toàn đơn (`insufficient_material`). |
+| **PRODUCER / RESELLER** | `RAW_MATERIAL` | Raw materials cannot be sold directly as finished goods. | Return `CANNOT_SELL_RAW_MATERIAL` / `raw_material_blocked`. |
+| **SERVICE** | Any / None | **Bypass stock check entirely** (`NO_INVENTORY`). | No inventory movement (`Inventory_Transaction` is not created). |
 
 ---
 
-## 4. MCP Server & Tool Conventions (Capstone 1 vs Capstone 2)
+## 4. MCP Server & Tool Conventions (5 Servers — 23 Tools)
+
+Tất cả tool được đăng ký qua `app/ai/mcp/client.py` (`MCP_SERVERS`):
+
+| MCP Server | Module | Danh sách Tools |
+| :--- | :--- | :--- |
+| **product** (8) | `app/ai/mcp/product/` | `search_products`, `find_duplicate_product`, `get_product_by_id`, `get_all_products`, `get_products_with_stock`, `create_product`, `update_product`, `delete_product` |
+| **inventory** (7) | `app/ai/mcp/inventory/` | `import_inventory`, `export_inventory`, `check_stock`, `nhap_kho`, `xuat_kho`, `report_damage`, `adjust_stock` |
+| **debt** (4) | `app/ai/mcp/debt/` | `ghi_no_khach_hang`, `thu_no_khach_hang`, `ghi_no_nha_cung_cap`, `thu_no_nha_cung_cap` |
+| **expense** (1) | `app/ai/mcp/expense/` | `create_expense` |
+| **report** (3) | `app/ai/mcp/report/` | `get_summary_report`, `preview_closing`, `close_period` |
 
 ### Capstone 1 Core Scope (7 Intents):
 1. **`ban_hang`**: `check_stock`, `export_inventory` (Inventory MCP)
@@ -218,9 +228,9 @@ When handling sales (`ban_hang`) or inventory movements, strictly enforce:
 7. **`tra_no_nha_cung_cap` / `tra_no_ncc`**: `thu_no_nha_cung_cap` (Debt MCP)
 
 ### Capstone 2 Extended Scope:
-- Voice CRUD Sản phẩm (`them_san_pham`, `sua_san_pham`, `xoa_san_pham`, `tim_san_pham` - Product MCP).
-- Quản trị kho nội bộ & kiểm kê (`nhap_kho`, `xuat_kho`, `hang_hong`, `kiem_kho`).
-- Báo cáo định kỳ & chốt sổ (`bao_cao`, `chot_so` - Report MCP).
+- Voice CRUD Sản phẩm (`them_san_pham`, `sua_san_pham`, `xoa_san_pham`, `tim_san_pham` — Product MCP).
+- Quản trị kho nội bộ & kiểm kê (`nhap_kho`, `xuat_kho`, `hang_hong`, `kiem_kho` — Inventory MCP).
+- Báo cáo định kỳ & chốt sổ (`bao_cao`, `chot_so` — Report MCP).
 - BOM & Trích xuất đa sản phẩm (Multi-item).
 
 ### Invoking MCP Tools in Handlers:
@@ -244,17 +254,14 @@ if not result.get("success"):
 
 ## 5. Testing & Verification Runbook
 
-Run the following test suite to ensure no regressions:
+Tham chiếu thêm skill `.agents/skills/test-writer/SKILL.md` và đặc tả riêng cho AI/17 Intents/MCP tại `tests/TEST_CONDITIONS_AI.md`.
 
-```bash
-# 1. Run unit tests for AI core and intents
-pytest tests/ -k "ai or intent or mcp" -v
+```powershell
+# 1. Chạy toàn bộ bộ unit test (dùng venv chung có mcp<2)
+$env:PYTHONIOENCODING="utf-8"; D:\Huy_Rearch\BE\.venv\Scripts\python.exe -m pytest tests -q
 
-# 2. Test business rules specifically
-pytest tests/test_business_rules_reseller_producer.py -v
-
-# 3. Test multi-tenancy and inventory isolation
-pytest tests/test_inventory_tenant.py -v
+# 2. Chạy riêng nhóm AI, MCP, chính sách bán & xác nhận
+$env:PYTHONIOENCODING="utf-8"; D:\Huy_Rearch\BE\.venv\Scripts\python.exe -m pytest tests/test_mcp_client_and_tools.py tests/test_normalization_and_ai_core.py tests/test_sales_policy.py tests/test_product_lock_and_inventory_validation.py tests/test_agent_confirm_and_observability.py -v
 ```
 
 ### Manual Testing via API:

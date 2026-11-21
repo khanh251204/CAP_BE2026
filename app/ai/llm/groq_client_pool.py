@@ -131,7 +131,7 @@ class GroqFailoverClient:
         clients, cooldowns = [], []
         for k in keys:
             client, until = old.get(k, (None, 0.0))
-            clients.append(client or Groq(api_key=k, max_retries=max_retries))
+            clients.append(client or Groq(api_key=k, timeout=25.0, max_retries=max_retries))
             cooldowns.append(until)
         self._keys, self._clients, self._cooldown_until = list(keys), clients, cooldowns
 
