@@ -115,6 +115,40 @@ class Agent:
             knowledge
         )
 
+        return await self._handle_analysis(user_id, text, input_to_model, analysis)
+
+    async def run_structured(
+        self,
+        user_id: int,
+        intent: str,
+        entities: dict,
+        text: str = "",
+    ) -> dict:
+        """
+        Nhập bằng biểu mẫu (không qua LLM): app gửi sẵn intent + entities đã chọn.
+        Đi qua đúng các bước sau LLM (chuẩn hóa, validator, handler, lưu bản nháp)
+        nên kết quả cùng dạng với `run` và dùng chung màn Xác nhận.
+        """
+        analysis = {
+            "intent": intent,
+            "entities": dict(entities or {}),
+            "status": "success",
+            "original_text": text,
+            "input_source": "FORM",
+        }
+        return await self._handle_analysis(
+            user_id, text, text, analysis, structured=True
+        )
+
+    async def _handle_analysis(
+        self,
+        user_id: int,
+        text: str,
+        input_to_model: str,
+        analysis: Any,
+        structured: bool = False,
+    ) -> dict:
+        # structured=True: dữ liệu từ biểu mẫu là chính xác, không cần các bước "sửa lỗi LLM" dựa trên câu chữ
         # 4. Kiểm tra format kết quả phân tích
         if not isinstance(analysis, dict):
             return {
@@ -125,13 +159,13 @@ class Agent:
         intent = analysis.get("intent")
         entities = analysis.get("entities", {}) or {}
         # LLM hay bỏ dấu âm ("chi tiền điện -1000000" -> 1000000): gắn lại để validator báo "phải lớn hơn 0"
-        signed = restore_negative_numbers(entities, input_to_model)
+        signed = entities if structured else restore_negative_numbers(entities, input_to_model)
         if signed != entities:
             entities = signed
             analysis = {**analysis, "entities": entities}
         # LLM bỏ trống số tiền ở nghiệp vụ chỉ có tiền (thu / trả / ghi nợ, chi phí): lấy số duy nhất trong câu.
         # Số âm giữ nguyên dấu để handler cảnh báo, không tự đổi thành dương.
-        filled = fill_missing_amount(intent, entities, input_to_model)
+        filled = entities if structured else fill_missing_amount(intent, entities, input_to_model)
         if filled != entities:
             entities = filled
             analysis = {**analysis, "entities": entities}
@@ -174,12 +208,14 @@ class Agent:
         # LLM tự đoán quantity (vd "Bán lốc sữa chua 50000" -> 1): bỏ đi để validator hỏi lại số lượng.
         # Phải chạy trước resolve_total_price, nếu không đơn giá bị tính từ số lượng đoán.
         guessed_qty = entities.get("quantity")
-        entities = drop_unspoken_quantity(intent, entities, input_to_model)
+        if not structured:
+            entities = drop_unspoken_quantity(intent, entities, input_to_model)
         # Câu có "chưa trả tiền", "ghi nợ", "bán chịu"... -> bán / nhập NỢ (payment = PENDING), dù LLM bỏ sót
-        if intent in ("ban_hang", "mua_hang", "nhap_hang"):
+        if not structured and intent in ("ban_hang", "mua_hang", "nhap_hang"):
             entities = {**entities, "payment": resolve_payment(entities.get("payment"), input_to_model)}
         # "mới trả 20k", "đưa trước 200k còn lại ghi nợ", "trả một nửa" -> số tiền / tỉ lệ đã trả (phần còn lại ghi nợ)
-        entities = resolve_amount_paid(intent, entities, input_to_model)
+        if not structured:
+            entities = resolve_amount_paid(intent, entities, input_to_model)
         entities = resolve_total_price(intent, entities)
         llm_payment = (analysis.get("entities") or {}).get("payment")
         paid_found = entities.get("amount_paid") is not None or entities.get("amount_paid_ratio") is not None

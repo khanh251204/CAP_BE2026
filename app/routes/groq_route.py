@@ -23,8 +23,9 @@ from app.configs.permissions import INTENT_PERMISSIONS
 from app.services.permission_service import PermissionService
 from app.ai.llm.groq_service import GroqService
 from app.ai.core.agent import Agent as TransactionAgent
+from app.ai.core.form_draft import FORM_INTENTS, build_entities, describe
 
-from app.schemas.analysis_schema import AnalysisRequest
+from app.schemas.analysis_schema import AnalysisRequest, FormDraftRequest
 from app.configs.jwt import get_current_user_id, require_permission
 
 from app.ai.rag.normalization_service import NormalizationService
@@ -201,6 +202,28 @@ def _resolve_account_id(db: Session, user_id: int, payload: dict) -> int:
         db=db, user_id=user_id, account_name="Tiền mặt", account_type="CASH"
     )
     return account.account_id
+
+
+@router.post("/agent/form-drafts", dependencies=[Depends(require_permission("voice:use"))])
+async def form_draft(
+    request: FormDraftRequest,
+    current_user_id: int = Depends(get_current_user_id),
+):
+    """
+    Nhập giao dịch bằng biểu mẫu (không gọi AI): cùng định dạng kết quả với /agent/messages,
+    app đưa thẳng sang màn Xác nhận rồi /agent/pending-action/confirmation.
+    """
+    if request.intent not in FORM_INTENTS:
+        raise HTTPException(status_code=422, detail=f"Nghiệp vụ '{request.intent}' chưa hỗ trợ nhập bằng biểu mẫu")
+    text = describe(request)
+    result = await transaction_agent.run_structured(
+        user_id=current_user_id,
+        intent=request.intent,
+        entities=build_entities(request),
+        text=text,
+    )
+    SessionStoreService.update_confirmation(current_user_id, {"voice_id": None, "input_method": "MANUAL"})
+    return result
 
 
 @router.post("/agent/pending-action/confirmation", dependencies=[Depends(require_permission("voice:use"))])
