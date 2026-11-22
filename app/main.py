@@ -35,7 +35,7 @@ from app.routes.supplier_route import supplier_router
 from app.routes.transaction_route import transaction_router
 
 # Admin routers
-from app.routes.admin_dashboard_route import router as admin_dashboard_router
+from app.routes.admin_dashboard_route import router as admin_dashboard_router, ws_admin_router
 from app.routes.admin_dataset_route import router as admin_dataset_router
 from app.routes.admin_product_route import router as admin_product_router
 from app.routes.admin_transaction_route import router as admin_transaction_router
@@ -188,6 +188,7 @@ CORE_ROUTERS = [
 
 ADMIN_ROUTERS = [
     admin_dashboard_router,
+    ws_admin_router,
     admin_dataset_router,
     admin_product_router,
     admin_transaction_router,

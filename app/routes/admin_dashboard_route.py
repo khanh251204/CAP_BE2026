@@ -10,11 +10,14 @@ Endpoints:
 Authorization: JWT + quyền admin_* (require_admin_area + require_permission)
 """
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Query
+import json
+from datetime import datetime
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
 
 from app.configs.database import get_db
 from app.configs.jwt import require_permission, require_admin_area
+from app.services.websocket_manager import ws_manager, authenticate_websocket
 from app.schemas.admin_dashboard_schema import (
     AdminDashboardResponse,
     AdminActivityTrendItem,
@@ -105,3 +108,61 @@ def get_expense_categories(
     db: Session = Depends(get_db),
 ):
     return AdminDashboardService.get_expense_categories(db=db)
+
+
+ws_admin_router = APIRouter(tags=["Admin - Realtime WebSocket"])
+
+
+@ws_admin_router.websocket("/ws/admin")
+async def admin_realtime_ws(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None),
+    access_token: Optional[str] = Query(None),
+):
+    """Kênh WebSocket realtime cho giao diện Admin (tự động đẩy sự kiện khi dữ liệu thay đổi)."""
+    auth_token = token or access_token
+    if not auth_token:
+        auth_header = websocket.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            auth_token = auth_header[7:]
+
+    if not auth_token:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"event": "ERROR", "message": "Thiếu token xác thực"}, ensure_ascii=False))
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    try:
+        user_id = authenticate_websocket(auth_token)
+    except Exception as exc:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"event": "ERROR", "message": f"Xác thực thất bại: {exc}"}, ensure_ascii=False))
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await ws_manager.connect_admin(websocket)
+    try:
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "event": "CONNECTED",
+                    "data": {"user_id": user_id, "timestamp": datetime.utcnow().isoformat()},
+                },
+                ensure_ascii=False,
+            )
+        )
+        while True:
+            raw = await websocket.receive_text()
+            if not raw:
+                continue
+            try:
+                msg = json.loads(raw)
+                action = str(msg.get("action", "")).lower()
+            except Exception:
+                action = raw.strip().lower()
+            if action in ("ping", "heartbeat"):
+                await websocket.send_text(json.dumps({"event": "pong", "timestamp": datetime.utcnow().isoformat()}))
+    except WebSocketDisconnect:
+        ws_manager.disconnect_admin(websocket)
+    except Exception:
+        ws_manager.disconnect_admin(websocket)

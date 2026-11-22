@@ -42,6 +42,42 @@ class WebSocketManager:
         # user_id -> Set[WebSocket]
         self._report_connections: Dict[int, Set[WebSocket]] = {}
         self._closing_connections: Dict[int, Set[WebSocket]] = {}
+        # Admin realtime sockets (nhận thông báo khi dữ liệu hệ thống thay đổi)
+        self._admin_connections: Set[WebSocket] = set()
+
+    async def connect_admin(self, websocket: WebSocket):
+        """Chấp nhận kết nối WebSocket cho Admin Dashboard / Monitoring."""
+        if websocket.client_state == WebSocketState.CONNECTING:
+            await websocket.accept()
+        self._admin_connections.add(websocket)
+        logger.info(f"Admin connected to /ws/admin. Active admin sockets: {len(self._admin_connections)}")
+
+    def disconnect_admin(self, websocket: WebSocket):
+        """Ngắt kết nối WebSocket của Admin."""
+        self._admin_connections.discard(websocket)
+        logger.info(f"Admin disconnected from /ws/admin. Active admin sockets: {len(self._admin_connections)}")
+
+    async def notify_admin_updated(self, scope: str = "all", detail: Optional[Dict[str, Any]] = None):
+        """Broadcast sự kiện thay đổi dữ liệu realtime tới toàn bộ trình duyệt Admin đang mở."""
+        if not self._admin_connections:
+            return
+        payload = {
+            "event": "ADMIN_DATA_CHANGED",
+            "data": {
+                "scope": scope,
+                "detail": serialize_ws_data(detail or {}),
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        }
+        message_str = json.dumps(payload, ensure_ascii=False)
+        dead = set()
+        for ws in list(self._admin_connections):
+            try:
+                await ws.send_text(message_str)
+            except Exception:
+                dead.add(ws)
+        for ws in dead:
+            self._admin_connections.discard(ws)
 
     async def connect_report(self, websocket: WebSocket, user_id: int, period: str = "DAY"):
         """Chấp nhận kết nối và thêm vào nhóm theo dõi Dashboard & Report của user_id."""
@@ -254,6 +290,23 @@ def trigger_report_update(
             )
     except Exception as e:
         logger.warning(f"Failed to trigger report socket update for user {user_id}: {e}")
+    trigger_admin_update(scope="report", detail={"user_id": user_id, "transaction_id": transaction_id})
+
+
+def trigger_admin_update(scope: str = "all", detail: Optional[Dict[str, Any]] = None):
+    """
+    Helper đồng bộ/bất đồng bộ an toàn: đẩy sự kiện realtime tới toàn bộ phiên Admin đang mở.
+    """
+    if not ws_manager._admin_connections:
+        return
+    try:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(ws_manager.notify_admin_updated(scope=scope, detail=detail))
+        except RuntimeError:
+            asyncio.run(ws_manager.notify_admin_updated(scope=scope, detail=detail))
+    except Exception as e:
+        logger.debug(f"Failed to trigger admin socket update: {e}")
 
 
 def authenticate_websocket(token: Optional[str]) -> int:

@@ -95,8 +95,8 @@ def _should_skip_logging(request: Request) -> bool:
     if "/admin/system-logs" in clean_path or "/admin/system_logs" in clean_path:
         return True
 
-    # 5. Bỏ qua WebSocket route reports
-    if "/reports/ws" in clean_path:
+    # 5. Bỏ qua WebSocket route reports & admin
+    if "/reports/ws" in clean_path or "/ws/admin" in clean_path:
         return True
 
     # 6. Bỏ qua root và health checks
@@ -365,3 +365,10 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
 
             current_request_id_var.reset(token_ctx)
             current_actor_var.reset(actor_token)
+
+            if method in ("POST", "PUT", "PATCH", "DELETE") and status_code < 400:
+                try:
+                    from app.services.websocket_manager import trigger_admin_update
+                    trigger_admin_update(scope="api_write", detail={"path": path, "method": method})
+                except Exception:
+                    pass
