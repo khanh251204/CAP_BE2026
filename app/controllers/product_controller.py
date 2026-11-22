@@ -184,6 +184,7 @@ class ProductController:
             actual_quantity=actual_quantity_val,
             note=note,
             reason=reason,
+            count_unit=payload_dict.get("count_unit"),
             user_id=user_id,
             db=db
         )

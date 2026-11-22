@@ -15,6 +15,7 @@ from app.services.sales_policy import (
     is_partial_payment,
     resolve_order_paid,
     is_unit_valid,
+    to_product_unit,
     invalid_unit_message,
 )
 from .validator import validate
@@ -131,7 +132,9 @@ class MuaHangHandler:
                     f"Ví dụ: \"nhập {entities.get('quantity')} {product_unit or 'cái'} {product['product_name']} giá ...\"."
                 ),
             }
-        if not new_product_spec and not is_unit_valid(entities.get("unit"), product_unit):
+        # Quy đổi đơn vị cùng loại (kg <-> g, lít <-> ml...); khác loại mới báo lỗi
+        converted = entities if new_product_spec else to_product_unit(entities, product_unit, product.get("units"))
+        if converted is None:
             return {
                 "success": False,
                 "status": "invalid_unit",
@@ -140,8 +143,9 @@ class MuaHangHandler:
                 "product_name": product["product_name"],
                 "unit_requested": entities.get("unit"),
                 "default_unit": product_unit,
-                "message": invalid_unit_message(product["product_name"], entities.get("unit"), product_unit),
+                "message": invalid_unit_message(product["product_name"], entities.get("unit"), product_unit, product.get("units")),
             }
+        entities = converted
         if not new_product_spec and product_unit:
             # Dùng đúng cách viết đơn vị trong DB
             entities = {**entities, "unit": product_unit}

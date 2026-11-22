@@ -285,13 +285,7 @@ async def confirm_action(
     if voice_id:
         payload["voice_id"] = voice_id
 
-    if intent == "them_san_pham":
-        result = await asyncio.to_thread(ProductController.create_product, data=payload, user_id=current_user_id, db=db)
-    elif intent == "sua_san_pham":
-        result = await asyncio.to_thread(ProductController.update_product, product_id=payload["product_id"], data=payload["data"], user_id=current_user_id, db=db)
-    elif intent == "xoa_san_pham":
-        result = await asyncio.to_thread(ProductController.delete_product, product_id=payload["product_id"], user_id=current_user_id, db=db)
-    elif intent == "ban_hang":
+    if intent == "ban_hang":
         # Kiểm tra lại giá sau khi người dùng có thể đã sửa
         sale_price = payload.get("unit_price")
         if sale_price is not None:
@@ -320,15 +314,6 @@ async def confirm_action(
             if import_price <= 0:
                 return {"success": False, "message": "Giá nhập phải lớn hơn 0đ. Vui lòng nhập lại giá nhập."}
         res = await call_mcp_tool("import_inventory", {"payload": payload, "user_id": current_user_id})
-        result = normalize_mcp_result(res)
-    elif intent == "nhap_kho":
-        res = await call_mcp_tool("nhap_kho", {"payload": payload, "user_id": current_user_id})
-        result = normalize_mcp_result(res)
-    elif intent == "xuat_kho":
-        res = await call_mcp_tool("xuat_kho", {"payload": payload, "user_id": current_user_id})
-        result = normalize_mcp_result(res)
-    elif intent == "hang_hong":
-        res = await call_mcp_tool("report_damage", {"payload": payload, "user_id": current_user_id})
         result = normalize_mcp_result(res)
     elif intent in ("ghi_no_khach_hang", "khach_ghi_no"):
         # Ưu tiên số tiền người dùng đã sửa (amount), không thì dùng số tiền bản nháp

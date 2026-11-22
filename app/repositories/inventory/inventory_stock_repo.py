@@ -12,16 +12,23 @@ class InventoryStockRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_latest_stock(self, user_id: int, product_id: int) -> Decimal:
-        latest = (
+    def get_latest_stock(self, user_id: int, product_id: int, for_update: bool = False) -> Decimal:
+        """
+        for_update=True: đọc có khoá (SELECT ... FOR UPDATE) -> luôn thấy tồn mới nhất đã commit.
+        Dùng trong các hàm GHI kho sau lock_product: MySQL/TiDB mặc định REPEATABLE READ, đọc thường
+        sau khi chờ khoá vẫn thấy ảnh chụp cũ nên 2 đơn cùng lúc có thể cùng thấy "còn hàng".
+        """
+        query = (
             self.db.query(InventoryTransaction.quantity_after)
             .filter(
                 InventoryTransaction.user_id == user_id,
                 InventoryTransaction.product_id == product_id,
             )
             .order_by(InventoryTransaction.inventory_transaction_id.desc())
-            .first()
         )
+        if for_update:
+            query = query.with_for_update()
+        latest = query.first()
         return Decimal(str(latest[0])) if latest else Decimal("0.0")
 
     def get_inventory_history(

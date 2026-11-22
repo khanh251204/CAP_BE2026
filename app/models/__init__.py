@@ -22,6 +22,8 @@ from app.models.closing_report_model import ClosingReport
 from app.models.system_log_model import SystemLog
 from app.models.user_correction_model import UserCorrection
 from app.models.user_pending_confirmation_model import UserPendingConfirmation
+from app.models.bom_model import BillOfMaterial
+from app.models.product_unit_model import ProductUnit
 
 __all__ = [
     "User",
@@ -50,5 +52,7 @@ __all__ = [
     "SystemLog",
     "UserCorrection",
     "UserPendingConfirmation",
+    "BillOfMaterial",
+    "ProductUnit",
 ]
 from app.models.user_lock_history_model import UserLockHistory

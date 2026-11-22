@@ -12,6 +12,7 @@ from app.repositories.inventory_repo import InventoryRepository
 from app.services.product_inventory_service import ProductInventoryService
 from app.services.duplicate_guard import clean_name, ensure_unique_product
 from app.services.input_safety import contains_markup, markup_message
+from app.services import product_edit_lock
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class ProductService:
         for label, value in fields.items():
             if value is not None and contains_markup(str(value)):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=markup_message(label))
+
 
     @staticmethod
     def get_all_products_with_stock(user_id: int, db: Session):
@@ -191,6 +193,21 @@ class ProductService:
             except (ValueError, TypeError):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="min_quantity phải lớn hơn hoặc bằng 0")
 
+        # Đơn vị quy đổi / định mức đang tính theo đơn vị & loại hiện tại -> chặn đổi làm sai số liệu
+        from app.services.bom_service import product_change_conflict
+        conflict = product_change_conflict(db, user_id, product, data)
+        if conflict:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict)
+
+        # Khóa sửa tên / đơn vị: đã phát sinh giao dịch hoặc quá 24h kể từ lúc tạo
+        # (chỉ chặn khi giá trị thực sự đổi, form gửi lại giá trị cũ thì bỏ qua)
+        name_changed = data.get("product_name") is not None and clean_name(data["product_name"]) != product.product_name
+        unit_changed = data.get("default_unit") is not None and str(data["default_unit"]).strip() != (product.default_unit or "")
+        if name_changed or unit_changed:
+            lock = product_edit_lock.get_lock(db, product)
+            if lock["name_locked"]:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=lock["name_lock_message"])
+
         if "default_unit" in data and data["default_unit"] is not None:
             new_unit = str(data["default_unit"]).strip()
             if new_unit and new_unit != product.default_unit:
@@ -201,37 +218,7 @@ class ProductService:
                         f"[CẢNH BÁO] Đổi default_unit từ '{product.default_unit}' sang '{new_unit}' cho #{product_id} khi còn tồn kho {current_stock}"
                     )
 
-        # Đổi tên -> cập nhật tên trên các dòng giao dịch CHƯA chốt sổ (giá giữ nguyên giá thực tế lúc bán / nhập).
-        # Ghi chung một commit với việc cập nhật sản phẩm (repo.update_product commit).
-        if "product_name" in data and data["product_name"] != product.product_name:
-            ProductService._sync_name_to_open_transactions(db, user_id, product.product_id, data["product_name"])
-
         return repo.update_product(db, product, data)
-
-    @staticmethod
-    def _sync_name_to_open_transactions(db: Session, user_id: int, product_id: int, new_name: str) -> int:
-        """Đổi product_name trên Transaction_Detail của sản phẩm, bỏ qua giao dịch thuộc kỳ đã chốt (CLOSED)."""
-        from app.models.transaction_model import Transaction
-        from app.models.transactionDetail_model import TransactionDetail
-        from app.services.closing.closing_guard import closed_periods_for_transactions
-
-        rows = (
-            db.query(TransactionDetail, Transaction)
-            .join(Transaction, Transaction.transaction_id == TransactionDetail.transaction_id)
-            .filter(TransactionDetail.product_id == product_id, Transaction.user_id == user_id)
-            .all()
-        )
-        if not rows:
-            return 0
-        txs = {tx.transaction_id: tx for _, tx in rows}
-        closed = closed_periods_for_transactions(db, user_id, list(txs.values()))
-        changed = 0
-        for detail, tx in rows:
-            if tx.transaction_id in closed or detail.product_name == new_name:
-                continue
-            detail.product_name = new_name
-            changed += 1
-        return changed
 
     @staticmethod
     def delete_product(product_id: int, user_id: int, db: Session):
@@ -257,9 +244,11 @@ class ProductService:
         return {"success": True, "message": "Đã xóa sản phẩm", "mode": "hard_delete"}
 
     @staticmethod
-    def inventory_check(product_id: int, actual_quantity: float, note: Optional[str], reason: str, user_id: int, db: Session):
+    def inventory_check(product_id: int, actual_quantity: float, note: Optional[str], reason: str, user_id: int, db: Session,
+                        count_unit: Optional[str] = None):
         return ProductInventoryService.inventory_check(
-            product_id=product_id, actual_quantity=actual_quantity, note=note, reason=reason, user_id=user_id, db=db
+            product_id=product_id, actual_quantity=actual_quantity, note=note, reason=reason, user_id=user_id, db=db,
+            count_unit=count_unit,
         )
 
     @staticmethod

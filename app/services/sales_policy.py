@@ -39,11 +39,12 @@ def get_sale_stock_policy(business_type: Optional[str], product_type: Optional[s
 
     if bt == "SERVICE":
         return NO_INVENTORY
-    if bt == "PRODUCER":
-        if pt == "RAW_MATERIAL":
-            return RAW_MATERIAL_BLOCKED
-        if pt == "FINISHED_GOOD":
-            return MADE_TO_ORDER
+    # PRODUCER và RESELLER cùng luật: thành phẩm làm theo đơn (có định mức thì trừ nguyên liệu),
+    # nguyên liệu không bán trực tiếp, hàng bán lại phải đủ tồn
+    if pt == "RAW_MATERIAL":
+        return RAW_MATERIAL_BLOCKED
+    if pt == "FINISHED_GOOD":
+        return MADE_TO_ORDER
     return STRICT
 
 
@@ -111,7 +112,125 @@ def is_unit_valid(requested_unit: Optional[str], product_unit: Optional[str]) ->
     return req == prod or _strip_accents(req) == _strip_accents(prod)
 
 
-def invalid_unit_message(product_name: str, requested_unit: str, product_unit: str) -> str:
+# Quy đổi đơn vị cùng loại (khối lượng về gram, thể tích về ml, chiều dài về mm). Khóa đã bỏ dấu, viết thường.
+_UNIT_FACTORS = {
+    "mass": {
+        "g": 1, "gr": 1, "gam": 1, "gram": 1,
+        "lang": 100,
+        "kg": 1000, "kilogram": 1000, "kilo": 1000, "ki lo": 1000, "ky": 1000, "ki": 1000, "can": 1000,
+        "yen": 10_000, "ta": 100_000, "tan": 1_000_000,
+    },
+    "volume": {
+        "ml": 1, "mililit": 1, "mi li lit": 1, "cc": 1,
+        "l": 1000, "lit": 1000, "liter": 1000, "litre": 1000,
+    },
+    "length": {
+        "mm": 1, "milimet": 1, "mi li met": 1,
+        "cm": 10, "centimet": 10, "xang ti met": 10, "phan": 10,
+        "dm": 100, "tac": 100,
+        "m": 1000, "met": 1000, "meter": 1000, "metre": 1000,
+        "km": 1_000_000,
+    },
+}
+
+
+def unit_key(value: Optional[str]) -> str:
+    """Khóa so khớp đơn vị: viết thường, bỏ dấu, gộp khoảng trắng ("Gói" == "goi")."""
+    return _strip_accents(_normalize_unit(value))
+
+
+def unit_ratio(requested_unit: Optional[str], product_unit: Optional[str], extra_units: Optional[list] = None):
+    """
+    Số đơn vị sản phẩm trong 1 đơn vị người dùng nói (vd. kg -> g = 1000, g -> kg = 0.001).
+    extra_units: đơn vị quy đổi riêng của sản phẩm [{"unit_name": "gói", "factor": 1000}]
+    (1 gói = 1000 default_unit), được ưu tiên trước bảng đo lường chung.
+    Trả None nếu hai đơn vị không quy đổi được cho nhau.
+    """
+    from decimal import Decimal
+
+    req = unit_key(requested_unit)
+    prod = unit_key(product_unit)
+    if not req or not prod:
+        return None
+    for u in extra_units or []:
+        if unit_key(u.get("unit_name")) == req:
+            return Decimal(str(u.get("factor")))
+    for table in _UNIT_FACTORS.values():
+        if req in table and prod in table:
+            return Decimal(table[req]) / Decimal(table[prod])
+    return None
+
+
+def unit_catalog_price(requested_unit: Optional[str], extra_units: Optional[list] = None):
+    """
+    Giá bán riêng đã khai báo cho 1 đơn vị quy đổi (vd 1 thùng = 210000đ rẻ hơn 24 lon).
+    Trả None nếu không khai báo giá riêng (sẽ tự nhân theo giá lẻ).
+    """
+    from decimal import Decimal, InvalidOperation
+
+    req = unit_key(requested_unit)
+    if not req:
+        return None
+    for u in extra_units or []:
+        if unit_key(u.get("unit_name")) == req:
+            raw = u.get("unit_price")
+            if raw in (None, ""):
+                return None
+            try:
+                val = Decimal(str(raw))
+                return val if val > 0 else None
+            except (InvalidOperation, ValueError, TypeError):
+                return None
+    return None
+
+
+def to_product_unit(entities: dict, product_unit: Optional[str], extra_units: Optional[list] = None) -> Optional[dict]:
+    """
+    Đưa số lượng / đơn giá người dùng nói về đơn vị tính của sản phẩm.
+    - Đơn vị khớp (hoặc không nói / sản phẩm chưa có đơn vị) -> trả nguyên entities.
+    - Quy đổi được ("nhập 5 kg thịt bò" với sản phẩm tính theo g) -> quantity 5000, unit "g", đơn giá chia 1000.
+      total_price giữ nguyên (tổng tiền không đổi theo đơn vị).
+    - extra_units: đơn vị quy đổi riêng của sản phẩm ("nhập 3 gói mì chính" với 1 gói = 1000 g -> 3000 g).
+    - Không quy đổi được -> None (người gọi báo lỗi INVALID_UNIT như cũ).
+    """
+    from decimal import Decimal, InvalidOperation
+
+    requested = entities.get("unit")
+    if is_unit_valid(requested, product_unit):
+        return entities
+    ratio = unit_ratio(requested, product_unit, extra_units)
+    if ratio is None:
+        return None
+
+    converted = {**entities, "unit": product_unit}
+    try:
+        if entities.get("quantity") not in (None, ""):
+            converted["quantity"] = float(Decimal(str(entities["quantity"])) * ratio)
+        for key in ("price", "unit_price"):
+            if entities.get(key) not in (None, ""):
+                converted[key] = float(Decimal(str(entities[key])) / ratio)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return converted
+
+
+def invalid_unit_message(
+    product_name: str,
+    requested_unit: str,
+    product_unit: str,
+    extra_units: Optional[list] = None,
+) -> str:
+    extra_names = [
+        str(u.get("unit_name")).strip()
+        for u in (extra_units or [])
+        if isinstance(u, dict) and str(u.get("unit_name") or "").strip()
+    ]
+    if extra_names:
+        allowed = ", ".join([f"'{product_unit}'"] + [f"'{n}'" for n in extra_names])
+        return (
+            f"Đơn vị '{requested_unit}' không tồn tại cho sản phẩm '{product_name}'. "
+            f"Sản phẩm này hỗ trợ các đơn vị: {allowed}. Vui lòng nói lại số lượng theo đơn vị hợp lệ."
+        )
     return (
         f"Đơn vị '{requested_unit}' không tồn tại cho sản phẩm '{product_name}'. "
         f"Sản phẩm này được tính theo '{product_unit}', vui lòng nói lại số lượng theo '{product_unit}'."
@@ -223,7 +342,6 @@ def resolve_total_price(intent: Optional[str], entities: dict) -> dict:
         return {**entities, "price": float(price)}
 
     return {**entities, "price": float(total_dec)}
-
 
 # =========================================================
 # TRẢ TRƯỚC MỘT PHẦN ("mới trả 20k", "đưa trước 200k còn lại ghi nợ", "trả một nửa")
