@@ -23,7 +23,6 @@ from app.models.product_model import Product
 from app.models.customer_model import Customer
 from app.models.supplier_model import Supplier
 from app.services.transaction_service import resolve_intent_type, INTENT_TYPE_MAPPING
-from app.utils.vn_search import vn_ilike
 
 
 class AdminTransactionService:
@@ -207,6 +206,10 @@ class AdminTransactionService:
 # Private helpers
 # ========================================
 
+def _ilike(column, term: str):
+    return column.ilike(f"%{term}%")
+
+
 # Nhóm intent khớp với cách mobile tách số (app/services/reports/live_summary_report.py)
 PURCHASE_INTENTS = ["mua_hang", "nhap_hang"]
 SALES_INTENTS = ["ban_hang"]
@@ -298,22 +301,22 @@ def _apply_filters(
         term = search.strip()
         id_term = term.upper().replace("TX-", "").replace("#", "").strip()
         conditions = [
-            vn_ilike(Transaction.input_text, term),
-            vn_ilike(Transaction.note, term),
+            _ilike(Transaction.input_text, term),
+            _ilike(Transaction.note, term),
             cast(Transaction.transaction_id, String).ilike(f"%{term}%"),
-            vn_ilike(Category.category_name, term),
+            _ilike(Category.category_name, term),
         ]
         if id_term and id_term != term:
             conditions.append(cast(Transaction.transaction_id, String).ilike(f"%{id_term}%"))
         stmt = stmt.join(User, Transaction.user_id == User.user_id, isouter=True)
         conditions.extend([
-            vn_ilike(User.full_name, term),
+            _ilike(User.full_name, term),
             User.email.ilike(f"%{term}%"),
             User.phone_number.ilike(f"%{term}%"),
-            User.store_rel.has(vn_ilike(Store.store_name, term)),
-            Transaction.customer.has(vn_ilike(Customer.customer_name, term)),
-            Transaction.supplier.has(vn_ilike(Supplier.supplier_name, term)),
-            Transaction.transaction_detail.any(vn_ilike(TransactionDetail.product_name, term)),
+            User.store_rel.has(_ilike(Store.store_name, term)),
+            Transaction.customer.has(_ilike(Customer.customer_name, term)),
+            Transaction.supplier.has(_ilike(Supplier.supplier_name, term)),
+            Transaction.transaction_detail.any(_ilike(TransactionDetail.product_name, term)),
         ])
         stmt = stmt.filter(or_(*conditions))
 

@@ -3,10 +3,9 @@ import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from app.configs import system_log_settings as log_settings
 from app.configs.database import get_db_session
 from app.models.system_log_model import SystemLog, SystemLogLevel, SystemLogStep
-from app.middlewares.system_log_middleware import get_current_log_feature, get_current_request_id, mask_sensitive_data
+from app.middlewares.system_log_middleware import get_current_request_id, mask_sensitive_data
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +41,6 @@ def log_event(
         normalized_step = step.upper() if step else "OTHER"
         if normalized_step not in SystemLogStep.__members__:
             normalized_step = "OTHER"
-
-        # Cài đặt theo chức năng: trong request dùng chức năng của request (vd mọi sự kiện khi gọi API admin
-        # đều thuộc 'admin'); ngoài request suy từ api_path, rồi tới step.
-        feature = (get_current_log_feature()
-                   or (log_settings.feature_for_path(api_path) if api_path else log_settings.feature_for_step(normalized_step)))
-        if not log_settings.should_log(feature, normalized_level):
-            return
 
         masked_detail = mask_sensitive_data(detail) if detail is not None else None
 

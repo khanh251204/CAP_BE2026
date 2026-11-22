@@ -1,9 +1,9 @@
 """create Bill_Of_Material table
 
-Định mức nguyên vật liệu (BOM) cho PRODUCER / RESELLER: thành phẩm -> danh sách nguyên liệu.
+Định mức nguyên vật liệu (BOM) cho PRODUCER: thành phẩm -> danh sách nguyên liệu.
 
 Revision ID: a3b8e5d2c917
-Revises: a8d3f6b2c419
+Revises: 9f4b2c7d1e3a
 Create Date: 2026-11-04 10:00:00.000000
 
 """

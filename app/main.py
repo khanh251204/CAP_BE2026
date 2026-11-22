@@ -15,6 +15,7 @@ from app.services.closing_scheduler import ClosingScheduler
 from app.services.data_lake_service import DataLakeService
 from app.services.notification_cleanup_service import NotificationCleanupScheduler
 from app.services.token_cleanup_service import TokenCleanupScheduler
+from app.services.data_retention_service import DataRetentionScheduler
 from app.services.inactivity_reminder_service import InactivityReminderScheduler
 
 # Core routers
@@ -44,6 +45,8 @@ from app.routes.admin_system_log_route import router as admin_system_log_router
 from app.routes.admin_notification_route import router as admin_notification_router
 from app.routes.admin_rbac_route import router as admin_rbac_router, ui_router as admin_rbac_ui_router
 from app.routes.admin_closing_route import router as admin_closing_router
+from app.routes.admin_audit_route import router as admin_audit_router
+from app.routes.admin_ai_feature_route import router as admin_ai_feature_router
 
 
 @asynccontextmanager
@@ -91,6 +94,12 @@ async def lifespan(app: FastAPI):
         TokenCleanupScheduler.start()
     except Exception as e:
         logger.error(f"[TokenCleanupScheduler] Start error: {e}")
+
+    # 5b. Dọn Audit Log / system log theo thời gian giữ admin cài (Admin -> Giám sát & kiểm toán -> Cài đặt)
+    try:
+        DataRetentionScheduler.start()
+    except Exception as e:
+        logger.error(f"[DataRetentionScheduler] Start error: {e}")
 
     # 6. Khởi động Inactivity Reminder Scheduler (tự động nhắc nhở người dùng không vào app 7 ngày qua FCM)
     try:
@@ -189,6 +198,8 @@ ADMIN_ROUTERS = [
     admin_rbac_router,
     admin_rbac_ui_router,
     admin_closing_router,
+    admin_audit_router,
+    admin_ai_feature_router,
 ]
 
 

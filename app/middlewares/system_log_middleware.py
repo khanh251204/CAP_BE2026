@@ -11,7 +11,6 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.background import BackgroundTask, BackgroundTasks
 
-from app.configs import system_log_settings as log_settings
 from app.configs.cookie import JWT_ACCESS_COOKIE_NAME
 from app.configs.database import get_db_session
 from app.configs.jwt import decode_access_token
@@ -21,18 +20,11 @@ logger = logging.getLogger(__name__)
 
 # ContextVar lưu trữ request_id cho request hiện tại
 current_request_id_var: ContextVar[Optional[str]] = ContextVar("current_request_id", default=None)
-# Chức năng (theo system_log_settings) của request hiện tại, để log_event trong request dùng cùng cài đặt
-current_log_feature_var: ContextVar[Optional[str]] = ContextVar("current_log_feature", default=None)
 
 
 def get_current_request_id() -> Optional[str]:
     """Lấy request_id của request hiện tại từ ContextVar."""
     return current_request_id_var.get()
-
-
-def get_current_log_feature() -> Optional[str]:
-    """Chức năng system log của request hiện tại (None nếu đang ngoài request)."""
-    return current_log_feature_var.get()
 
 
 SENSITIVE_KEYS = {
@@ -249,19 +241,24 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
         token_ctx = current_request_id_var.set(req_id)
         request.state.request_id = req_id
 
-        # Chức năng của request (cài đặt theo chức năng ở app/configs/system_log_settings.py)
-        feature = log_settings.feature_for_path(path)
-        feature_ctx = current_log_feature_var.set(feature)
+        # Người thực hiện cho Audit Log (đặt cả với đường dẫn không ghi system log)
+        from app.services.audit_service import ROLE_ADMIN, ROLE_USER, current_actor_var
+        actor_token = current_actor_var.set({
+            "user_id": _extract_user_id_safe(request),
+            "role": ROLE_ADMIN if path.startswith("/admin") or "/admin/" in path else ROLE_USER,
+            "api_path": path,
+            "http_method": request.method,
+        })
 
-        # Bỏ qua log nếu đường dẫn/method thuộc danh sách loại trừ, hoặc chức năng đang tắt (vd admin)
-        if _should_skip_logging(request) or log_settings.is_off(feature):
+        # Kiểm tra bỏ qua log nếu đường dẫn/method thuộc danh sách loại trừ
+        if _should_skip_logging(request):
             try:
                 response = await call_next(request)
                 response.headers["X-Request-ID"] = req_id
                 return response
             finally:
-                current_log_feature_var.reset(feature_ctx)
                 current_request_id_var.reset(token_ctx)
+                current_actor_var.reset(actor_token)
 
         start_time = time.time()
         method = request.method
@@ -318,52 +315,53 @@ class SystemLogMiddleware(BaseHTTPMiddleware):
                 level = SystemLogLevel.INFO.value
                 message = f"{method} {path} executed successfully ({duration_ms}ms)"
 
-            query_params_dict = dict(request.query_params)
-            masked_query_params = mask_sensitive_data(query_params_dict)
+            from app.services.app_setting_service import get_system_log_settings
+            log_cfg = get_system_log_settings()
 
-            detail_payload = {
-                "client_host": request.client.host if request.client else None,
-                "query_params": masked_query_params,
-                "feature": feature,
-            }
-            if body_dict:
-                detail_payload["body"] = body_dict
-            if error_detail:
-                detail_payload["error"] = error_detail
+            # Admin có thể tắt ghi request thành công: chỉ giữ WARNING / ERROR để nhẹ DB
+            # (không dùng return trong finally: sẽ nuốt kết quả / lỗi của request)
+            if level != SystemLogLevel.INFO.value or log_cfg["log_success_requests"]:
+                query_params_dict = dict(request.query_params)
+                masked_query_params = mask_sensitive_data(query_params_dict)
 
-            log_dict = {
-                "created_at": None,
-                "level": level,
-                "step": SystemLogStep.OTHER.value,
-                "api_path": path[:255],
-                "http_method": method[:10],
-                "status_code": status_code,
-                "duration_ms": duration_ms,
-                "message": message[:500] if message else None,
-                "detail": detail_payload,
-                "request_id": req_id[:64],
-                "user_id": user_id,
-                "device": device_info,
-                "app_version": str(app_version)[:50] if app_version else None,
-            }
+                detail_payload = {"client_host": request.client.host if request.client else None}
+                if log_cfg["store_request_body"]:
+                    detail_payload["query_params"] = masked_query_params
+                    if body_dict:
+                        detail_payload["body"] = body_dict
+                if error_detail:
+                    detail_payload["error"] = error_detail
 
-            if not log_settings.should_log(feature, level):
-                # Mức cài đặt của chức năng cao hơn mức bản ghi (vd báo cáo chỉ ghi ERROR) -> không ghi
-                pass
-            elif response is not None:
-                if response.background:
-                    if isinstance(response.background, BackgroundTasks):
-                        response.background.add_task(_write_log_to_db_sync, log_dict)
+                log_dict = {
+                    "created_at": None,
+                    "level": level,
+                    "step": SystemLogStep.OTHER.value,
+                    "api_path": path[:255],
+                    "http_method": method[:10],
+                    "status_code": status_code,
+                    "duration_ms": duration_ms,
+                    "message": message[:500] if message else None,
+                    "detail": detail_payload,
+                    "request_id": req_id[:64],
+                    "user_id": user_id,
+                    "device": device_info,
+                    "app_version": str(app_version)[:50] if app_version else None,
+                }
+
+                if response is not None:
+                    if response.background:
+                        if isinstance(response.background, BackgroundTasks):
+                            response.background.add_task(_write_log_to_db_sync, log_dict)
+                        else:
+                            existing_task = response.background
+                            bg = BackgroundTasks()
+                            bg.add_task(existing_task)
+                            bg.add_task(_write_log_to_db_sync, log_dict)
+                            response.background = bg
                     else:
-                        existing_task = response.background
-                        bg = BackgroundTasks()
-                        bg.add_task(existing_task)
-                        bg.add_task(_write_log_to_db_sync, log_dict)
-                        response.background = bg
+                        response.background = BackgroundTask(_write_log_to_db_sync, log_dict)
                 else:
-                    response.background = BackgroundTask(_write_log_to_db_sync, log_dict)
-            else:
-                _write_log_to_db_sync(log_dict)
+                    _write_log_to_db_sync(log_dict)
 
-            current_log_feature_var.reset(feature_ctx)
             current_request_id_var.reset(token_ctx)
+            current_actor_var.reset(actor_token)

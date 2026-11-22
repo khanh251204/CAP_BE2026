@@ -101,6 +101,9 @@ class AdminVoiceService:
             confidence_val = float(record.confidence) if record.confidence is not None else None
             processing_time_ms = cls._normalize_processing_time_ms(record.processing_time)
 
+            from app.ai.token_usage import summary as token_summary
+            tok = token_summary(llm_data)
+
             audio_url = (
                 record.audio_path
                 if (record.audio_path and record.audio_path.startswith(("http://", "https://")))
@@ -119,6 +122,10 @@ class AdminVoiceService:
                     transaction_id=record.transaction_id or (transaction.transaction_id if transaction else None),
                     audio_url=audio_url,
                     processing_time_ms=processing_time_ms,
+                    input_tokens=tok["input_tokens"] if tok else None,
+                    output_tokens=tok["output_tokens"] if tok else None,
+                    total_tokens=tok["total_tokens"] if tok else None,
+                    llm_calls=tok["llm_calls"] if tok else None,
                     created_at=record.created_at
                 )
             )
@@ -243,6 +250,9 @@ class AdminVoiceService:
         prompt_ver = llm_data.get("prompt_version") or ai_meta.get("prompt_version")
         pipe_ver = llm_data.get("pipeline_version") or ai_meta.get("pipeline_version")
 
+        from app.ai.token_usage import summary as token_summary
+        tok = token_summary(llm_data)
+
         processing_obj = AdminVoiceDetailProcessing(
             status=resolved_status,
             processing_time_ms=processing_time_ms,
@@ -251,6 +261,11 @@ class AdminVoiceService:
             model_version=model_ver,
             prompt_version=prompt_ver,
             pipeline_version=pipe_ver,
+            input_tokens=tok["input_tokens"] if tok else None,
+            output_tokens=tok["output_tokens"] if tok else None,
+            total_tokens=tok["total_tokens"] if tok else None,
+            llm_calls=tok["llm_calls"] if tok else None,
+            token_usage=tok,
             error_message=record.error_message
         )
 

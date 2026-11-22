@@ -21,6 +21,10 @@ class AdminVoiceListItem(BaseModel):
     transaction_id: Optional[int] = Field(None, description="ID giao dịch tài chính liên kết (nếu có)")
     audio_url: Optional[str] = Field(None, description="URL stream/nghe file ghi âm")
     processing_time_ms: Optional[int] = Field(None, description="Thời gian xử lý tính bằng mili-giây (ms)")
+    input_tokens: Optional[int] = Field(None, description="Tổng số input tokens gửi lên LLM")
+    output_tokens: Optional[int] = Field(None, description="Tổng số output tokens LLM trả về")
+    total_tokens: Optional[int] = Field(None, description="Tổng số tokens (input + output)")
+    llm_calls: Optional[int] = Field(None, description="Số lần gọi LLM cho phiên voice này")
     created_at: Optional[datetime] = Field(None, description="Thời gian khởi tạo bản ghi")
 
 
@@ -78,6 +82,11 @@ class AdminVoiceDetailProcessing(BaseModel):
     model_version: Optional[str] = Field(None, description="Phiên bản model AI")
     prompt_version: Optional[str] = Field(None, description="Phiên bản prompt AI")
     pipeline_version: Optional[str] = Field(None, description="Phiên bản pipeline xử lý AI")
+    input_tokens: Optional[int] = Field(None, description="Tổng số input tokens gửi lên LLM")
+    output_tokens: Optional[int] = Field(None, description="Tổng số output tokens LLM trả về")
+    total_tokens: Optional[int] = Field(None, description="Tổng số tokens (input + output)")
+    llm_calls: Optional[int] = Field(None, description="Số lần gọi LLM")
+    token_usage: Optional[Dict[str, Any]] = Field(None, description="Chi tiết token usage từng lần gọi LLM")
     error_message: Optional[str] = Field(None, description="Thông điệp lỗi nếu xử lý thất bại")
 
 

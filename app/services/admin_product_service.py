@@ -17,7 +17,6 @@ from app.models.user_model import User
 from app.models.inventory_model import InventoryTransaction
 from app.models.transactionDetail_model import TransactionDetail
 from app.repositories.inventory.inventory_stock_repo import InventoryStockRepository
-from app.utils.vn_search import vn_ilike
 
 
 class AdminProductService:
@@ -34,7 +33,18 @@ class AdminProductService:
         """
         type_col = func.upper(Product.product_type)
         stmt = select(Product.is_active, type_col, func.count()).select_from(Product)
-        stmt = _apply_owner_search(stmt, search=search, user_id=user_id)
+        if user_id is not None:
+            stmt = stmt.filter(Product.user_id == user_id)
+        if search and search.strip():
+            from app.models.store_model import Store
+
+            term = search.strip()
+            stmt = stmt.join(User, Product.user_id == User.user_id, isouter=True).filter(or_(
+                Product.product_name.ilike(f"%{term}%"),
+                User.full_name.ilike(f"%{term}%"),
+                User.email.ilike(f"%{term}%"),
+                User.store_rel.has(Store.store_name.ilike(f"%{term}%")),
+            ))
         rows = db.execute(stmt.group_by(Product.is_active, type_col)).all()
 
         result = {"total": 0, "active": 0, "inactive": 0, "resale": 0, "raw_material": 0, "finished_good": 0}
@@ -67,10 +77,12 @@ class AdminProductService:
         stmt = select(Product).options(joinedload(Product.user))
         count_stmt = select(func.count()).select_from(Product)
 
-        # === Filter: user_id + search (tên SP, đơn vị, chủ sở hữu, cửa hàng — hỗ trợ không dấu) ===
-        stmt = _apply_owner_search(stmt, search=search, user_id=user_id)
-        count_stmt = _apply_owner_search(count_stmt, search=search, user_id=user_id)
-        user_joined = bool(search and search.strip())
+        user_joined = False
+
+        # === Filter: user_id ===
+        if user_id is not None:
+            stmt = stmt.filter(Product.user_id == user_id)
+            count_stmt = count_stmt.filter(Product.user_id == user_id)
 
         # === Filter: product_type ===
         if product_type:
@@ -82,6 +94,26 @@ class AdminProductService:
         if is_active is not None:
             stmt = stmt.filter(Product.is_active == is_active)
             count_stmt = count_stmt.filter(Product.is_active == is_active)
+
+        # === Search: product_name, owner full_name, email, store_name ===
+        if search:
+            term = search.strip()
+            search_conditions = [
+                Product.product_name.ilike(f"%{term}%"),
+            ]
+            if not user_joined:
+                stmt = stmt.join(Product.user, isouter=True)
+                count_stmt = count_stmt.join(User, Product.user_id == User.user_id, isouter=True)
+                user_joined = True
+
+            from app.models.store_model import Store
+            search_conditions.extend([
+                User.full_name.ilike(f"%{term}%"),
+                User.email.ilike(f"%{term}%"),
+                User.store_rel.has(Store.store_name.ilike(f"%{term}%")),
+            ])
+            stmt = stmt.filter(or_(*search_conditions))
+            count_stmt = count_stmt.filter(or_(*search_conditions))
 
         # === Count total ===
         total = db.scalar(count_stmt) or 0
@@ -211,32 +243,6 @@ class AdminProductService:
 # ========================================
 # Helper Functions
 # ========================================
-
-def _apply_owner_search(stmt, search: Optional[str] = None, user_id: Optional[int] = None):
-    """Lọc theo user_id và từ khóa (tên SP, đơn vị, mã SP, chủ sở hữu, cửa hàng) — dùng chung cho list / count / summary."""
-    if user_id is not None:
-        stmt = stmt.filter(Product.user_id == user_id)
-
-    if search and search.strip():
-        from app.models.store_model import Store
-
-        term = search.strip()
-        conditions = [
-            vn_ilike(Product.product_name, term),
-            vn_ilike(Product.default_unit, term),
-        ]
-        if term.isdigit():
-            conditions.append(Product.product_id == int(term))
-        stmt = stmt.join(User, Product.user_id == User.user_id, isouter=True)
-        conditions.extend([
-            vn_ilike(User.full_name, term),
-            vn_ilike(User.email, term),
-            vn_ilike(User.phone_number, term),
-            User.store_rel.has(vn_ilike(Store.store_name, term)),
-        ])
-        stmt = stmt.filter(or_(*conditions))
-    return stmt
-
 
 def _safe_float(val, default: float = 0.0) -> float:
     if val is None:

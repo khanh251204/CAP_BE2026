@@ -35,13 +35,16 @@ class OllamaModel(ModelProvider):
         self,
         text: str,
         business_type: str = "PRODUCER",
-        knowledge: str = ""
+        knowledge: str = "",
+        system_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Gửi prompt tới Ollama chat API với định dạng JSON."""
         user_prompt = f"USER INPUT:\n{text.strip()}"
 
         if knowledge and knowledge.strip():
             user_prompt += f"\n\nRELEVANT KNOWLEDGE:\n{knowledge.strip()}\n(Áp dụng kiến thức trên để chuẩn hóa từ lóng, phương ngữ hoặc quy cách đóng gói nếu có trong câu nói)."
+
+        active_system_prompt = system_prompt if system_prompt is not None else self.system_prompt
 
         start_time = time.perf_counter()
         error_msg = None
@@ -52,7 +55,7 @@ class OllamaModel(ModelProvider):
         payload = {
             "model": self.model_name,
             "messages": [
-                {"role": "system", "content": self.system_prompt},
+                {"role": "system", "content": active_system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
             "stream": False,

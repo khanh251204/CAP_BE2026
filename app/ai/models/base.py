@@ -61,7 +61,8 @@ class ModelProvider(abc.ABC):
         self,
         text: str,
         business_type: str = "PRODUCER",
-        knowledge: str = ""
+        knowledge: str = "",
+        system_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Chạy dự đoán cho 1 câu văn bản (kèm ngữ cảnh tri thức RAG nếu có).

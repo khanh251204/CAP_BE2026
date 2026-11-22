@@ -27,8 +27,9 @@ class GroqService:
         # ========================================================
         # PLUGGABLE AI MODEL INITIALIZATION
         # ========================================================
-        # Đọc cấu hình từ .env (ACTIVE_AI_MODEL), mặc định là qwen_27b (qwen/qwen3.8-27b)
-        self.active_ai_model = (os.getenv("ACTIVE_AI_MODEL") or "qwen_27b").strip()
+        # Đọc cấu hình từ .env (ACTIVE_AI_MODEL), mặc định là qwen (qwen/qwen3.8-27b).
+        # Đổi sang GPT-OSS 120B: ACTIVE_AI_MODEL=groq_120b (hoặc điền thẳng tên model Groq).
+        self.active_ai_model = (os.getenv("ACTIVE_AI_MODEL") or "qwen").strip()
 
         from app.ai.models import get_model_provider
 
@@ -97,10 +98,12 @@ class GroqService:
     def analyze_transaction(
         self,
         text: str,
-        knowledge: str = ""
+        knowledge: str = "",
+        system_prompt: str | None = None,
     ) -> dict:
         """
         Phân tích câu giao dịch bằng LLM thông qua Model Provider (Pluggable).
+        Hỗ trợ truyền `system_prompt` rút gọn theo gói tính năng của tài khoản để giảm token và latency.
         """
         if not text or not text.strip():
             raise ValueError("Text giao dịch không được để trống.")
@@ -110,10 +113,13 @@ class GroqService:
             # (Hàm predict sẽ tự động ghép system prompt và format JSON)
             # business_type không được dùng trong prompt: LLM chỉ trích xuất intent/entity,
             # quy tắc theo loại hình kinh doanh do backend áp dụng (AGENTS.md 2.1)
-            benchmark_result = self.provider.predict(
-                text=text,
-                knowledge=knowledge
-            )
+            predict_kwargs = {"text": text, "knowledge": knowledge}
+            if system_prompt is not None:
+                import inspect
+                if "system_prompt" in inspect.signature(self.provider.predict).parameters:
+                    predict_kwargs["system_prompt"] = system_prompt
+
+            benchmark_result = self.provider.predict(**predict_kwargs)
 
             if benchmark_result.get("error"):
                 raise ValueError(f"AI Provider Error: {benchmark_result['error']}")

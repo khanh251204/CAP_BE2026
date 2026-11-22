@@ -1,17 +1,14 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.configs import system_log_settings as log_settings
 from app.configs.database import get_db
 from app.configs.jwt import require_permission, require_admin_area
 from app.schemas.admin_system_log_schema import (
     SystemLogListResponse,
-    SystemLogSettingsResponse,
-    SystemLogSettingsUpdate,
-    SystemLogSummaryResponse,
+    SystemLogSummaryResponse
 )
 from app.services.admin_system_log_service import AdminSystemLogService
 
@@ -78,50 +75,3 @@ def list_system_logs(
             "total_pages": total_pages
         }
     }
-
-
-# ---------------------------------------------------------------- Cài đặt ghi log theo chức năng
-@router.get(
-    "/settings",
-    response_model=SystemLogSettingsResponse,
-    summary="Xem cài đặt ghi system log theo chức năng",
-    description="Mức ghi log (ALL / WARNING / ERROR / OFF) của từng chức năng mobile; admin tạm thời OFF.",
-    dependencies=[Depends(require_permission("system:log_read"))],
-)
-def get_system_log_settings():
-    return {"success": True, "data": log_settings.describe()}
-
-
-@router.put(
-    "/settings",
-    response_model=SystemLogSettingsResponse,
-    summary="Sửa cài đặt ghi system log theo chức năng",
-    description="Chỉ gửi chức năng cần đổi. Áp dụng ngay cho mọi worker (tối đa vài giây).",
-)
-def update_system_log_settings(
-    body: SystemLogSettingsUpdate,
-    user=Depends(require_permission("system:setting_manage")),
-):
-    try:
-        data = log_settings.save_levels(body.levels, updated_by=_user_id(user))
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    return {"success": True, "message": "Đã lưu cài đặt ghi log", "data": data}
-
-
-@router.post(
-    "/settings/reset",
-    response_model=SystemLogSettingsResponse,
-    summary="Khôi phục cài đặt ghi log mặc định",
-    dependencies=[Depends(require_permission("system:setting_manage"))],
-)
-def reset_system_log_settings():
-    return {"success": True, "message": "Đã khôi phục cài đặt mặc định", "data": log_settings.reset_levels()}
-
-
-def _user_id(user) -> Optional[int]:
-    raw = user.get("sub") if isinstance(user, dict) else getattr(user, "user_id", None)
-    try:
-        return int(raw) if raw is not None else None
-    except (TypeError, ValueError):
-        return None
