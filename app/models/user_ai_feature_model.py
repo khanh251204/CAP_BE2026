@@ -26,6 +26,10 @@ class UserAIFeature(Base):
     allowed_intents = Column(JSON, nullable=True)
     allow_multi_item = Column(Boolean, nullable=False, default=True, server_default=text("1"))
     allow_ocr = Column(Boolean, nullable=False, default=True, server_default=text("1"))
+    subscribed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True, index=True)
+    expiry_reminded_at = Column(DateTime, nullable=True)
+    renewal_reminded_at = Column(DateTime, nullable=True)
     note = Column(String(255), nullable=True)
     updated_at = Column(
         DateTime,

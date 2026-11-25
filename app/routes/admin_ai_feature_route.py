@@ -177,6 +177,8 @@ def update_user_ai_feature(
             allow_ocr=body.allow_ocr,
             note=body.note,
             admin_id=current_admin_id,
+            duration_days=body.duration_days,
+            send_confirmation_email=body.send_email,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
@@ -220,6 +222,8 @@ def bulk_assign_ai_features(
             allow_ocr=body.allow_ocr,
             note=body.note,
             admin_id=current_admin_id,
+            duration_days=body.duration_days,
+            send_confirmation_email=body.send_email,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
@@ -232,6 +236,30 @@ def bulk_assign_ai_features(
         user_id=current_admin_id,
     )
     return {"success": True, "data": result}
+
+
+@router.post(
+    "/send-expiry-reminders",
+    summary="Gửi email nhắc các tài khoản sắp hết hạn gói AI",
+    description="Quét các tài khoản còn <= reminder_days ngày (mặc định 3 ngày) chưa được nhắc và gửi email nhắc gia hạn ngay.",
+    dependencies=[_manage_perm],
+)
+def trigger_expiry_reminders(
+    reminder_days: int = Query(3, ge=1, le=30),
+    current_admin_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    from app.services.ai_subscription_email_service import run_expiry_reminders
+
+    res = run_expiry_reminders(db=db, reminder_days=reminder_days)
+    log_event(
+        "INFO",
+        "ADMIN",
+        f"Admin kích hoạt gửi email nhắc hết hạn gói AI ({res['sent_count']}/{res['checked_count']})",
+        detail=res,
+        user_id=current_admin_id,
+    )
+    return {"success": True, "data": res}
 
 
 @router.delete(

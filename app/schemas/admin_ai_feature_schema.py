@@ -33,6 +33,16 @@ class AdminUserAIFeatureUpdateRequest(BaseModel):
         None,
         description="Ghi đè quyền quét hóa đơn OCR.",
     )
+    duration_days: Optional[int] = Field(
+        None,
+        ge=0,
+        le=3650,
+        description="Thời hạn gói tính theo ngày (mặc định 30 ngày = 1 tháng khi gán gói; 0 = không thời hạn).",
+    )
+    send_email: bool = Field(
+        False,
+        description="Gửi email xác nhận kích hoạt gói tới người dùng sau khi lưu.",
+    )
     note: Optional[str] = Field(None, max_length=255, description="Ghi chú của admin (VD: 'Đã thanh toán gói 50k')")
 
 

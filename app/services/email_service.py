@@ -42,12 +42,31 @@ def send_email(
     to_email: str,
     subject: str,
     text_content: str,
-    html_content: str | None = None
+    html_content: str | None = None,
+    email_type: str = "OTHER",
+    user_id: int | None = None,
+    sent_by: int | None = None,
 ):
     """
-    Hàm gửi email dùng chung qua SMTP STARTTLS.
+    Hàm gửi email dùng chung qua SMTP STARTTLS và tự động ghi lịch sử vào Email_Log.
     """
-    validate_smtp_config()
+    from app.services.email_management_service import record_email_log
+
+    try:
+        validate_smtp_config()
+    except Exception as exc:
+        record_email_log(
+            to_email=to_email,
+            subject=subject,
+            email_type=email_type,
+            status="FAILED",
+            error_message=str(exc),
+            text_body=text_content,
+            html_body=html_content,
+            user_id=user_id,
+            sent_by=sent_by,
+        )
+        raise
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -67,20 +86,66 @@ def send_email(
             smtp.ehlo()
             smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
             smtp.send_message(message)
+        record_email_log(
+            to_email=to_email,
+            subject=subject,
+            email_type=email_type,
+            status="SENT",
+            text_body=text_content,
+            html_body=html_content,
+            user_id=user_id,
+            sent_by=sent_by,
+        )
     except smtplib.SMTPAuthenticationError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể xác thực tài khoản SMTP gửi email"
+        err_msg = "Không thể xác thực tài khoản SMTP gửi email"
+        record_email_log(
+            to_email=to_email,
+            subject=subject,
+            email_type=email_type,
+            status="FAILED",
+            error_message=err_msg,
+            text_body=text_content,
+            html_body=html_content,
+            user_id=user_id,
+            sent_by=sent_by,
         )
-    except smtplib.SMTPException:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể gửi email. Vui lòng thử lại sau."
+            detail=err_msg,
         )
-    except OSError:
+    except smtplib.SMTPException as exc:
+        err_msg = f"Không thể gửi email ({exc})"
+        record_email_log(
+            to_email=to_email,
+            subject=subject,
+            email_type=email_type,
+            status="FAILED",
+            error_message=err_msg,
+            text_body=text_content,
+            html_body=html_content,
+            user_id=user_id,
+            sent_by=sent_by,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể kết nối đến máy chủ email"
+            detail="Không thể gửi email. Vui lòng thử lại sau.",
+        )
+    except OSError as exc:
+        err_msg = f"Không thể kết nối đến máy chủ email ({exc})"
+        record_email_log(
+            to_email=to_email,
+            subject=subject,
+            email_type=email_type,
+            status="FAILED",
+            error_message=err_msg,
+            text_body=text_content,
+            html_body=html_content,
+            user_id=user_id,
+            sent_by=sent_by,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể kết nối đến máy chủ email",
         )
 
 
@@ -121,7 +186,8 @@ def send_otp_email(
         to_email=to_email,
         subject=subject,
         text_content=text_content,
-        html_content=html_content
+        html_content=html_content,
+        email_type="OTP",
     )
 
 
@@ -149,6 +215,7 @@ def send_new_password_email(
         subject=subject,
         text_content=text_content,
         html_content=html_content,
+        email_type="PASSWORD_RESET",
     )
 
 

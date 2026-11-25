@@ -17,6 +17,7 @@ from app.services.notification_cleanup_service import NotificationCleanupSchedul
 from app.services.token_cleanup_service import TokenCleanupScheduler
 from app.services.data_retention_service import DataRetentionScheduler
 from app.services.inactivity_reminder_service import InactivityReminderScheduler
+from app.services.ai_subscription_email_service import AiSubscriptionReminderScheduler
 
 # Core routers
 from app.api.stt import router as stt_router
@@ -37,6 +38,7 @@ from app.routes.transaction_route import transaction_router
 # Admin routers
 from app.routes.admin_dashboard_route import router as admin_dashboard_router, ws_admin_router
 from app.routes.admin_dataset_route import router as admin_dataset_router
+from app.routes.admin_debt_route import router as admin_debt_router
 from app.routes.admin_product_route import router as admin_product_router
 from app.routes.admin_transaction_route import router as admin_transaction_router
 from app.routes.admin_user_route import router as admin_user_router
@@ -47,6 +49,7 @@ from app.routes.admin_rbac_route import router as admin_rbac_router, ui_router a
 from app.routes.admin_closing_route import router as admin_closing_router
 from app.routes.admin_audit_route import router as admin_audit_router
 from app.routes.admin_ai_feature_route import router as admin_ai_feature_router
+from app.routes.admin_email_route import router as admin_email_router
 
 
 @asynccontextmanager
@@ -107,6 +110,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[InactivityReminderScheduler] Start error: {e}")
 
+    # 7. Khởi động AI Subscription Expiry Reminder Scheduler (nhắc email trước khi gói AI hết hạn 3 ngày)
+    try:
+        AiSubscriptionReminderScheduler.start()
+    except Exception as e:
+        logger.error(f"[AiSubscriptionReminderScheduler] Start error: {e}")
+
     yield
 
     try:
@@ -126,6 +135,11 @@ async def lifespan(app: FastAPI):
 
     try:
         InactivityReminderScheduler.stop()
+    except Exception:
+        pass
+
+    try:
+        AiSubscriptionReminderScheduler.stop()
     except Exception:
         pass
 
@@ -190,6 +204,7 @@ ADMIN_ROUTERS = [
     admin_dashboard_router,
     ws_admin_router,
     admin_dataset_router,
+    admin_debt_router,
     admin_product_router,
     admin_transaction_router,
     admin_user_router,
@@ -201,6 +216,7 @@ ADMIN_ROUTERS = [
     admin_closing_router,
     admin_audit_router,
     admin_ai_feature_router,
+    admin_email_router,
 ]
 
 

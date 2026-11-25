@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -147,6 +147,9 @@ class UserAIConfig:
     allowed_intents: Optional[Tuple[str, ...]] = None
     allow_multi_item: bool = False
     allow_ocr: bool = False
+    subscribed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    expiry_reminded_at: Optional[datetime] = None
     note: Optional[str] = None
 
     @property
@@ -156,6 +159,26 @@ class UserAIConfig:
     @property
     def is_ai_locked(self) -> bool:
         return self.allowed_intents is not None and len(self.allowed_intents) == 0
+
+    @property
+    def days_remaining(self) -> Optional[int]:
+        if self.expires_at is None:
+            return None
+        delta = (self.expires_at - datetime.now()).total_seconds()
+        if delta <= 0:
+            return 0
+        return int(delta // 86400) + (1 if delta % 86400 > 0 else 0)
+
+    @property
+    def subscription_status(self) -> str:
+        if self.expires_at is None:
+            return "UNLIMITED"
+        now = datetime.now()
+        if self.expires_at <= now:
+            return "EXPIRED"
+        if self.expires_at <= now + timedelta(days=3):
+            return "EXPIRING_SOON"
+        return "ACTIVE"
 
     def is_intent_allowed(self, intent: Optional[str]) -> bool:
         if self.allowed_intents is None:
@@ -219,6 +242,9 @@ def _row_to_config(user_id: int, row: Any) -> UserAIConfig:
         allowed_intents=tuple(normalized) if normalized is not None else None,
         allow_multi_item=bool(row.allow_multi_item),
         allow_ocr=bool(row.allow_ocr),
+        subscribed_at=getattr(row, "subscribed_at", None),
+        expires_at=getattr(row, "expires_at", None),
+        expiry_reminded_at=getattr(row, "expiry_reminded_at", None),
         note=row.note,
     )
 
@@ -457,6 +483,11 @@ def format_user_ai_feature(user: Any, cfg: UserAIConfig, updated_at: Any = None,
         "intent_count": len(cfg.effective_intents()),
         "allow_multi_item": cfg.allow_multi_item,
         "allow_ocr": cfg.allow_ocr,
+        "subscribed_at": cfg.subscribed_at.isoformat() if cfg.subscribed_at else None,
+        "expires_at": cfg.expires_at.isoformat() if cfg.expires_at else None,
+        "expiry_reminded_at": cfg.expiry_reminded_at.isoformat() if cfg.expiry_reminded_at else None,
+        "days_remaining": cfg.days_remaining,
+        "subscription_status": cfg.subscription_status,
         "note": cfg.note,
         "prompt_stats": estimate_prompt_stats(SYSTEM_PROMPT, active_prompt),
         "updated_at": updated_at.isoformat() if updated_at else None,
@@ -549,11 +580,14 @@ def set_user_ai_feature(
     allow_ocr: Optional[bool] = None,
     note: Optional[str] = None,
     admin_id: Optional[int] = None,
+    duration_days: Optional[int] = None,
+    send_confirmation_email: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
     Cập nhật quyền AI cho 1 tài khoản:
-    - Nếu truyền `plan_code`: áp toàn bộ cấu hình của gói đó làm nền, đồng thời cho phép override thêm
-      `allowed_intents` / `allow_multi_item` / `allow_ocr` nếu admin gửi kèm.
+    - Nếu truyền `plan_code`: áp toàn bộ cấu hình của gói đó làm nền, mặc định đặt chu kỳ 30 ngày
+      (hoặc `duration_days`; truyền `duration_days=0` để không giới hạn thời hạn), đồng thời cho phép
+      override thêm `allowed_intents` / `allow_multi_item` / `allow_ocr` nếu admin gửi kèm.
     - Nếu không truyền `plan_code`: tùy chỉnh trực tiếp (`plan_code = None`, custom).
     """
     from app.models.user_model import User
@@ -565,6 +599,7 @@ def set_user_ai_feature(
 
     plans = get_plans(db)
     resolved_plan_code: Optional[str] = None
+    selected_plan: Optional[Dict[str, Any]] = None
     resolved_intents: Optional[List[str]] = None
     resolved_multi = True
     resolved_ocr = True
@@ -574,6 +609,7 @@ def set_user_ai_feature(
         if code not in plans:
             raise ValueError(f"Gói AI không tồn tại: '{code}'")
         plan = plans[code]
+        selected_plan = plan
         resolved_plan_code = code
         resolved_intents = copy.deepcopy(plan["allowed_intents"])
         resolved_multi = bool(plan["allow_multi_item"])
@@ -589,6 +625,30 @@ def set_user_ai_feature(
 
     row = db.query(UserAIFeature).filter(UserAIFeature.user_id == user_id).first()
     now = datetime.now()
+
+    # Tính ngày đăng ký & ngày hết hạn (mặc định 30 ngày khi gán gói trả phí/có plan_code trừ locked)
+    resolved_subscribed_at: Optional[datetime] = row.subscribed_at if row else None
+    resolved_expires_at: Optional[datetime] = row.expires_at if row else None
+    reset_reminder = False
+
+    if duration_days is not None:
+        if duration_days <= 0:
+            resolved_subscribed_at = now
+            resolved_expires_at = None
+        else:
+            resolved_subscribed_at = now
+            resolved_expires_at = now + timedelta(days=int(duration_days))
+        reset_reminder = True
+    elif resolved_plan_code and resolved_plan_code != "locked":
+        # Gán gói mới hoặc gia hạn -> mặc định 30 ngày (1 tháng)
+        resolved_subscribed_at = now
+        resolved_expires_at = now + timedelta(days=30)
+        reset_reminder = True
+    elif resolved_plan_code == "locked":
+        resolved_subscribed_at = now
+        resolved_expires_at = None
+        reset_reminder = True
+
     if row is None:
         row = UserAIFeature(
             user_id=user_id,
@@ -596,6 +656,10 @@ def set_user_ai_feature(
             allowed_intents=resolved_intents,
             allow_multi_item=resolved_multi,
             allow_ocr=resolved_ocr,
+            subscribed_at=resolved_subscribed_at,
+            expires_at=resolved_expires_at,
+            expiry_reminded_at=None,
+            renewal_reminded_at=None,
             note=note,
             updated_at=now,
             updated_by=admin_id,
@@ -606,6 +670,11 @@ def set_user_ai_feature(
         row.allowed_intents = resolved_intents
         row.allow_multi_item = resolved_multi
         row.allow_ocr = resolved_ocr
+        row.subscribed_at = resolved_subscribed_at
+        row.expires_at = resolved_expires_at
+        if reset_reminder:
+            row.expiry_reminded_at = None
+            row.renewal_reminded_at = None
         if note is not None:
             row.note = note
         row.updated_at = now
@@ -615,12 +684,28 @@ def set_user_ai_feature(
     db.refresh(row)
     invalidate_user_cache(user_id)
 
-    return format_user_ai_feature(
+    cfg = _row_to_config(user.user_id, row)
+    formatted = format_user_ai_feature(
         user=user,
-        cfg=_row_to_config(user.user_id, row),
+        cfg=cfg,
         updated_at=row.updated_at,
         updated_by=row.updated_by,
     )
+
+    if send_confirmation_email and user.email and resolved_plan_code != "locked":
+        from app.services.ai_subscription_email_service import send_subscription_confirmation_async
+        send_subscription_confirmation_async(
+            to_email=user.email,
+            full_name=user.full_name,
+            plan_name=selected_plan["name"] if selected_plan else "Gói AI tùy chỉnh",
+            price_vnd=int(selected_plan.get("price_vnd", 0)) if selected_plan else 0,
+            intent_count=formatted["intent_count"],
+            subscribed_at=row.subscribed_at,
+            expires_at=row.expires_at,
+            user_id=user.user_id,
+        )
+
+    return formatted
 
 
 def bulk_assign_user_ai_features(
@@ -632,6 +717,8 @@ def bulk_assign_user_ai_features(
     allow_ocr: Optional[bool] = None,
     note: Optional[str] = None,
     admin_id: Optional[int] = None,
+    duration_days: Optional[int] = None,
+    send_confirmation_email: bool = False,
 ) -> Dict[str, Any]:
     updated: List[int] = []
     not_found: List[int] = []
@@ -645,6 +732,8 @@ def bulk_assign_user_ai_features(
             allow_ocr=allow_ocr,
             note=note,
             admin_id=admin_id,
+            duration_days=duration_days,
+            send_confirmation_email=send_confirmation_email,
         )
         if res is None:
             not_found.append(uid)
